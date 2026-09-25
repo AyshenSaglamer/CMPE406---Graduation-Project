@@ -1,0 +1,38 @@
+# Environment variables / secrets
+.env
+.env.*
+
+# Spring Boot / Maven
+backend/target/
+target/
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# SSL private keys / certificates
+ssl/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Archives
+backend.zip
+backend/target/
+target/
+.DS_Store
+.idea/
+.vscode/
+*.log
+ssl/
+*.key
+*.pem
+*.p12
+*.pfx
+backend.zip
