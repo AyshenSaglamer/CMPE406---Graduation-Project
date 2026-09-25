@@ -36,3 +36,10 @@ ssl/
 *.p12
 *.pfx
 backend.zip
+
+# Python / FastAPI
+ai-service/venv/
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+ai-service/.pytest_cache/
+ai-service/*.pyc
