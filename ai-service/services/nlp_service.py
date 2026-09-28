@@ -1,6 +1,36 @@
 import re
 
 
+def create_response(
+    intent,
+    status,
+    original_text,
+    value=None,
+    unit=None,
+    message=None,
+    activity=None,
+):
+    """
+    Create a consistent response structure for Dia's NLP service.
+    """
+
+    response = {
+        "intent": intent,
+        "value": value,
+        "unit": unit,
+        "status": status,
+        "original_text": original_text,
+    }
+
+    if message is not None:
+        response["message"] = message
+
+    if activity is not None:
+        response["activity"] = activity
+
+    return response
+
+
 def parse_nlp_text(text: str):
     original_text = text
     text = text.lower().strip()
@@ -132,113 +162,128 @@ def parse_nlp_text(text: str):
         "gymnastics", "trampoline",
     ]
 
-    # Detect glucose
+    # ---------------------------------------------------------
+    # Glucose
+    # ---------------------------------------------------------
+
     if any(keyword in text for keyword in glucose_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
 
         if not numbers:
-            return {
-                "intent": "LOG_GLUCOSE",
-                "value": None,
-                "unit": "mg/dL",
-                "status": "MISSING_VALUE",
-                "message": "Please provide your glucose value.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_GLUCOSE",
+                status="MISSING_VALUE",
+                original_text=original_text,
+                value=None,
+                unit="mg/dL",
+                message="Please provide your glucose value.",
+            )
 
         value = float(numbers[0])
 
         if value <= 0:
-            return {
-                "intent": "LOG_GLUCOSE",
-                "value": value,
-                "unit": "mg/dL",
-                "status": "INVALID_VALUE",
-                "message": "Glucose value must be greater than zero.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_GLUCOSE",
+                status="INVALID_VALUE",
+                original_text=original_text,
+                value=value,
+                unit="mg/dL",
+                message="Glucose value must be greater than zero.",
+            )
 
-        return {
-            "intent": "LOG_GLUCOSE",
-            "value": value,
-            "unit": "mg/dL",
-            "status": "SUCCESS",
-            "original_text": original_text,
-        }
-        # Detect insulin
+        return create_response(
+            intent="LOG_GLUCOSE",
+            status="SUCCESS",
+            original_text=original_text,
+            value=value,
+            unit="mg/dL",
+        )
+
+    # ---------------------------------------------------------
+    # Insulin
+    # ---------------------------------------------------------
+
     if any(keyword in text for keyword in insulin_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
 
         if not numbers:
-            return {
-                "intent": "LOG_INSULIN",
-                "value": None,
-                "unit": "units",
-                "status": "MISSING_VALUE",
-                "message": "Please provide the insulin amount.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_INSULIN",
+                status="MISSING_VALUE",
+                original_text=original_text,
+                value=None,
+                unit="units",
+                message="Please provide the insulin amount.",
+            )
 
         value = float(numbers[0])
 
         if value <= 0:
-            return {
-                "intent": "LOG_INSULIN",
-                "value": value,
-                "unit": "units",
-                "status": "INVALID_VALUE",
-                "message": "Insulin amount must be greater than zero.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_INSULIN",
+                status="INVALID_VALUE",
+                original_text=original_text,
+                value=value,
+                unit="units",
+                message="Insulin amount must be greater than zero.",
+            )
 
-        return {
-            "intent": "LOG_INSULIN",
-            "value": value,
-            "unit": "units",
-            "status": "SUCCESS",
-            "original_text": original_text,
-        }
-    # Detect meal / carbohydrates
+        return create_response(
+            intent="LOG_INSULIN",
+            status="SUCCESS",
+            original_text=original_text,
+            value=value,
+            unit="units",
+        )
+
+    # ---------------------------------------------------------
+    # Meal / carbohydrates
+    # ---------------------------------------------------------
+
     if any(keyword in text for keyword in meal_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
 
         if not numbers:
-            return {
-                "intent": "LOG_MEAL",
-                "value": None,
-                "unit": "grams",
-                "status": "MISSING_VALUE",
-                "message": "Please provide the carbohydrate amount.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_MEAL",
+                status="MISSING_VALUE",
+                original_text=original_text,
+                value=None,
+                unit="grams",
+                message="Please provide the carbohydrate amount.",
+            )
 
         value = float(numbers[0])
 
         if value <= 0:
-            return {
-                "intent": "LOG_MEAL",
-                "value": value,
-                "unit": "grams",
-                "status": "INVALID_VALUE",
-                "message": "Carbohydrate amount must be greater than zero.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_MEAL",
+                status="INVALID_VALUE",
+                original_text=original_text,
+                value=value,
+                unit="grams",
+                message="Carbohydrate amount must be greater than zero.",
+            )
 
-        return {
-            "intent": "LOG_MEAL",
-            "value": value,
-            "unit": "grams",
-            "status": "SUCCESS",
-            "original_text": original_text,
-        }
-        # Detect physical activity
+        return create_response(
+            intent="LOG_MEAL",
+            status="SUCCESS",
+            original_text=original_text,
+            value=value,
+            unit="grams",
+        )
+
+    # ---------------------------------------------------------
+    # Physical activity
+    # ---------------------------------------------------------
+
     matched_activity = next(
         (
             activity
             for activity in sorted(
                 activity_keywords,
                 key=len,
-                reverse=True
+                reverse=True,
             )
             if activity in text
         ),
@@ -249,29 +294,33 @@ def parse_nlp_text(text: str):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
 
         if not numbers:
-            return {
-                "intent": "LOG_ACTIVITY",
-                "activity": matched_activity,
-                "value": None,
-                "unit": None,
-                "status": "MISSING_VALUE",
-                "message": "Please provide the activity duration, distance, or repetitions.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_ACTIVITY",
+                status="MISSING_VALUE",
+                original_text=original_text,
+                value=None,
+                unit=None,
+                message=(
+                    "Please provide the activity duration, "
+                    "distance, or repetitions."
+                ),
+                activity=matched_activity,
+            )
 
         value = float(numbers[0])
 
         if value <= 0:
-            return {
-                "intent": "LOG_ACTIVITY",
-                "activity": matched_activity,
-                "value": value,
-                "unit": None,
-                "status": "INVALID_VALUE",
-                "message": "Activity value must be greater than zero.",
-                "original_text": original_text,
-            }
+            return create_response(
+                intent="LOG_ACTIVITY",
+                status="INVALID_VALUE",
+                original_text=original_text,
+                value=value,
+                unit=None,
+                message="Activity value must be greater than zero.",
+                activity=matched_activity,
+            )
 
+        # Determine activity unit
         if re.search(r"\b(minutes?|mins?|min)\b", text):
             unit = "minutes"
 
@@ -308,21 +357,24 @@ def parse_nlp_text(text: str):
         else:
             unit = "unspecified"
 
-        return {
-            "intent": "LOG_ACTIVITY",
-            "activity": matched_activity,
-            "value": value,
-            "unit": unit,
-            "status": "SUCCESS",
-            "original_text": original_text,
-        }
+        return create_response(
+            intent="LOG_ACTIVITY",
+            status="SUCCESS",
+            original_text=original_text,
+            value=value,
+            unit=unit,
+            activity=matched_activity,
+        )
 
-    # Dia could not identify the intent
-    return {
-        "intent": "UNKNOWN",
-        "value": None,
-        "unit": None,
-        "status": "UNKNOWN",
-        "message": "I could not understand the input.",
-        "original_text": original_text,
-    }
+    # ---------------------------------------------------------
+    # Unknown
+    # ---------------------------------------------------------
+
+    return create_response(
+        intent="UNKNOWN",
+        status="UNKNOWN",
+        original_text=original_text,
+        value=None,
+        unit=None,
+        message="I could not understand the input.",
+    )
