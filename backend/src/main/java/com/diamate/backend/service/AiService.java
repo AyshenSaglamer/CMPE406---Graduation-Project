@@ -21,11 +21,19 @@ public class AiService {
 
     public Map<String, Object> parseText(String text) {
 
-        // Reject empty or blank input before sending anything to FastAPI
+        // Reject empty or blank input
         if (text == null || text.trim().isEmpty()) {
             return createErrorResponse(
                     "INVALID_INPUT",
                     "Text cannot be empty."
+            );
+        }
+
+        // Reject excessively long input
+        if (text.length() > 500) {
+            return createErrorResponse(
+                    "INPUT_TOO_LONG",
+                    "Text cannot exceed 500 characters."
             );
         }
 
@@ -50,7 +58,7 @@ public class AiService {
 
         } catch (RestClientException exception) {
 
-            // Keep Spring Boot working even if FastAPI is unavailable
+            // Handle FastAPI connection/service failures
             return createErrorResponse(
                     "AI_SERVICE_UNAVAILABLE",
                     "The AI service is currently unavailable."
@@ -62,6 +70,7 @@ public class AiService {
             String status,
             String message
     ) {
+
         Map<String, Object> response = new HashMap<>();
 
         response.put("intent", "UNKNOWN");
