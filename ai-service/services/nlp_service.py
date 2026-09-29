@@ -9,17 +9,18 @@ def create_response(
     unit=None,
     message=None,
     activity=None,
+    input_type="TEXT",
 ):
     """
-    Create a consistent response structure for Dia's NLP service.
+    Create a consistent response structure for Dia's AI service.
     """
-
     response = {
         "intent": intent,
         "value": value,
         "unit": unit,
         "status": status,
         "original_text": original_text,
+        "input_type": input_type,
     }
 
     if message is not None:
@@ -32,8 +33,22 @@ def create_response(
 
 
 def parse_nlp_text(text: str):
+    """
+    Parse a single health entry from natural-language text.
+
+    Supported intents:
+    - LOG_GLUCOSE
+    - LOG_INSULIN
+    - LOG_MEAL
+    - LOG_ACTIVITY
+    """
+
     original_text = text
     text = text.lower().strip()
+
+    # ---------------------------------------------------------
+    # Keywords
+    # ---------------------------------------------------------
 
     glucose_keywords = [
         "glucose",
@@ -59,107 +74,208 @@ def parse_nlp_text(text: str):
 
     activity_keywords = [
         # General
-        "exercise", "exercised", "workout", "worked out",
-        "training", "trained", "physical activity",
+        "exercise",
+        "exercised",
+        "workout",
+        "worked out",
+        "training",
+        "trained",
+        "physical activity",
 
         # Walking / running
-        "walk", "walked", "walking",
-        "jog", "jogged", "jogging",
-        "run", "ran", "running",
-        "sprint", "sprinting",
-        "hiking", "hiked", "trekking",
+        "walk",
+        "walked",
+        "walking",
+        "jog",
+        "jogged",
+        "jogging",
+        "run",
+        "ran",
+        "running",
+        "sprint",
+        "sprinting",
+        "hiking",
+        "hiked",
+        "trekking",
 
         # Cycling
-        "cycle", "cycled", "cycling",
-        "bike", "biked", "biking",
-        "bicycle", "spinning",
+        "cycle",
+        "cycled",
+        "cycling",
+        "bike",
+        "biked",
+        "biking",
+        "bicycle",
+        "spinning",
 
         # Water
-        "swim", "swam", "swimming",
-        "aqua aerobics", "water aerobics",
-        "rowing", "kayaking", "canoeing",
-        "paddleboarding", "surfing",
+        "swim",
+        "swam",
+        "swimming",
+        "aqua aerobics",
+        "water aerobics",
+        "rowing",
+        "kayaking",
+        "canoeing",
+        "paddleboarding",
+        "surfing",
 
         # Gym / strength
-        "weightlifting", "weight lifting", "weights",
-        "strength training", "resistance training",
-        "bodybuilding", "powerlifting",
-        "crossfit", "calisthenics", "circuit training",
+        "weightlifting",
+        "weight lifting",
+        "weights",
+        "strength training",
+        "resistance training",
+        "bodybuilding",
+        "powerlifting",
+        "crossfit",
+        "calisthenics",
+        "circuit training",
 
         # Strength exercises
-        "squat", "squats",
-        "deadlift", "deadlifts",
-        "bench press", "leg press",
-        "shoulder press", "overhead press",
-        "chest press", "lat pulldown",
-        "pull-up", "pull-ups", "pullup", "pullups",
-        "chin-up", "chin-ups",
-        "push-up", "push-ups", "pushup", "pushups",
-        "lunge", "lunges",
-        "bicep curl", "bicep curls",
-        "tricep extension", "tricep extensions",
-        "hip thrust", "hip thrusts",
-        "glute bridge", "glute bridges",
-        "calf raise", "calf raises",
-        "leg extension", "leg extensions",
-        "leg curl", "leg curls",
+        "squat",
+        "squats",
+        "deadlift",
+        "deadlifts",
+        "bench press",
+        "leg press",
+        "shoulder press",
+        "overhead press",
+        "chest press",
+        "lat pulldown",
+        "pull-up",
+        "pull-ups",
+        "pullup",
+        "pullups",
+        "chin-up",
+        "chin-ups",
+        "push-up",
+        "push-ups",
+        "pushup",
+        "pushups",
+        "lunge",
+        "lunges",
+        "bicep curl",
+        "bicep curls",
+        "tricep extension",
+        "tricep extensions",
+        "hip thrust",
+        "hip thrusts",
+        "glute bridge",
+        "glute bridges",
+        "calf raise",
+        "calf raises",
+        "leg extension",
+        "leg extensions",
+        "leg curl",
+        "leg curls",
 
         # Core
-        "plank", "planks",
-        "sit-up", "sit-ups", "situp", "situps",
-        "crunch", "crunches",
+        "plank",
+        "planks",
+        "sit-up",
+        "sit-ups",
+        "situp",
+        "situps",
+        "crunch",
+        "crunches",
         "russian twist",
-        "mountain climber", "mountain climbers",
+        "mountain climber",
+        "mountain climbers",
 
         # Cardio
-        "cardio", "aerobics", "aerobic exercise",
-        "elliptical", "treadmill",
-        "stair climber", "stairmaster",
-        "jump rope", "skipping rope",
+        "cardio",
+        "aerobics",
+        "aerobic exercise",
+        "elliptical",
+        "treadmill",
+        "stair climber",
+        "stairmaster",
+        "jump rope",
+        "skipping rope",
         "jumping jacks",
-        "burpee", "burpees",
-        "hiit", "interval training",
+        "burpee",
+        "burpees",
+        "hiit",
+        "interval training",
 
         # Flexibility / mind-body
-        "yoga", "pilates", "reformer pilates",
-        "stretching", "mobility training",
-        "tai chi", "qigong",
+        "yoga",
+        "pilates",
+        "reformer pilates",
+        "stretching",
+        "mobility training",
+        "tai chi",
+        "qigong",
 
         # Dance
-        "dance", "dancing", "zumba",
-        "ballet", "salsa", "bachata",
-        "tango", "hip hop dance",
+        "dance",
+        "dancing",
+        "zumba",
+        "ballet",
+        "salsa",
+        "bachata",
+        "tango",
+        "hip hop dance",
 
         # Team sports
-        "football", "soccer", "basketball",
-        "volleyball", "handball",
-        "baseball", "softball",
-        "rugby", "cricket",
-        "hockey", "field hockey",
-        "ice hockey", "water polo",
+        "football",
+        "soccer",
+        "basketball",
+        "volleyball",
+        "handball",
+        "baseball",
+        "softball",
+        "rugby",
+        "cricket",
+        "hockey",
+        "field hockey",
+        "ice hockey",
+        "water polo",
 
         # Racket sports
-        "tennis", "table tennis",
-        "badminton", "squash",
-        "racquetball", "pickleball", "padel",
+        "tennis",
+        "table tennis",
+        "badminton",
+        "squash",
+        "racquetball",
+        "pickleball",
+        "padel",
 
         # Combat sports
-        "boxing", "kickboxing", "muay thai",
-        "karate", "judo", "taekwondo",
-        "jiu-jitsu", "jiu jitsu", "bjj",
-        "wrestling", "mma", "fencing",
+        "boxing",
+        "kickboxing",
+        "muay thai",
+        "karate",
+        "judo",
+        "taekwondo",
+        "jiu-jitsu",
+        "jiu jitsu",
+        "bjj",
+        "wrestling",
+        "mma",
+        "fencing",
 
         # Winter sports
-        "skiing", "snowboarding",
-        "ice skating", "cross-country skiing",
+        "skiing",
+        "snowboarding",
+        "ice skating",
+        "cross-country skiing",
 
         # Other
-        "golf", "climbing", "rock climbing",
-        "indoor climbing", "bouldering",
-        "skating", "roller skating",
-        "rollerblading", "skateboarding",
-        "horse riding", "horseback riding",
-        "gymnastics", "trampoline",
+        "golf",
+        "climbing",
+        "rock climbing",
+        "indoor climbing",
+        "bouldering",
+        "skating",
+        "roller skating",
+        "rollerblading",
+        "skateboarding",
+        "horse riding",
+        "horseback riding",
+        "gymnastics",
+        "trampoline",
     ]
 
     # ---------------------------------------------------------
@@ -343,14 +459,28 @@ def parse_nlp_text(text: str):
             unit = "meters"
 
         elif matched_activity in [
-            "squat", "squats",
-            "push-up", "push-ups", "pushup", "pushups",
-            "pull-up", "pull-ups", "pullup", "pullups",
-            "chin-up", "chin-ups",
-            "lunge", "lunges",
-            "burpee", "burpees",
-            "sit-up", "sit-ups", "situp", "situps",
-            "crunch", "crunches",
+            "squat",
+            "squats",
+            "push-up",
+            "push-ups",
+            "pushup",
+            "pushups",
+            "pull-up",
+            "pull-ups",
+            "pullup",
+            "pullups",
+            "chin-up",
+            "chin-ups",
+            "lunge",
+            "lunges",
+            "burpee",
+            "burpees",
+            "sit-up",
+            "sit-ups",
+            "situp",
+            "situps",
+            "crunch",
+            "crunches",
         ]:
             unit = "repetitions"
 
@@ -378,3 +508,55 @@ def parse_nlp_text(text: str):
         unit=None,
         message="I could not understand the input.",
     )
+
+
+# -------------------------------------------------------------
+# Multi-intent parsing
+# -------------------------------------------------------------
+
+def parse_multiple_entries(text: str):
+    """
+    Parse multiple health entries from a single user message.
+
+    Example:
+    "My glucose is 130 and I took 6 units of insulin"
+
+    Existing parse_nlp_text() behaviour is preserved.
+    """
+
+    original_text = text
+
+    parts = re.split(
+        r"\s+(?:and|then)\s+|[,;]",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    results = []
+
+    for part in parts:
+        part = part.strip()
+
+        if not part:
+            continue
+
+        result = parse_nlp_text(part)
+
+        if result["intent"] != "UNKNOWN":
+            results.append(result)
+
+    if not results:
+        return {
+            "status": "UNKNOWN",
+            "input_type": "TEXT",
+            "original_text": original_text,
+            "results": [],
+            "message": "I could not understand the input.",
+        }
+
+    return {
+        "status": "SUCCESS",
+        "input_type": "TEXT",
+        "original_text": original_text,
+        "results": results,
+}
