@@ -1,5 +1,8 @@
 import re
 
+# ============================================================
+# RESPONSE HELPER
+# ============================================================
 
 def create_response(
     intent,
@@ -14,6 +17,7 @@ def create_response(
     """
     Create a consistent response structure for Dia's AI service.
     """
+
     response = {
         "intent": intent,
         "value": value,
@@ -32,6 +36,10 @@ def create_response(
     return response
 
 
+# ============================================================
+# SINGLE-ENTRY NLP PARSER
+# ============================================================
+
 def parse_nlp_text(text: str):
     """
     Parse a single health entry from natural-language text.
@@ -46,9 +54,9 @@ def parse_nlp_text(text: str):
     original_text = text
     text = text.lower().strip()
 
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
     # Keywords
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
 
     glucose_keywords = [
         "glucose",
@@ -278,9 +286,9 @@ def parse_nlp_text(text: str):
         "trampoline",
     ]
 
-    # ---------------------------------------------------------
-    # Glucose
-    # ---------------------------------------------------------
+    # ========================================================
+    # GLUCOSE
+    # ========================================================
 
     if any(keyword in text for keyword in glucose_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
@@ -315,9 +323,9 @@ def parse_nlp_text(text: str):
             unit="mg/dL",
         )
 
-    # ---------------------------------------------------------
-    # Insulin
-    # ---------------------------------------------------------
+    # ========================================================
+    # INSULIN
+    # ========================================================
 
     if any(keyword in text for keyword in insulin_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
@@ -352,9 +360,9 @@ def parse_nlp_text(text: str):
             unit="units",
         )
 
-    # ---------------------------------------------------------
-    # Meal / carbohydrates
-    # ---------------------------------------------------------
+    # ========================================================
+    # MEAL / CARBOHYDRATES
+    # ========================================================
 
     if any(keyword in text for keyword in meal_keywords):
         numbers = re.findall(r"-?\d+(?:\.\d+)?", text)
@@ -378,7 +386,9 @@ def parse_nlp_text(text: str):
                 original_text=original_text,
                 value=value,
                 unit="grams",
-                message="Carbohydrate amount must be greater than zero.",
+                message=(
+                    "Carbohydrate amount must be greater than zero."
+                ),
             )
 
         return create_response(
@@ -389,9 +399,9 @@ def parse_nlp_text(text: str):
             unit="grams",
         )
 
-    # ---------------------------------------------------------
-    # Physical activity
-    # ---------------------------------------------------------
+    # ========================================================
+    # PHYSICAL ACTIVITY
+    # ========================================================
 
     matched_activity = next(
         (
@@ -432,30 +442,56 @@ def parse_nlp_text(text: str):
                 original_text=original_text,
                 value=value,
                 unit=None,
-                message="Activity value must be greater than zero.",
+                message=(
+                    "Activity value must be greater than zero."
+                ),
                 activity=matched_activity,
             )
 
+        # ----------------------------------------------------
         # Determine activity unit
-        if re.search(r"\b(minutes?|mins?|min)\b", text):
+        # ----------------------------------------------------
+
+        if re.search(
+            r"\b(minutes?|mins?|min)\b",
+            text,
+        ):
             unit = "minutes"
 
-        elif re.search(r"\b(hours?|hrs?|hr)\b", text):
+        elif re.search(
+            r"\b(hours?|hrs?|hr)\b",
+            text,
+        ):
             unit = "hours"
 
-        elif re.search(r"\b(seconds?|secs?|sec)\b", text):
+        elif re.search(
+            r"\b(seconds?|secs?|sec)\b",
+            text,
+        ):
             unit = "seconds"
 
-        elif re.search(r"\b(reps?|repetitions?)\b", text):
+        elif re.search(
+            r"\b(reps?|repetitions?)\b",
+            text,
+        ):
             unit = "repetitions"
 
-        elif re.search(r"\b(km|kilometers?|kilometres?)\b", text):
+        elif re.search(
+            r"\b(km|kilometers?|kilometres?)\b",
+            text,
+        ):
             unit = "km"
 
-        elif re.search(r"\b(miles?|mi)\b", text):
+        elif re.search(
+            r"\b(miles?|mi)\b",
+            text,
+        ):
             unit = "miles"
 
-        elif re.search(r"\b(meters?|metres?)\b", text):
+        elif re.search(
+            r"\b(meters?|metres?)\b",
+            text,
+        ):
             unit = "meters"
 
         elif matched_activity in [
@@ -496,9 +532,9 @@ def parse_nlp_text(text: str):
             activity=matched_activity,
         )
 
-    # ---------------------------------------------------------
-    # Unknown
-    # ---------------------------------------------------------
+    # ========================================================
+    # UNKNOWN
+    # ========================================================
 
     return create_response(
         intent="UNKNOWN",
@@ -510,9 +546,9 @@ def parse_nlp_text(text: str):
     )
 
 
-# -------------------------------------------------------------
-# Multi-intent parsing
-# -------------------------------------------------------------
+# ============================================================
+# MULTI-INTENT NLP PARSER
+# ============================================================
 
 def parse_multiple_entries(text: str):
     """
@@ -521,10 +557,15 @@ def parse_multiple_entries(text: str):
     Example:
     "My glucose is 130 and I took 6 units of insulin"
 
-    Existing parse_nlp_text() behaviour is preserved.
+    The existing single-entry parser is reused for each
+    recognized part of the sentence.
     """
 
     original_text = text
+
+    # --------------------------------------------------------
+    # Split the message into individual health statements
+    # --------------------------------------------------------
 
     parts = re.split(
         r"\s+(?:and|then)\s+|[,;]",
@@ -534,6 +575,10 @@ def parse_multiple_entries(text: str):
 
     results = []
 
+    # --------------------------------------------------------
+    # Parse each statement individually
+    # --------------------------------------------------------
+
     for part in parts:
         part = part.strip()
 
@@ -542,21 +587,32 @@ def parse_multiple_entries(text: str):
 
         result = parse_nlp_text(part)
 
+        # Ignore parts that Dia cannot understand.
         if result["intent"] != "UNKNOWN":
             results.append(result)
+
+    # --------------------------------------------------------
+    # No recognized health entries
+    # --------------------------------------------------------
 
     if not results:
         return {
             "status": "UNKNOWN",
             "input_type": "TEXT",
             "original_text": original_text,
+            "result_count": 0,
             "results": [],
             "message": "I could not understand the input.",
         }
+
+    # --------------------------------------------------------
+    # Successful multi-intent response
+    # --------------------------------------------------------
 
     return {
         "status": "SUCCESS",
         "input_type": "TEXT",
         "original_text": original_text,
+        "result_count": len(results),
         "results": results,
-}
+    }

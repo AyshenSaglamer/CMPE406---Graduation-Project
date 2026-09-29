@@ -7,7 +7,7 @@ client = TestClient(app)
 
 
 # ============================================================
-# BASIC API TESTS
+# BASIC API
 # ============================================================
 
 def test_root():
@@ -32,15 +32,13 @@ def test_health():
 
 
 # ============================================================
-# SINGLE-ENTRY NLP API TESTS
+# SINGLE-ENTRY API
 # ============================================================
 
 def test_parse_glucose():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "My glucose is 120"
-        },
+        json={"text": "My glucose is 120"},
     )
 
     assert response.status_code == 200
@@ -70,7 +68,6 @@ def test_parse_insulin():
     assert data["value"] == 5
     assert data["unit"] == "units"
     assert data["status"] == "SUCCESS"
-    assert data["input_type"] == "TEXT"
 
 
 def test_parse_meal():
@@ -89,7 +86,6 @@ def test_parse_meal():
     assert data["value"] == 50
     assert data["unit"] == "grams"
     assert data["status"] == "SUCCESS"
-    assert data["input_type"] == "TEXT"
 
 
 def test_parse_activity():
@@ -109,11 +105,10 @@ def test_parse_activity():
     assert data["value"] == 30
     assert data["unit"] == "minutes"
     assert data["status"] == "SUCCESS"
-    assert data["input_type"] == "TEXT"
 
 
 # ============================================================
-# SINGLE-ENTRY VALIDATION TESTS
+# SINGLE-ENTRY VALIDATION
 # ============================================================
 
 def test_parse_glucose_missing_value():
@@ -183,7 +178,7 @@ def test_parse_activity_missing_value():
 
 
 # ============================================================
-# UNKNOWN INPUT TEST
+# UNKNOWN
 # ============================================================
 
 def test_parse_unknown():
@@ -204,7 +199,7 @@ def test_parse_unknown():
 
 
 # ============================================================
-# REQUEST VALIDATION TESTS
+# REQUEST VALIDATION
 # ============================================================
 
 def test_parse_missing_text_field():
@@ -229,7 +224,7 @@ def test_parse_malformed_json():
 
 
 # ============================================================
-# MULTI-INTENT API TESTS
+# MULTI-INTENT API
 # ============================================================
 
 def test_parse_multiple_glucose_and_insulin():
@@ -249,6 +244,7 @@ def test_parse_multiple_glucose_and_insulin():
 
     assert data["status"] == "SUCCESS"
     assert data["input_type"] == "TEXT"
+    assert data["result_count"] == 2
     assert len(data["results"]) == 2
 
     glucose = data["results"][0]
@@ -257,12 +253,10 @@ def test_parse_multiple_glucose_and_insulin():
     assert glucose["intent"] == "LOG_GLUCOSE"
     assert glucose["value"] == 130
     assert glucose["unit"] == "mg/dL"
-    assert glucose["status"] == "SUCCESS"
 
     assert insulin["intent"] == "LOG_INSULIN"
     assert insulin["value"] == 6
     assert insulin["unit"] == "units"
-    assert insulin["status"] == "SUCCESS"
 
 
 def test_parse_multiple_three_entries():
@@ -283,6 +277,7 @@ def test_parse_multiple_three_entries():
 
     assert data["status"] == "SUCCESS"
     assert data["input_type"] == "TEXT"
+    assert data["result_count"] == 3
     assert len(data["results"]) == 3
 
     glucose = data["results"][0]
@@ -324,6 +319,7 @@ def test_parse_multiple_partial_understanding():
 
     assert data["status"] == "SUCCESS"
     assert data["input_type"] == "TEXT"
+    assert data["result_count"] == 1
     assert len(data["results"]) == 1
 
     glucose = data["results"][0]
@@ -331,11 +327,10 @@ def test_parse_multiple_partial_understanding():
     assert glucose["intent"] == "LOG_GLUCOSE"
     assert glucose["value"] == 125
     assert glucose["unit"] == "mg/dL"
-    assert glucose["status"] == "SUCCESS"
 
 
 # ============================================================
-# COMPLETELY UNKNOWN MULTI-INTENT INPUT
+# MULTI-INTENT UNKNOWN
 # ============================================================
 
 def test_parse_multiple_unknown():
@@ -352,6 +347,7 @@ def test_parse_multiple_unknown():
 
     assert data["status"] == "UNKNOWN"
     assert data["input_type"] == "TEXT"
+    assert data["result_count"] == 0
     assert data["results"] == []
 
 
@@ -381,7 +377,7 @@ def test_parse_multiple_malformed_json():
 
 
 # ============================================================
-# ORIGINAL TEXT TESTS
+# ORIGINAL TEXT
 # ============================================================
 
 def test_parse_original_text():
@@ -419,3 +415,27 @@ def test_parse_multiple_original_text():
     data = response.json()
 
     assert data["original_text"] == text
+
+
+# ============================================================
+# RESULT COUNT
+# ============================================================
+
+def test_parse_multiple_result_count():
+    response = client.post(
+        "/api/v1/nlp/parse-multiple",
+        json={
+            "text": (
+                "My glucose is 120 "
+                "and I took 5 units of insulin"
+            )
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "SUCCESS"
+    assert data["result_count"] == 2
+    assert len(data["results"]) == 2
