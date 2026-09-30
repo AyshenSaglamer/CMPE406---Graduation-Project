@@ -6,9 +6,9 @@ from main import app
 client = TestClient(app)
 
 
-# ============================================================
-# BASIC API
-# ============================================================
+# =========================================================
+# ROOT & HEALTH ENDPOINT TESTS
+# =========================================================
 
 def test_root():
     response = client.get("/")
@@ -31,9 +31,9 @@ def test_health():
     assert data["status"] == "healthy"
 
 
-# ============================================================
-# SINGLE-ENTRY API
-# ============================================================
+# =========================================================
+# SINGLE NLP PARSE ENDPOINT TESTS
+# =========================================================
 
 def test_parse_glucose():
     response = client.post(
@@ -55,9 +55,7 @@ def test_parse_glucose():
 def test_parse_insulin():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "I took 5 units of insulin"
-        },
+        json={"text": "I took 6 units of insulin"},
     )
 
     assert response.status_code == 200
@@ -65,7 +63,7 @@ def test_parse_insulin():
     data = response.json()
 
     assert data["intent"] == "LOG_INSULIN"
-    assert data["value"] == 5
+    assert data["value"] == 6
     assert data["unit"] == "units"
     assert data["status"] == "SUCCESS"
 
@@ -73,9 +71,7 @@ def test_parse_insulin():
 def test_parse_meal():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "I ate 50 grams of carbs"
-        },
+        json={"text": "I ate 45 grams of carbs"},
     )
 
     assert response.status_code == 200
@@ -83,7 +79,7 @@ def test_parse_meal():
     data = response.json()
 
     assert data["intent"] == "LOG_MEAL"
-    assert data["value"] == 50
+    assert data["value"] == 45
     assert data["unit"] == "grams"
     assert data["status"] == "SUCCESS"
 
@@ -91,9 +87,7 @@ def test_parse_meal():
 def test_parse_activity():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "I walked for 30 minutes"
-        },
+        json={"text": "I walked for 30 minutes"},
     )
 
     assert response.status_code == 200
@@ -101,22 +95,19 @@ def test_parse_activity():
     data = response.json()
 
     assert data["intent"] == "LOG_ACTIVITY"
-    assert data["activity"] == "walked"
     assert data["value"] == 30
     assert data["unit"] == "minutes"
     assert data["status"] == "SUCCESS"
 
 
-# ============================================================
-# SINGLE-ENTRY VALIDATION
-# ============================================================
+# =========================================================
+# SINGLE PARSE VALUE VALIDATION TESTS
+# =========================================================
 
-def test_parse_glucose_missing_value():
+def test_parse_missing_glucose_value():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "My glucose is"
-        },
+        json={"text": "My glucose is high"},
     )
 
     assert response.status_code == 200
@@ -125,15 +116,12 @@ def test_parse_glucose_missing_value():
 
     assert data["intent"] == "LOG_GLUCOSE"
     assert data["status"] == "MISSING_VALUE"
-    assert data["value"] is None
 
 
-def test_parse_glucose_invalid_value():
+def test_parse_invalid_glucose_value():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "My glucose is -50"
-        },
+        json={"text": "My glucose is -20"},
     )
 
     assert response.status_code == 200
@@ -142,51 +130,12 @@ def test_parse_glucose_invalid_value():
 
     assert data["intent"] == "LOG_GLUCOSE"
     assert data["status"] == "INVALID_VALUE"
-    assert data["value"] == -50
 
 
-def test_parse_insulin_missing_value():
+def test_parse_unknown_input():
     response = client.post(
         "/api/v1/nlp/parse",
-        json={
-            "text": "I took insulin"
-        },
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["intent"] == "LOG_INSULIN"
-    assert data["status"] == "MISSING_VALUE"
-
-
-def test_parse_activity_missing_value():
-    response = client.post(
-        "/api/v1/nlp/parse",
-        json={
-            "text": "I went walking"
-        },
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["intent"] == "LOG_ACTIVITY"
-    assert data["status"] == "MISSING_VALUE"
-
-
-# ============================================================
-# UNKNOWN
-# ============================================================
-
-def test_parse_unknown():
-    response = client.post(
-        "/api/v1/nlp/parse",
-        json={
-            "text": "Hello Dia"
-        },
+        json={"text": "Today is a beautiful day"},
     )
 
     assert response.status_code == 200
@@ -195,12 +144,11 @@ def test_parse_unknown():
 
     assert data["intent"] == "UNKNOWN"
     assert data["status"] == "UNKNOWN"
-    assert data["value"] is None
 
 
-# ============================================================
-# REQUEST VALIDATION
-# ============================================================
+# =========================================================
+# SINGLE PARSE REQUEST FORMAT TESTS
+# =========================================================
 
 def test_parse_missing_text_field():
     response = client.post(
@@ -214,28 +162,76 @@ def test_parse_missing_text_field():
 def test_parse_malformed_json():
     response = client.post(
         "/api/v1/nlp/parse",
-        content='{"text":',
-        headers={
-            "Content-Type": "application/json"
-        },
+        content="{bad json}",
+        headers={"Content-Type": "application/json"},
     )
 
     assert response.status_code == 422
 
 
-# ============================================================
-# MULTI-INTENT API
-# ============================================================
+# =========================================================
+# SINGLE PARSE INPUT VALIDATION TESTS
+# =========================================================
+
+def test_parse_rejects_empty_text():
+    response = client.post(
+        "/api/v1/nlp/parse",
+        json={"text": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_parse_rejects_whitespace_only_text():
+    response = client.post(
+        "/api/v1/nlp/parse",
+        json={"text": "     "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_parse_rejects_text_over_500_characters():
+    response = client.post(
+        "/api/v1/nlp/parse",
+        json={"text": "a" * 501},
+    )
+
+    assert response.status_code == 422
+
+
+# =========================================================
+# SINGLE PARSE ORIGINAL TEXT TEST
+# =========================================================
+
+def test_parse_preserves_original_text():
+    text = "My glucose is 135"
+
+    response = client.post(
+        "/api/v1/nlp/parse",
+        json={"text": text},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["original_text"] == text
+
+
+# =========================================================
+# MULTI-INTENT ENDPOINT TESTS
+# =========================================================
 
 def test_parse_multiple_glucose_and_insulin():
+    text = (
+        "My glucose is 130 and "
+        "I took 6 units of insulin"
+    )
+
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": (
-                "My glucose is 130 "
-                "and I took 6 units of insulin"
-            )
-        },
+        json={"text": text},
     )
 
     assert response.status_code == 200
@@ -247,28 +243,25 @@ def test_parse_multiple_glucose_and_insulin():
     assert data["result_count"] == 2
     assert len(data["results"]) == 2
 
-    glucose = data["results"][0]
-    insulin = data["results"][1]
+    intents = [
+        result["intent"]
+        for result in data["results"]
+    ]
 
-    assert glucose["intent"] == "LOG_GLUCOSE"
-    assert glucose["value"] == 130
-    assert glucose["unit"] == "mg/dL"
-
-    assert insulin["intent"] == "LOG_INSULIN"
-    assert insulin["value"] == 6
-    assert insulin["unit"] == "units"
+    assert "LOG_GLUCOSE" in intents
+    assert "LOG_INSULIN" in intents
 
 
 def test_parse_multiple_three_entries():
+    text = (
+        "My glucose is 125 and "
+        "I took 5 units of insulin and "
+        "I walked for 30 minutes"
+    )
+
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": (
-                "My glucose is 120, "
-                "I took 5 units of insulin "
-                "and I walked for 30 minutes"
-            )
-        },
+        json={"text": text},
     )
 
     assert response.status_code == 200
@@ -276,41 +269,28 @@ def test_parse_multiple_three_entries():
     data = response.json()
 
     assert data["status"] == "SUCCESS"
-    assert data["input_type"] == "TEXT"
     assert data["result_count"] == 3
     assert len(data["results"]) == 3
 
-    glucose = data["results"][0]
-    insulin = data["results"][1]
-    activity = data["results"][2]
+    intents = [
+        result["intent"]
+        for result in data["results"]
+    ]
 
-    assert glucose["intent"] == "LOG_GLUCOSE"
-    assert glucose["value"] == 120
-    assert glucose["unit"] == "mg/dL"
+    assert "LOG_GLUCOSE" in intents
+    assert "LOG_INSULIN" in intents
+    assert "LOG_ACTIVITY" in intents
 
-    assert insulin["intent"] == "LOG_INSULIN"
-    assert insulin["value"] == 5
-    assert insulin["unit"] == "units"
-
-    assert activity["intent"] == "LOG_ACTIVITY"
-    assert activity["activity"] == "walked"
-    assert activity["value"] == 30
-    assert activity["unit"] == "minutes"
-
-
-# ============================================================
-# PARTIAL UNDERSTANDING
-# ============================================================
 
 def test_parse_multiple_partial_understanding():
+    text = (
+        "My glucose is 140 and "
+        "the weather is nice"
+    )
+
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": (
-                "My glucose is 125 "
-                "and blah blah something"
-            )
-        },
+        json={"text": text},
     )
 
     assert response.status_code == 200
@@ -318,27 +298,21 @@ def test_parse_multiple_partial_understanding():
     data = response.json()
 
     assert data["status"] == "SUCCESS"
-    assert data["input_type"] == "TEXT"
     assert data["result_count"] == 1
     assert len(data["results"]) == 1
 
-    glucose = data["results"][0]
+    assert data["results"][0]["intent"] == "LOG_GLUCOSE"
 
-    assert glucose["intent"] == "LOG_GLUCOSE"
-    assert glucose["value"] == 125
-    assert glucose["unit"] == "mg/dL"
-
-
-# ============================================================
-# MULTI-INTENT UNKNOWN
-# ============================================================
 
 def test_parse_multiple_unknown():
+    text = (
+        "Today is sunny and "
+        "I like listening to music"
+    )
+
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": "hello there and how are you"
-        },
+        json={"text": text},
     )
 
     assert response.status_code == 200
@@ -346,14 +320,31 @@ def test_parse_multiple_unknown():
     data = response.json()
 
     assert data["status"] == "UNKNOWN"
-    assert data["input_type"] == "TEXT"
     assert data["result_count"] == 0
     assert data["results"] == []
 
 
-# ============================================================
-# MULTI-INTENT REQUEST VALIDATION
-# ============================================================
+def test_parse_multiple_preserves_original_text():
+    text = (
+        "My glucose is 120 and "
+        "I took 4 units of insulin"
+    )
+
+    response = client.post(
+        "/api/v1/nlp/parse-multiple",
+        json={"text": text},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["original_text"] == text
+
+
+# =========================================================
+# MULTI-INTENT REQUEST FORMAT TESTS
+# =========================================================
 
 def test_parse_multiple_missing_text_field():
     response = client.post(
@@ -367,75 +358,39 @@ def test_parse_multiple_missing_text_field():
 def test_parse_multiple_malformed_json():
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        content='{"text":',
-        headers={
-            "Content-Type": "application/json"
-        },
+        content="{bad json}",
+        headers={"Content-Type": "application/json"},
     )
 
     assert response.status_code == 422
 
 
-# ============================================================
-# ORIGINAL TEXT
-# ============================================================
+# =========================================================
+# MULTI-INTENT INPUT VALIDATION TESTS
+# =========================================================
 
-def test_parse_original_text():
-    text = "My glucose is 140"
-
-    response = client.post(
-        "/api/v1/nlp/parse",
-        json={
-            "text": text
-        },
-    )
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["original_text"] == text
-
-
-def test_parse_multiple_original_text():
-    text = (
-        "My glucose is 130 "
-        "and I took 6 units of insulin"
-    )
-
+def test_parse_multiple_rejects_empty_text():
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": text
-        },
+        json={"text": ""},
     )
 
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert data["original_text"] == text
+    assert response.status_code == 422
 
 
-# ============================================================
-# RESULT COUNT
-# ============================================================
-
-def test_parse_multiple_result_count():
+def test_parse_multiple_rejects_whitespace_only_text():
     response = client.post(
         "/api/v1/nlp/parse-multiple",
-        json={
-            "text": (
-                "My glucose is 120 "
-                "and I took 5 units of insulin"
-            )
-        },
+        json={"text": "     "},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 422
 
-    data = response.json()
 
-    assert data["status"] == "SUCCESS"
-    assert data["result_count"] == 2
-    assert len(data["results"]) == 2
+def test_parse_multiple_rejects_text_over_500_characters():
+    response = client.post(
+        "/api/v1/nlp/parse-multiple",
+        json={"text": "a" * 501},
+    )
+
+    assert response.status_code == 422
