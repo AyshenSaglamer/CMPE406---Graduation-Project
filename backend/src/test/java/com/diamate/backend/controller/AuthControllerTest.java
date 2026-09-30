@@ -1,0 +1,149 @@
+package com.diamate.backend.controller;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.diamate.backend.dto.AuthResponse;
+import com.diamate.backend.dto.UserResponse;
+import com.diamate.backend.entity.Role;
+import com.diamate.backend.exception.EmailAlreadyRegisteredException;
+import com.diamate.backend.exception.InvalidCredentialsException;
+import com.diamate.backend.security.SecurityConfig;
+import com.diamate.backend.service.AuthService;
+
+/**
+ * Web layer tests: real controllers, validation, GlobalExceptionHandler and SecurityConfig,
+ * but AuthService is a mock, so no database is needed.
+ */
+@WebMvcTest(
+        controllers = { AuthController.class, HealthController.class },
+        // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
+        properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
+@Import(SecurityConfig.class)
+class AuthControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private AuthService authService;
+
+    @Test
+    void registerReturns201WithUserAndNoPasswordFields() throws Exception {
+        when(authService.register(any())).thenReturn(
+                new UserResponse(42L, "Melih Test", "melih.test@diamate.test", Role.CAREGIVER));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"Melih Test","email":"melih.test@diamate.test","password":"Secret123","role":"CAREGIVER"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(42))
+                .andExpect(jsonPath("$.email").value("melih.test@diamate.test"))
+                .andExpect(jsonPath("$.role").value("CAREGIVER"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    void registerWithInvalidFieldsReturns400WithFieldErrorsAndSkipsTheService() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"","email":"not-an-email","password":"123","role":"PATIENT"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.title").value("Validation failed"))
+                .andExpect(jsonPath("$.errors.fullName").value("Full name is required"))
+                .andExpect(jsonPath("$.errors.email").value("Email format is invalid"))
+                .andExpect(jsonPath("$.errors.password").value("Password must be at least 8 characters"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerWithUnknownRoleReturns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"X","email":"x@example.com","password":"Secret123","role":"DOCTOR"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerWithTakenEmailReturns409() throws Exception {
+        when(authService.register(any())).thenThrow(new EmailAlreadyRegisteredException());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"X","email":"taken@example.com","password":"Secret123","role":"PATIENT"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Email is already registered"));
+    }
+
+    @Test
+    void loginReturns200WithBearerToken() throws Exception {
+        when(authService.login(any())).thenReturn(new AuthResponse("test-token", "Bearer", 3600,
+                new UserResponse(5L, "Demo Patient 01", "patient01@diamate.example", Role.PATIENT)));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"patient01@diamate.example","password":"whatever"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("test-token"))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.user.role").value("PATIENT"));
+    }
+
+    @Test
+    void loginWithBadCredentialsReturns401ProblemDetail() throws Exception {
+        when(authService.login(any())).thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"patient01@diamate.example","password":"WrongPass1"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Invalid email or password"))
+                .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    void healthIsPublic() throws Exception {
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void otherEndpointsRequireAToken() throws Exception {
+        mockMvc.perform(get("/api/v1/users/me"))
+                .andExpect(status().isUnauthorized());
+    }
+}

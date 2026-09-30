@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: diamate-backend
+
+  # Reads the local .env file (the same one Docker Compose uses) as extra properties.
+  # "optional:" lets the app start without it (e.g. in production, where real
+  # environment variables are provided instead). Environment variables always win.
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    # jdbc:postgresql://<host>:<port>/<database>
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5434}/${POSTGRES_DB:diamate}
+    # No defaults for credentials: if they are missing, startup fails loudly.
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+
+  jpa:
+    hibernate:
+      # Hibernate only checks that entities match existing tables; it never changes the schema.
+      ddl-auto: validate
+    # Close the database session when the service layer is done, not after the HTTP response is written.
+    open-in-view: false
+    properties:
+      hibernate:
+        # Read/write timestamps in UTC regardless of the server's local time zone (DB columns are timestamptz).
+        jdbc.time_zone: UTC
+
+diamate:
+  jwt:
+    # No default: without JWT_SECRET the application refuses to start.
+    secret: ${JWT_SECRET}
+    expiration: ${JWT_EXPIRATION:1h}
+    issuer: diamate-backend
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # Show component status (e.g. db: UP) but not details such as the database version.
+      show-components: always

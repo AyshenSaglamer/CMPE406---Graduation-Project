@@ -1,0 +1,25 @@
+# Development-only PostgreSQL for DiaMate.
+# Values come from the .env file next to this file (copy .env.example to .env).
+services:
+  postgres:
+    image: postgres:17
+    container_name: diamate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-diamate}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      # host:container - bound to 127.0.0.1 so only this machine can connect.
+      # 5434 on the host, because local PostgreSQL installs already use 5432 and 5433.
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - diamate-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  diamate-pgdata:

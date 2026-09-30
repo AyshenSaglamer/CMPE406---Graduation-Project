@@ -1,0 +1,393 @@
+{
+  "info": {
+    "name": "DiaMate API",
+    "description": "DiaMate backend REST API (mobile clients). Run top to bottom: Login saves the token for later requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "serverUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "demoEmail",
+      "value": "patient01@diamate.example"
+    },
+    {
+      "key": "demoPassword",
+      "value": "DiaMate!2026"
+    },
+    {
+      "key": "testEmail",
+      "value": "melih.test@diamate.test"
+    },
+    {
+      "key": "testPassword",
+      "value": "Test-HRqrAJb4NcoO9u"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Backend is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actuator Health (database)",
+          "request": {
+            "method": "GET",
+            "url": "{{serverUrl}}/actuator/health",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Database is UP', () => pm.expect(pm.response.json().components.db.status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register test user (CAREGIVER)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Melih Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 201 the first time; 409 when the collection is run again (the user already exists).",
+                  "pm.test('Status code is 201 or 409', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.test('Returns the user without password fields', () => {",
+                  "    const u = pm.response.json();",
+                  "    pm.expect(u.email).to.eql(pm.collectionVariables.get('testEmail'));",
+                  "    pm.expect(u.role).to.eql('CAREGIVER');",
+                  "    pm.expect(u).to.not.have.any.keys('password', 'passwordHash');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register same email again -> 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Melih Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Problem detail message', () => pm.expect(pm.response.json().detail).to.eql('Email is already registered'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register invalid fields -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Field errors are listed', () => {",
+                  "  const e = pm.response.json().errors;",
+                  "  pm.expect(e).to.have.all.keys('fullName', 'email', 'password');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register ADMIN -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"X\",\n  \"email\": \"admin.attempt@diamate.test\",\n  \"password\": \"Secret123\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('ADMIN is refused', () => pm.expect(pm.response.json().detail).to.include('ADMIN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"WrongPass1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Generic message', () => pm.expect(pm.response.json().detail).to.eql('Invalid email or password'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login test user",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Role is CAREGIVER', () => pm.expect(pm.response.json().user.role).to.eql('CAREGIVER'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login demo patient (saves token)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a Bearer token', () => {",
+                  "  pm.expect(body.tokenType).to.eql('Bearer');",
+                  "  pm.expect(body.accessToken.split('.').length).to.eql(3);",
+                  "  pm.expect(body.expiresIn).to.eql(3600);",
+                  "});",
+                  "pm.test('Returns the patient', () => pm.expect(body.user.role).to.eql('PATIENT'));",
+                  "pm.collectionVariables.set('accessToken', body.accessToken);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security checks",
+      "item": [
+        {
+          "name": "Protected endpoint without token -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected endpoint with token -> passes security",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The endpoint itself comes on Day 3, so 404 is expected. What matters: the token was accepted (not 401).",
+                  "pm.test('Token accepted (not 401)', () => pm.expect(pm.response.code).to.not.eql(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Protected endpoint with forged token -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIiwicm9sZSI6IkFETUlOIn0.forged",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

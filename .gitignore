@@ -36,3 +36,4 @@ ssl/
 *.p12
 *.pfx
 backend.zip
+/.metadata/
