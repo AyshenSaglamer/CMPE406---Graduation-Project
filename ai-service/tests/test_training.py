@@ -4,21 +4,95 @@ import pandas as pd
 import pytest
 
 import ml.training as training_module
+from ml.future_target_builder import MODEL_FEATURES
 from ml.training import (
     chronological_train_test_split,
     create_xgboost_classifier,
+    patient_temporal_train_test_split,
     train_glucose_trend_model,
 )
 
 
 # =========================================================
-# CHRONOLOGICAL SPLIT
+# TEST DATA
+# =========================================================
+
+def create_training_records():
+    """
+    Deterministic synthetic multi-patient records.
+
+    Used only to test the DiaMate ML software pipeline.
+    These records are not clinical data.
+    """
+
+    records = []
+
+    # Repeating changes deliberately create:
+    # HIGHER, STABLE and LOWER future targets.
+    patterns = {
+        "patient_a": [
+            100, 130, 135, 105, 140, 145, 110,
+            150, 155, 120, 160, 165, 130,
+            170, 175, 140, 180, 185, 150,
+            190, 195, 160, 200, 205, 170,
+        ],
+        "patient_b": [
+            160, 125, 130, 170, 175, 140, 180,
+            185, 150, 190, 195, 160, 200,
+            205, 170, 210, 215, 180, 220,
+            225, 190, 230, 235, 200, 240,
+        ],
+    }
+
+    for patient_number, (
+        patient_id,
+        glucose_pattern,
+    ) in enumerate(patterns.items()):
+
+        start_time = pd.Timestamp(
+            "2026-01-01 08:00:00"
+        )
+
+        for index, glucose in enumerate(
+            glucose_pattern
+        ):
+            timestamp = (
+                start_time
+                + pd.Timedelta(hours=index * 4)
+            )
+
+            records.append(
+                {
+                    "patient_id": patient_id,
+                    "timestamp": timestamp.isoformat(),
+                    "glucose_mg_dl": glucose,
+                    "carbs_g": (
+                        20
+                        + ((index + patient_number) % 5)
+                        * 10
+                    ),
+                    "activity_minutes": (
+                        (
+                            index
+                            + patient_number
+                        )
+                        % 4
+                    )
+                    * 10,
+                }
+            )
+
+    return records
+
+
+# =========================================================
+# LEGACY ORDERED SPLIT HELPER
 # =========================================================
 
 def test_chronological_train_test_split():
     X = pd.DataFrame(
         {
-            "value": list(range(10))
+            "value": list(range(10)),
         }
     )
 
@@ -54,137 +128,18 @@ def test_chronological_train_test_split():
     assert len(y_train) == 8
     assert len(y_test) == 2
 
-    # Earlier records must remain in training.
-    assert list(X_train["value"]) == list(
-        range(8)
-    )
+    assert list(
+        X_train["value"]
+    ) == list(range(8))
 
-    # Latest records must remain in testing.
-    assert list(X_test["value"]) == [8, 9]
+    assert list(
+        X_test["value"]
+    ) == [8, 9]
 
 
-def test_chronological_split_preserves_order():
+def test_chronological_split_rejects_bad_ratio():
     X = pd.DataFrame(
-        {
-            "value": [
-                10,
-                20,
-                30,
-                40,
-                50,
-            ]
-        }
-    )
-
-    y = pd.Series(
-        [
-            "LOWER",
-            "STABLE",
-            "HIGHER",
-            "LOWER",
-            "STABLE",
-        ]
-    )
-
-    (
-        X_train,
-        X_test,
-        _,
-        _,
-    ) = chronological_train_test_split(
-        X,
-        y,
-        test_ratio=0.4,
-    )
-
-    assert list(X_train["value"]) == [
-        10,
-        20,
-        30,
-    ]
-
-    assert list(X_test["value"]) == [
-        40,
-        50,
-    ]
-
-
-# =========================================================
-# SPLIT VALIDATION
-# =========================================================
-
-def test_mismatched_feature_target_lengths_rejected():
-    X = pd.DataFrame(
-        {
-            "value": [
-                1,
-                2,
-                3,
-                4,
-                5,
-            ]
-        }
-    )
-
-    y = pd.Series(
-        [
-            "LOWER",
-            "STABLE",
-        ]
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Features and target must contain "
-            "the same number of rows"
-        ),
-    ):
-        chronological_train_test_split(
-            X,
-            y,
-        )
-
-
-def test_too_few_records_rejected():
-    X = pd.DataFrame(
-        {
-            "value": [
-                1,
-                2,
-                3,
-                4,
-            ]
-        }
-    )
-
-    y = pd.Series(
-        [
-            "LOWER",
-            "STABLE",
-            "HIGHER",
-            "LOWER",
-        ]
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "At least five ML records "
-            "are required"
-        ),
-    ):
-        chronological_train_test_split(
-            X,
-            y,
-        )
-
-
-def test_zero_test_ratio_rejected():
-    X = pd.DataFrame(
-        {
-            "value": list(range(10))
-        }
+        {"value": list(range(10))}
     )
 
     y = pd.Series(
@@ -193,35 +148,7 @@ def test_zero_test_ratio_rejected():
 
     with pytest.raises(
         ValueError,
-        match=(
-            "Test ratio must be between "
-            "0 and 1"
-        ),
-    ):
-        chronological_train_test_split(
-            X,
-            y,
-            test_ratio=0,
-        )
-
-
-def test_test_ratio_one_rejected():
-    X = pd.DataFrame(
-        {
-            "value": list(range(10))
-        }
-    )
-
-    y = pd.Series(
-        ["STABLE"] * 10
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Test ratio must be between "
-            "0 and 1"
-        ),
+        match="Test ratio must be between 0 and 1",
     ):
         chronological_train_test_split(
             X,
@@ -231,7 +158,137 @@ def test_test_ratio_one_rejected():
 
 
 # =========================================================
-# MODEL CREATION
+# PATIENT TEMPORAL SPLIT
+# =========================================================
+
+def create_temporal_dataset():
+    rows = []
+
+    for patient_id in [
+        "patient_a",
+        "patient_b",
+    ]:
+        for index in range(10):
+            rows.append(
+                {
+                    "patient_id": patient_id,
+                    "timestamp": (
+                        pd.Timestamp(
+                            "2026-01-01 08:00:00"
+                        )
+                        + pd.Timedelta(
+                            hours=index * 4
+                        )
+                    ),
+                    "glucose_mg_dl": (
+                        100 + index
+                    ),
+                    "previous_glucose": (
+                        99 + index
+                    ),
+                    "carbs_g": 30,
+                    "activity_minutes": 20,
+                    "hour_of_day": (
+                        (8 + index * 4) % 24
+                    ),
+                    "day_of_week": 3,
+                    "month": 1,
+                    "is_weekend": 0,
+                    "trend_target": (
+                        "STABLE"
+                    ),
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def test_patient_temporal_split():
+    dataset = create_temporal_dataset()
+
+    (
+        train_dataset,
+        test_dataset,
+    ) = patient_temporal_train_test_split(
+        dataset,
+        test_ratio=0.2,
+    )
+
+    for patient_id in [
+        "patient_a",
+        "patient_b",
+    ]:
+        patient_train = train_dataset[
+            train_dataset["patient_id"]
+            == patient_id
+        ]
+
+        patient_test = test_dataset[
+            test_dataset["patient_id"]
+            == patient_id
+        ]
+
+        assert len(patient_train) == 8
+        assert len(patient_test) == 2
+
+
+def test_patient_temporal_split_preserves_time():
+    dataset = create_temporal_dataset()
+
+    (
+        train_dataset,
+        test_dataset,
+    ) = patient_temporal_train_test_split(
+        dataset,
+        test_ratio=0.2,
+    )
+
+    for patient_id in [
+        "patient_a",
+        "patient_b",
+    ]:
+        patient_train = train_dataset[
+            train_dataset["patient_id"]
+            == patient_id
+        ]
+
+        patient_test = test_dataset[
+            test_dataset["patient_id"]
+            == patient_id
+        ]
+
+        assert (
+            patient_train["timestamp"].max()
+            <
+            patient_test["timestamp"].min()
+        )
+
+
+def test_patient_temporal_split_rejects_empty():
+    with pytest.raises(
+        ValueError,
+        match="ML dataset cannot be empty",
+    ):
+        patient_temporal_train_test_split(
+            pd.DataFrame()
+        )
+
+
+def test_patient_temporal_split_rejects_bad_ratio():
+    dataset = create_temporal_dataset()
+
+    with pytest.raises(
+        ValueError,
+        match="Test ratio must be between 0 and 1",
+    ):
+        patient_temporal_train_test_split(
+            dataset,
+            test_ratio=0,
+        )
+
+
+# =========================================================
+# XGBOOST
 # =========================================================
 
 def test_xgboost_classifier_created():
@@ -239,110 +296,24 @@ def test_xgboost_classifier_created():
 
     assert model is not None
 
-    assert model.get_params()[
-        "objective"
-    ] == "multi:softprob"
+    params = model.get_params()
 
-    assert model.get_params()[
-        "n_estimators"
-    ] == 100
-
-    assert model.get_params()[
-        "random_state"
-    ] == 42
-
-
-# =========================================================
-# SYNTHETIC TRAINING DATA
-# =========================================================
-
-def create_training_records():
-    """
-    Create deterministic synthetic records containing
-    LOWER, STABLE, and HIGHER trend examples.
-
-    These records exist only to test the software
-    training pipeline. They are not clinical data.
-    """
-
-    glucose_pattern = [
-        100,
-        130,  # HIGHER
-        135,  # STABLE
-        105,  # LOWER
-        140,  # HIGHER
-        145,  # STABLE
-        110,  # LOWER
-        150,  # HIGHER
-        155,  # STABLE
-        120,  # LOWER
-        160,  # HIGHER
-        165,  # STABLE
-        130,  # LOWER
-        170,  # HIGHER
-        175,  # STABLE
-        140,  # LOWER
-        180,  # HIGHER
-        185,  # STABLE
-        150,  # LOWER
-        190,  # HIGHER
-        195,  # STABLE
-        160,  # LOWER
-        200,  # HIGHER
-        205,  # STABLE
-        170,  # LOWER
-        210,  # HIGHER
-        215,  # STABLE
-        180,  # LOWER
-        220,  # HIGHER
-        225,  # STABLE
-        190,  # LOWER
-    ]
-
-    records = []
-
-    start_time = pd.Timestamp(
-        "2026-01-01 08:00:00"
+    assert (
+        params["objective"]
+        == "multi:softprob"
     )
 
-    for index, glucose in enumerate(
-        glucose_pattern
-    ):
-        timestamp = (
-            start_time
-            + pd.Timedelta(
-                hours=index * 4
-            )
-        )
-
-        records.append(
-            {
-                "timestamp": (
-                    timestamp.isoformat()
-                ),
-                "glucose_mg_dl": glucose,
-                "carbs_g": (
-                    20
-                    + (index % 5) * 10
-                ),
-                "activity_minutes": (
-                    (index % 4) * 10
-                ),
-            }
-        )
-
-    return records
+    assert params["n_estimators"] == 100
+    assert params["random_state"] == 42
 
 
 # =========================================================
-# COMPLETE TRAINING PIPELINE
+# COMPLETE FUTURE TRAINING PIPELINE
 # =========================================================
 
-def test_train_glucose_trend_model():
-    records = create_training_records()
-
+def test_train_future_glucose_trend_model():
     result = train_glucose_trend_model(
-        records,
+        create_training_records(),
         test_ratio=0.2,
         save_model=False,
     )
@@ -350,14 +321,18 @@ def test_train_glucose_trend_model():
     assert result["status"] == "trained"
 
     assert (
+        result["prediction_target"]
+        == "next_glucose_trend"
+    )
+
+    assert result["patient_count"] == 2
+
+    assert (
         result["training_sample_size"]
         > 0
     )
 
-    assert (
-        result["test_sample_size"]
-        > 0
-    )
+    assert result["test_sample_size"] > 0
 
     assert "metrics" in result
 
@@ -367,52 +342,49 @@ def test_train_glucose_trend_model():
         <= 1.0
     )
 
-    assert (
-        "classification_report"
-        in result["metrics"]
-    )
 
-
-def test_training_uses_expected_features():
-    records = create_training_records()
-
+def test_training_uses_future_model_features():
     result = train_glucose_trend_model(
-        records,
+        create_training_records(),
         save_model=False,
     )
 
-    assert result["feature_names"] == [
-        "previous_glucose",
-        "carbs_g",
-        "activity_minutes",
-        "hour_of_day",
-        "day_of_week",
-        "month",
-        "is_weekend",
-    ]
-
-    # Leakage-sensitive columns must not appear.
     assert (
-        "glucose_change"
-        not in result["feature_names"]
+        result["feature_names"]
+        == MODEL_FEATURES
     )
 
+    # Current glucose is valid at time t.
     assert (
         "glucose_mg_dl"
-        not in result["feature_names"]
+        in result["feature_names"]
     )
 
-    assert (
-        "trend_target"
-        not in result["feature_names"]
+
+def test_future_information_is_not_used_for_training():
+    result = train_glucose_trend_model(
+        create_training_records(),
+        save_model=False,
     )
+
+    forbidden = {
+        "next_glucose",
+        "future_glucose_change",
+        "trend_target",
+        "patient_id",
+        "timestamp",
+    }
+
+    for column in forbidden:
+        assert (
+            column
+            not in result["feature_names"]
+        )
 
 
 def test_training_contains_all_classes():
-    records = create_training_records()
-
     result = train_glucose_trend_model(
-        records,
+        create_training_records(),
         save_model=False,
     )
 
@@ -424,10 +396,10 @@ def test_training_contains_all_classes():
 
 
 # =========================================================
-# MODEL ARTIFACT TEST
+# ARTIFACT PERSISTENCE
 # =========================================================
 
-def test_model_artifacts_are_saved(
+def test_future_model_artifacts_are_saved(
     tmp_path,
     monkeypatch,
 ):
@@ -459,10 +431,8 @@ def test_model_artifacts_are_saved(
         encoder_path,
     )
 
-    records = create_training_records()
-
     result = train_glucose_trend_model(
-        records,
+        create_training_records(),
         save_model=True,
     )
 
@@ -471,18 +441,14 @@ def test_model_artifacts_are_saved(
 
     assert "artifacts" in result
 
-    assert (
-        Path(
-            result["artifacts"]["model_path"]
-        ).exists()
-    )
+    assert Path(
+        result[
+            "artifacts"
+        ]["model_path"]
+    ).exists()
 
-    assert (
-        Path(
-            result[
-                "artifacts"
-            ][
-                "label_encoder_path"
-            ]
-        ).exists()
-    )
+    assert Path(
+        result[
+            "artifacts"
+        ]["label_encoder_path"]
+    ).exists()

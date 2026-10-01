@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import joblib
 import numpy as np
@@ -11,9 +11,9 @@ from sklearn.metrics import (
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 
-from ml.target_builder import (
-    create_ml_dataset,
-    split_features_and_target,
+from ml.future_target_builder import (
+    create_future_trend_dataset,
+    split_future_features_and_target,
 )
 
 
@@ -24,11 +24,13 @@ MODEL_DIRECTORY = (
 )
 
 MODEL_PATH = (
-    MODEL_DIRECTORY / "glucose_trend_xgboost.joblib"
+    MODEL_DIRECTORY
+    / "glucose_trend_xgboost.joblib"
 )
 
 LABEL_ENCODER_PATH = (
-    MODEL_DIRECTORY / "trend_label_encoder.joblib"
+    MODEL_DIRECTORY
+    / "trend_label_encoder.joblib"
 )
 
 
@@ -36,20 +38,13 @@ def chronological_train_test_split(
     X: pd.DataFrame,
     y: pd.Series,
     test_ratio: float = DEFAULT_TEST_RATIO,
-) -> Tuple[
-    pd.DataFrame,
-    pd.DataFrame,
-    pd.Series,
-    pd.Series,
-]:
+):
     """
-    Split records chronologically.
+    Split already chronologically ordered data
+    without random shuffling.
 
-    Earlier observations are used for training and
-    later observations are used for testing.
-
-    Random splitting is intentionally avoided because
-    DiaMate works with time-ordered health records.
+    This helper is retained for simple ordered
+    datasets and unit tests.
     """
 
     if len(X) != len(y):
@@ -73,7 +68,10 @@ def chronological_train_test_split(
         len(X) * (1 - test_ratio)
     )
 
-    if split_index <= 0 or split_index >= len(X):
+    if (
+        split_index <= 0
+        or split_index >= len(X)
+    ):
         raise ValueError(
             "Test ratio produces an invalid "
             "train/test split."
@@ -111,19 +109,133 @@ def chronological_train_test_split(
     )
 
 
-def _encode_targets(
-    y_train: pd.Series,
-    y_test: pd.Series,
-) -> Tuple[
-    np.ndarray,
-    np.ndarray,
-    LabelEncoder,
-]:
+def patient_temporal_train_test_split(
+    dataset: pd.DataFrame,
+    test_ratio: float = DEFAULT_TEST_RATIO,
+):
     """
-    Encode textual trend classes as numeric labels
-    required by XGBoost.
+    Split each patient's records independently.
+
+    Earlier records from each patient are used for
+    training and later records for testing.
+
+    This prevents Patient A's ordering from affecting
+    Patient B's temporal split.
     """
 
+    if dataset.empty:
+        raise ValueError(
+            "ML dataset cannot be empty."
+        )
+
+    required_columns = {
+        "patient_id",
+        "timestamp",
+        "trend_target",
+    }
+
+    missing_columns = (
+        required_columns
+        - set(dataset.columns)
+    )
+
+    if missing_columns:
+        raise ValueError(
+            "ML dataset is missing required "
+            "temporal columns: "
+            + ", ".join(
+                sorted(missing_columns)
+            )
+        )
+
+    if not 0 < test_ratio < 1:
+        raise ValueError(
+            "Test ratio must be between 0 and 1."
+        )
+
+    train_frames = []
+    test_frames = []
+
+    for _, patient_data in dataset.groupby(
+        "patient_id"
+    ):
+        patient_data = (
+            patient_data
+            .sort_values("timestamp")
+            .reset_index(drop=True)
+        )
+
+        if len(patient_data) < 2:
+            raise ValueError(
+                "Each patient must have at least "
+                "two usable ML records for "
+                "temporal splitting."
+            )
+
+        split_index = int(
+            len(patient_data)
+            * (1 - test_ratio)
+        )
+
+        # Keep at least one record on each side.
+        split_index = max(
+            1,
+            min(
+                split_index,
+                len(patient_data) - 1,
+            ),
+        )
+
+        train_frames.append(
+            patient_data.iloc[
+                :split_index
+            ].copy()
+        )
+
+        test_frames.append(
+            patient_data.iloc[
+                split_index:
+            ].copy()
+        )
+
+    train_dataset = (
+        pd.concat(
+            train_frames,
+            ignore_index=True,
+        )
+        .sort_values(
+            [
+                "timestamp",
+                "patient_id",
+            ]
+        )
+        .reset_index(drop=True)
+    )
+
+    test_dataset = (
+        pd.concat(
+            test_frames,
+            ignore_index=True,
+        )
+        .sort_values(
+            [
+                "timestamp",
+                "patient_id",
+            ]
+        )
+        .reset_index(drop=True)
+    )
+
+    return (
+        train_dataset,
+        test_dataset,
+    )
+
+
+def _encode_targets(
+    y_train,
+    y_test,
+):
     encoder = LabelEncoder()
 
     encoder.fit(
@@ -149,16 +261,7 @@ def _encode_targets(
     )
 
 
-def create_xgboost_classifier(
-) -> XGBClassifier:
-    """
-    Create the DiaMate glucose-trend XGBoost model.
-
-    This model is an experimental pattern-classification
-    component and is not used for diagnosis or medication
-    dosing.
-    """
-
+def create_xgboost_classifier():
     return XGBClassifier(
         objective="multi:softprob",
         num_class=3,
@@ -173,16 +276,11 @@ def create_xgboost_classifier(
 
 
 def evaluate_model(
-    model: XGBClassifier,
-    X_test: pd.DataFrame,
-    y_test_encoded: np.ndarray,
-    encoder: LabelEncoder,
-) -> Dict:
-    """
-    Evaluate a trained model on the chronological
-    holdout set.
-    """
-
+    model,
+    X_test,
+    y_test_encoded,
+    encoder,
+):
     predictions = model.predict(
         X_test
     )
@@ -218,13 +316,9 @@ def evaluate_model(
 
 
 def save_model_artifacts(
-    model: XGBClassifier,
-    encoder: LabelEncoder,
-) -> Dict[str, str]:
-    """
-    Save the trained model and target label encoder.
-    """
-
+    model,
+    encoder,
+):
     MODEL_DIRECTORY.mkdir(
         parents=True,
         exist_ok=True,
@@ -241,7 +335,9 @@ def save_model_artifacts(
     )
 
     return {
-        "model_path": str(MODEL_PATH),
+        "model_path": str(
+            MODEL_PATH
+        ),
         "label_encoder_path": str(
             LABEL_ENCODER_PATH
         ),
@@ -252,42 +348,43 @@ def train_glucose_trend_model(
     records: List[Dict],
     test_ratio: float = DEFAULT_TEST_RATIO,
     save_model: bool = False,
-) -> Dict:
+):
     """
-    Run the complete experimental training pipeline.
+    Train the experimental DiaMate future glucose
+    trend classifier.
 
-    Steps:
-    1. Feature engineering.
-    2. Trend-target construction.
-    3. Leakage-safe feature/target separation.
-    4. Chronological train/test split.
-    5. Label encoding.
-    6. XGBoost training.
-    7. Holdout evaluation.
-    8. Optional model persistence.
+    Features from time t are used to classify the
+    direction of the patient's next glucose reading.
+
+    This model is for experimental pattern analysis,
+    not diagnosis, medication dosing, or treatment
+    recommendations.
     """
 
-    dataset = create_ml_dataset(
+    dataset = create_future_trend_dataset(
         records
     )
 
-    X, y = split_features_and_target(
-        dataset
-    )
-
     (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-    ) = chronological_train_test_split(
-        X,
-        y,
+        train_dataset,
+        test_dataset,
+    ) = patient_temporal_train_test_split(
+        dataset,
         test_ratio=test_ratio,
     )
 
-    # All three classes should be represented in the
-    # training data before fitting this multiclass model.
+    X_train, y_train = (
+        split_future_features_and_target(
+            train_dataset
+        )
+    )
+
+    X_test, y_test = (
+        split_future_features_and_target(
+            test_dataset
+        )
+    )
+
     required_classes = {
         "LOWER",
         "STABLE",
@@ -299,13 +396,15 @@ def train_glucose_trend_model(
     )
 
     missing_classes = (
-        required_classes - training_classes
+        required_classes
+        - training_classes
     )
 
     if missing_classes:
         raise ValueError(
-            "Training data must contain all trend "
-            "classes: LOWER, STABLE, and HIGHER."
+            "Training data must contain all "
+            "trend classes: LOWER, STABLE, "
+            "and HIGHER."
         )
 
     (
@@ -333,11 +432,17 @@ def train_glucose_trend_model(
 
     result = {
         "status": "trained",
+        "prediction_target": (
+            "next_glucose_trend"
+        ),
         "training_sample_size": int(
             len(X_train)
         ),
         "test_sample_size": int(
             len(X_test)
+        ),
+        "patient_count": int(
+            dataset["patient_id"].nunique()
         ),
         "feature_names": list(
             X_train.columns

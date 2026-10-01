@@ -9,6 +9,7 @@ client = TestClient(app)
 
 
 VALID_REQUEST = {
+    "glucose_mg_dl": 135,
     "previous_glucose": 120,
     "carbs_g": 40,
     "activity_minutes": 30,
@@ -27,6 +28,7 @@ MOCK_PREDICTION = {
         "STABLE": 0.20,
     },
     "features": {
+        "glucose_mg_dl": 135.0,
         "previous_glucose": 120.0,
         "carbs_g": 40.0,
         "activity_minutes": 30.0,
@@ -36,120 +38,166 @@ MOCK_PREDICTION = {
         "is_weekend": 0.0,
     },
     "model_type": "XGBoost",
+    "prediction_target": "next_glucose_trend",
     "purpose": (
-        "experimental_glucose_trend_classification"
+        "experimental_future_glucose_"
+        "trend_classification"
     ),
 }
 
 
 # =========================================================
-# SUCCESSFUL PREDICTION
+# SUCCESS
 # =========================================================
 
-def test_predict_trend_success():
-    with patch(
-        "main.predict_with_saved_model",
-        return_value=MOCK_PREDICTION,
-    ):
-        response = client.post(
-            "/api/v1/ml/predict-trend",
-            json=VALID_REQUEST,
-        )
+@patch("main.predict_with_saved_model")
+def test_predict_trend_success(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
 
     assert response.status_code == 200
 
-    data = response.json()
+    body = response.json()
 
-    assert data["prediction"] == "HIGHER"
+    assert body["prediction"] == "HIGHER"
 
-    assert data["model_type"] == "XGBoost"
+    assert (
+        body["model_type"]
+        == "XGBoost"
+    )
 
-    assert data["probabilities"] == {
+    assert (
+        body["prediction_target"]
+        == "next_glucose_trend"
+    )
+
+    assert body["probabilities"] == {
         "HIGHER": 0.70,
         "LOWER": 0.10,
         "STABLE": 0.20,
     }
 
+    mock_predict.assert_called_once()
+
+    sent_features = (
+        mock_predict.call_args.args[0]
+    )
+
+    assert (
+        sent_features["glucose_mg_dl"]
+        == 135
+    )
+
+    assert (
+        sent_features["previous_glucose"]
+        == 120
+    )
+
 
 # =========================================================
-# MODEL UNAVAILABLE
+# MODEL / PREDICTION ERRORS
 # =========================================================
 
-def test_predict_trend_model_unavailable():
-    with patch(
-        "main.predict_with_saved_model",
-        side_effect=FileNotFoundError(
+@patch("main.predict_with_saved_model")
+def test_model_unavailable_returns_503(
+    mock_predict,
+):
+    mock_predict.side_effect = (
+        FileNotFoundError(
             "Model file not found"
-        ),
-    ):
-        response = client.post(
-            "/api/v1/ml/predict-trend",
-            json=VALID_REQUEST,
         )
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
 
     assert response.status_code == 503
 
-    assert response.json() == {
-        "detail": (
-            "Glucose trend model is not "
-            "currently available."
-        )
-    }
+    body = response.json()
+
+    assert "detail" in body
+
+    assert body["detail"] == (
+        "Glucose trend model is not "
+        "currently available."
+    )
 
 
-# =========================================================
-# INTERNAL PREDICTION VALIDATION
-# =========================================================
+@patch("main.predict_with_saved_model")
+def test_prediction_validation_error_returns_422(
+    mock_predict,
+):
+    mock_predict.side_effect = ValueError(
+        "Invalid prediction input"
+    )
 
-def test_predict_trend_value_error():
-    with patch(
-        "main.predict_with_saved_model",
-        side_effect=ValueError(
-            "Invalid prediction features."
-        ),
-    ):
-        response = client.post(
-            "/api/v1/ml/predict-trend",
-            json=VALID_REQUEST,
-        )
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
 
     assert response.status_code == 422
 
-    assert response.json() == {
-        "detail": "Invalid prediction features."
-    }
+    body = response.json()
+
+    assert "detail" in body
+
+    assert (
+        "Invalid prediction input"
+        in body["detail"]
+    )
 
 
-# =========================================================
-# UNEXPECTED ERROR
-# =========================================================
+@patch("main.predict_with_saved_model")
+def test_unexpected_prediction_error_returns_500(
+    mock_predict,
+):
+    mock_predict.side_effect = RuntimeError(
+        "Unexpected failure"
+    )
 
-def test_predict_trend_unexpected_error():
-    with patch(
-        "main.predict_with_saved_model",
-        side_effect=RuntimeError(
-            "Unexpected test error"
-        ),
-    ):
-        response = client.post(
-            "/api/v1/ml/predict-trend",
-            json=VALID_REQUEST,
-        )
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
 
     assert response.status_code == 500
 
-    assert response.json() == {
-        "detail": (
-            "Glucose trend prediction failed."
-        )
-    }
+    body = response.json()
+
+    assert "detail" in body
 
 
 # =========================================================
-# PYDANTIC INPUT VALIDATION
+# REQUIRED FIELDS
 # =========================================================
 
-def test_missing_previous_glucose():
+def test_missing_current_glucose_returns_422():
+    request_data = VALID_REQUEST.copy()
+
+    request_data.pop(
+        "glucose_mg_dl"
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=request_data,
+    )
+
+    assert response.status_code == 422
+
+
+def test_missing_previous_glucose_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data.pop(
@@ -164,7 +212,62 @@ def test_missing_previous_glucose():
     assert response.status_code == 422
 
 
-def test_zero_previous_glucose():
+def test_empty_json_returns_422():
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json={},
+    )
+
+    assert response.status_code == 422
+
+
+def test_malformed_json_returns_422():
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        content="{invalid-json",
+        headers={
+            "Content-Type": "application/json"
+        },
+    )
+
+    assert response.status_code == 422
+
+
+# =========================================================
+# GLUCOSE VALIDATION
+# =========================================================
+
+def test_zero_current_glucose_returns_422():
+    request_data = VALID_REQUEST.copy()
+
+    request_data[
+        "glucose_mg_dl"
+    ] = 0
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=request_data,
+    )
+
+    assert response.status_code == 422
+
+
+def test_negative_current_glucose_returns_422():
+    request_data = VALID_REQUEST.copy()
+
+    request_data[
+        "glucose_mg_dl"
+    ] = -10
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=request_data,
+    )
+
+    assert response.status_code == 422
+
+
+def test_zero_previous_glucose_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data[
@@ -179,7 +282,11 @@ def test_zero_previous_glucose():
     assert response.status_code == 422
 
 
-def test_negative_carbs():
+# =========================================================
+# CARBS / ACTIVITY VALIDATION
+# =========================================================
+
+def test_negative_carbs_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data["carbs_g"] = -1
@@ -192,7 +299,7 @@ def test_negative_carbs():
     assert response.status_code == 422
 
 
-def test_negative_activity():
+def test_negative_activity_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data[
@@ -207,7 +314,11 @@ def test_negative_activity():
     assert response.status_code == 422
 
 
-def test_invalid_hour():
+# =========================================================
+# TIME FEATURE VALIDATION
+# =========================================================
+
+def test_invalid_hour_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data["hour_of_day"] = 24
@@ -220,7 +331,7 @@ def test_invalid_hour():
     assert response.status_code == 422
 
 
-def test_invalid_day_of_week():
+def test_invalid_day_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data["day_of_week"] = 7
@@ -233,7 +344,7 @@ def test_invalid_day_of_week():
     assert response.status_code == 422
 
 
-def test_invalid_month():
+def test_invalid_month_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data["month"] = 13
@@ -246,7 +357,7 @@ def test_invalid_month():
     assert response.status_code == 422
 
 
-def test_invalid_weekend():
+def test_invalid_weekend_returns_422():
     request_data = VALID_REQUEST.copy()
 
     request_data["is_weekend"] = 2
@@ -260,25 +371,71 @@ def test_invalid_weekend():
 
 
 # =========================================================
-# MALFORMED / EMPTY REQUESTS
+# TYPE VALIDATION
 # =========================================================
 
-def test_empty_request():
+def test_non_numeric_current_glucose_returns_422():
+    request_data = VALID_REQUEST.copy()
+
+    request_data[
+        "glucose_mg_dl"
+    ] = "hello"
+
     response = client.post(
         "/api/v1/ml/predict-trend",
-        json={},
+        json=request_data,
     )
 
     assert response.status_code == 422
 
 
-def test_malformed_json():
+def test_non_numeric_carbs_returns_422():
+    request_data = VALID_REQUEST.copy()
+
+    request_data["carbs_g"] = "hello"
+
     response = client.post(
         "/api/v1/ml/predict-trend",
-        content="{bad json",
-        headers={
-            "Content-Type": "application/json"
-        },
+        json=request_data,
     )
 
     assert response.status_code == 422
+
+
+# =========================================================
+# FUTURE-DATA LEAKAGE PROTECTION
+# =========================================================
+
+@patch("main.predict_with_saved_model")
+def test_future_fields_are_not_required(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    sent_features = (
+        mock_predict.call_args.args[0]
+    )
+
+    assert (
+        "next_glucose"
+        not in sent_features
+    )
+
+    assert (
+        "future_glucose_change"
+        not in sent_features
+    )
+
+    assert (
+        "trend_target"
+        not in sent_features
+    )

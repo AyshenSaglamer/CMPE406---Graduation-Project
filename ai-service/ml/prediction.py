@@ -7,21 +7,11 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 
+from ml.future_target_builder import MODEL_FEATURES
 from ml.training import (
     LABEL_ENCODER_PATH,
     MODEL_PATH,
 )
-
-
-MODEL_FEATURES = [
-    "previous_glucose",
-    "carbs_g",
-    "activity_minutes",
-    "hour_of_day",
-    "day_of_week",
-    "month",
-    "is_weekend",
-]
 
 
 def load_model_artifacts(
@@ -55,12 +45,10 @@ def _validate_prediction_features(
     features: Dict,
 ) -> pd.DataFrame:
     """
-    Validate one prediction feature set.
+    Validate one future-trend prediction input.
 
-    Prediction uses only information intended to be
-    available to the model. Leakage-sensitive fields
-    such as glucose_change are not accepted as model
-    features.
+    Only information available at time t is accepted.
+    Future glucose information must never be included.
     """
 
     missing_features = [
@@ -104,10 +92,12 @@ def _validate_prediction_features(
                 f"{feature} must be finite."
             )
 
-    if (
-        dataframe["previous_glucose"].iloc[0]
-        <= 0
-    ):
+    if dataframe["glucose_mg_dl"].iloc[0] <= 0:
+        raise ValueError(
+            "glucose_mg_dl must be greater than zero."
+        )
+
+    if dataframe["previous_glucose"].iloc[0] <= 0:
         raise ValueError(
             "previous_glucose must be greater than zero."
         )
@@ -117,10 +107,7 @@ def _validate_prediction_features(
             "carbs_g cannot be negative."
         )
 
-    if (
-        dataframe["activity_minutes"].iloc[0]
-        < 0
-    ):
+    if dataframe["activity_minutes"].iloc[0] < 0:
         raise ValueError(
             "activity_minutes cannot be negative."
         )
@@ -162,16 +149,12 @@ def predict_glucose_trend(
     encoder: LabelEncoder,
 ) -> Dict:
     """
-    Predict an experimental glucose trend class.
+    Classify the direction of the patient's next
+    glucose reading.
 
-    Returns:
-    - predicted class
-    - class probabilities
-    - model input features
-
-    The result represents an experimental pattern
-    classification and is not a diagnosis or treatment
-    recommendation.
+    This is an experimental pattern-classification
+    feature. It does not provide diagnosis, treatment,
+    or medication-dosing recommendations.
     """
 
     dataframe = _validate_prediction_features(
@@ -212,8 +195,10 @@ def predict_glucose_trend(
             for feature in MODEL_FEATURES
         },
         "model_type": "XGBoost",
+        "prediction_target": "next_glucose_trend",
         "purpose": (
-            "experimental_glucose_trend_classification"
+            "experimental_future_glucose_"
+            "trend_classification"
         ),
     }
 
@@ -223,10 +208,6 @@ def predict_with_saved_model(
     model_path: Path = MODEL_PATH,
     encoder_path: Path = LABEL_ENCODER_PATH,
 ) -> Dict:
-    """
-    Load saved artifacts and perform one prediction.
-    """
-
     model, encoder = load_model_artifacts(
         model_path=model_path,
         encoder_path=encoder_path,

@@ -26,6 +26,13 @@ class ParseRequest(BaseModel):
 
 
 class TrendPredictionRequest(BaseModel):
+    glucose_mg_dl: float = Field(
+        ...,
+        gt=0,
+        description="Current glucose reading.",
+        examples=[135],
+    )
+
     previous_glucose: float = Field(
         ...,
         gt=0,
@@ -79,7 +86,8 @@ class TrendPredictionRequest(BaseModel):
         ge=0,
         le=1,
         description=(
-            "Weekend indicator: 0 for no, 1 for yes."
+            "Weekend indicator: 0 for no, "
+            "1 for yes."
         ),
         examples=[0],
     )

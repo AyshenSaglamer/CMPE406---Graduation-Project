@@ -16,14 +16,14 @@ from ml.prediction import (
 
 class FakeXGBoostModel:
     """
-    Lightweight test double.
+    Lightweight test double for prediction tests.
 
-    This lets us test prediction logic without training
-    a real XGBoost model during every unit test.
+    No real XGBoost model needs to be trained during
+    these unit tests.
     """
 
     def predict(self, dataframe):
-        # LabelEncoder ordering:
+        # LabelEncoder classes:
         # HIGHER = 0
         # LOWER = 1
         # STABLE = 2
@@ -40,6 +40,10 @@ class FakeXGBoostModel:
             ]
         )
 
+
+# =========================================================
+# FIXTURES
+# =========================================================
 
 @pytest.fixture
 def encoder():
@@ -59,6 +63,7 @@ def encoder():
 @pytest.fixture
 def valid_features():
     return {
+        "glucose_mg_dl": 135,
         "previous_glucose": 120,
         "carbs_g": 40,
         "activity_minutes": 30,
@@ -75,6 +80,7 @@ def valid_features():
 
 def test_model_features_are_expected():
     assert MODEL_FEATURES == [
+        "glucose_mg_dl",
         "previous_glucose",
         "carbs_g",
         "activity_minutes",
@@ -119,10 +125,19 @@ def test_predict_glucose_trend(
 
     assert result["prediction"] == "HIGHER"
 
-    assert result["model_type"] == "XGBoost"
+    assert (
+        result["model_type"]
+        == "XGBoost"
+    )
+
+    assert (
+        result["prediction_target"]
+        == "next_glucose_trend"
+    )
 
     assert result["purpose"] == (
-        "experimental_glucose_trend_classification"
+        "experimental_future_glucose_"
+        "trend_classification"
     )
 
 
@@ -169,7 +184,7 @@ def test_probability_sum(
     )
 
 
-def test_prediction_returns_features(
+def test_prediction_returns_current_glucose(
     valid_features,
     encoder,
 ):
@@ -182,13 +197,17 @@ def test_prediction_returns_features(
     )
 
     assert (
-        result["features"]["previous_glucose"]
-        == 120.0
+        result["features"][
+            "glucose_mg_dl"
+        ]
+        == 135.0
     )
 
     assert (
-        result["features"]["carbs_g"]
-        == 40.0
+        result["features"][
+            "previous_glucose"
+        ]
+        == 120.0
     )
 
 
@@ -223,7 +242,23 @@ def test_missing_feature_rejected(
 # NUMERIC VALIDATION
 # =========================================================
 
-def test_non_numeric_feature_rejected(
+def test_non_numeric_glucose_rejected(
+    valid_features,
+):
+    features = valid_features.copy()
+
+    features["glucose_mg_dl"] = "hello"
+
+    with pytest.raises(
+        ValueError,
+        match="glucose_mg_dl must be numeric",
+    ):
+        _validate_prediction_features(
+            features
+        )
+
+
+def test_non_numeric_carbs_rejected(
     valid_features,
 ):
     features = valid_features.copy()
@@ -258,8 +293,46 @@ def test_infinite_feature_rejected(
 
 
 # =========================================================
-# DOMAIN VALIDATION
+# GLUCOSE VALIDATION
 # =========================================================
+
+def test_zero_current_glucose_rejected(
+    valid_features,
+):
+    features = valid_features.copy()
+
+    features["glucose_mg_dl"] = 0
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "glucose_mg_dl must be "
+            "greater than zero"
+        ),
+    ):
+        _validate_prediction_features(
+            features
+        )
+
+
+def test_negative_current_glucose_rejected(
+    valid_features,
+):
+    features = valid_features.copy()
+
+    features["glucose_mg_dl"] = -1
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "glucose_mg_dl must be "
+            "greater than zero"
+        ),
+    ):
+        _validate_prediction_features(
+            features
+        )
+
 
 def test_zero_previous_glucose_rejected(
     valid_features,
@@ -279,6 +352,10 @@ def test_zero_previous_glucose_rejected(
             features
         )
 
+
+# =========================================================
+# OTHER DOMAIN VALIDATION
+# =========================================================
 
 def test_negative_carbs_rejected(
     valid_features,
@@ -317,10 +394,7 @@ def test_negative_activity_rejected(
 
 @pytest.mark.parametrize(
     "hour",
-    [
-        -1,
-        24,
-    ],
+    [-1, 24],
 )
 def test_invalid_hour_rejected(
     valid_features,
@@ -344,10 +418,7 @@ def test_invalid_hour_rejected(
 
 @pytest.mark.parametrize(
     "day",
-    [
-        -1,
-        7,
-    ],
+    [-1, 7],
 )
 def test_invalid_day_rejected(
     valid_features,
@@ -371,10 +442,7 @@ def test_invalid_day_rejected(
 
 @pytest.mark.parametrize(
     "month",
-    [
-        0,
-        13,
-    ],
+    [0, 13],
 )
 def test_invalid_month_rejected(
     valid_features,
@@ -398,10 +466,7 @@ def test_invalid_month_rejected(
 
 @pytest.mark.parametrize(
     "weekend",
-    [
-        -1,
-        2,
-    ],
+    [-1, 2],
 )
 def test_invalid_weekend_rejected(
     valid_features,
@@ -424,13 +489,20 @@ def test_invalid_weekend_rejected(
 
 
 # =========================================================
-# LEAKAGE PROTECTION
+# FUTURE-DATA LEAKAGE PROTECTION
 # =========================================================
 
-def test_leakage_fields_are_not_model_features():
-    assert "glucose_change" not in MODEL_FEATURES
-    assert "glucose_mg_dl" not in MODEL_FEATURES
-    assert "trend_target" not in MODEL_FEATURES
+def test_future_information_is_not_model_feature():
+    forbidden_features = {
+        "next_glucose",
+        "future_glucose_change",
+        "trend_target",
+        "patient_id",
+        "timestamp",
+    }
+
+    for feature in forbidden_features:
+        assert feature not in MODEL_FEATURES
 
 
 # =========================================================
@@ -441,11 +513,13 @@ def test_missing_model_file_rejected(
     tmp_path,
 ):
     missing_model = (
-        tmp_path / "missing_model.joblib"
+        tmp_path
+        / "missing_model.joblib"
     )
 
     missing_encoder = (
-        tmp_path / "missing_encoder.joblib"
+        tmp_path
+        / "missing_encoder.joblib"
     )
 
     with pytest.raises(
@@ -462,13 +536,15 @@ def test_missing_encoder_file_rejected(
     tmp_path,
 ):
     model_path = (
-        tmp_path / "model.joblib"
+        tmp_path
+        / "model.joblib"
     )
 
     model_path.touch()
 
     missing_encoder = (
-        tmp_path / "missing_encoder.joblib"
+        tmp_path
+        / "missing_encoder.joblib"
     )
 
     with pytest.raises(

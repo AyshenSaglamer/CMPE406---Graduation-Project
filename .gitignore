@@ -46,3 +46,4 @@ ai-service/*.pyc
 
 # DiaMate AI trained model artifacts
 ai-service/ml/models/*.joblib
+ai-service/ml/models/*.joblib
