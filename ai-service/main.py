@@ -6,6 +6,7 @@ from fastapi import (
 from models.schemas import (
     HistoryPredictionRequest,
     ParseRequest,
+    PatientSummaryRequest,
     TrendPredictionRequest,
 )
 
@@ -22,12 +23,17 @@ from services.nlp_service import (
     parse_nlp_text,
 )
 
+from services.summary_service import (
+    build_patient_summary,
+)
+
 
 app = FastAPI(
     title="DiaMate AI Service",
     description=(
-        "AI and NLP service for the DiaMate "
-        "diabetes self-management support system."
+        "AI, analytics, and NLP service for "
+        "the DiaMate diabetes self-management "
+        "support system."
     ),
     version="1.0.0",
 )
@@ -185,5 +191,60 @@ def predict_trend_from_history(
             detail=(
                 "Patient history prediction "
                 "failed."
+            ),
+        )
+
+
+# =========================================================
+# PATIENT ANALYTICS + AI SUMMARY
+# =========================================================
+
+@app.post("/api/v1/insights/summary")
+def patient_insight_summary(
+    request: PatientSummaryRequest,
+):
+    """
+    Generate a combined patient-history summary.
+
+    The response can contain:
+
+    - descriptive glucose statistics
+    - configured time-in-range analytics
+    - experimental next-glucose-trend prediction
+    - human-readable descriptive insights
+
+    The configured glucose range is supplied by
+    the application/profile rather than selected
+    by the AI service.
+
+    This endpoint does not provide diagnosis,
+    treatment, medication changes, or insulin
+    dosing recommendations.
+    """
+
+    try:
+        records = [
+            record.model_dump()
+            for record in request.records
+        ]
+
+        return build_patient_summary(
+            records=records,
+            range_low=request.range_low,
+            range_high=request.range_high,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Patient insight summary "
+                "generation failed."
             ),
         )

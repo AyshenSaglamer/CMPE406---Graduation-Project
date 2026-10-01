@@ -125,7 +125,7 @@ class TrendPredictionRequest(BaseModel):
 
 
 # =========================================================
-# PATIENT HISTORY ML PREDICTION
+# PATIENT HISTORY RECORD
 # =========================================================
 
 class PatientHistoryRecord(BaseModel):
@@ -194,6 +194,10 @@ class PatientHistoryRecord(BaseModel):
         return cleaned_value
 
 
+# =========================================================
+# PATIENT HISTORY ML PREDICTION
+# =========================================================
+
 class HistoryPredictionRequest(BaseModel):
     records: List[PatientHistoryRecord] = Field(
         ...,
@@ -202,4 +206,39 @@ class HistoryPredictionRequest(BaseModel):
             "Sequential records belonging "
             "to one patient."
         ),
+    )
+
+
+# =========================================================
+# PATIENT INSIGHT SUMMARY
+# =========================================================
+
+class PatientSummaryRequest(BaseModel):
+    records: List[PatientHistoryRecord] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Historical records belonging "
+            "to one patient."
+        ),
+    )
+
+    range_low: float = Field(
+        default=70.0,
+        gt=0,
+        description=(
+            "Configured lower glucose range "
+            "boundary in mg/dL."
+        ),
+        examples=[70],
+    )
+
+    range_high: float = Field(
+        default=180.0,
+        gt=0,
+        description=(
+            "Configured upper glucose range "
+            "boundary in mg/dL."
+        ),
+        examples=[180],
     )
