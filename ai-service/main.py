@@ -1,10 +1,22 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import (
+    FastAPI,
+    HTTPException,
+)
 
-from ml.prediction import predict_with_saved_model
 from models.schemas import (
+    HistoryPredictionRequest,
     ParseRequest,
     TrendPredictionRequest,
 )
+
+from ml.history_prediction import (
+    predict_from_patient_history,
+)
+
+from ml.prediction import (
+    predict_with_saved_model,
+)
+
 from services.nlp_service import (
     parse_multiple_entries,
     parse_nlp_text,
@@ -14,13 +26,16 @@ from services.nlp_service import (
 app = FastAPI(
     title="DiaMate AI Service",
     description=(
-        "AI, NLP, analytics, and experimental "
-        "machine-learning service for the DiaMate "
-        "diabetes self-management system"
+        "AI and NLP service for the DiaMate "
+        "diabetes self-management support system."
     ),
     version="1.0.0",
 )
 
+
+# =========================================================
+# BASIC ROUTES
+# =========================================================
 
 @app.get("/")
 def root():
@@ -31,11 +46,15 @@ def root():
 
 
 @app.get("/health")
-def health_check():
+def health():
     return {
         "status": "healthy",
     }
 
+
+# =========================================================
+# NLP - SINGLE INTENT
+# =========================================================
 
 @app.post("/api/v1/nlp/parse")
 def parse_text(
@@ -46,53 +65,125 @@ def parse_text(
     )
 
 
+# =========================================================
+# NLP - MULTI INTENT
+# =========================================================
+
 @app.post("/api/v1/nlp/parse-multiple")
-def parse_multiple_text(
+def parse_multiple(
     request: ParseRequest,
 ):
+    """
+    Parse multiple supported health-log intents
+    from one natural-language input.
+
+    parse_multiple_entries already returns the
+    complete API response contract.
+    """
+
     return parse_multiple_entries(
         request.text
     )
 
+
+# =========================================================
+# DIRECT ML PREDICTION
+# =========================================================
 
 @app.post("/api/v1/ml/predict-trend")
 def predict_trend(
     request: TrendPredictionRequest,
 ):
     """
-    Predict an experimental glucose trend class.
+    Experimental next-glucose-trend
+    classification.
 
-    The ML component is intended for pattern analysis
-    and software demonstration. It does not provide
-    diagnosis, insulin dosing, or treatment advice.
+    This endpoint does not provide diagnosis,
+    medication dosing, or treatment advice.
     """
 
     try:
-        result = predict_with_saved_model(
+        return predict_with_saved_model(
             request.model_dump()
         )
 
-        return result
-
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=503,
             detail=(
                 "Glucose trend model is not "
                 "currently available."
             ),
-        ) from exc
+        )
 
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=str(exc),
-        ) from exc
+        )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=(
-                "Glucose trend prediction failed."
+                "Glucose trend prediction "
+                "failed."
             ),
-        ) from exc
+        )
+
+
+# =========================================================
+# HISTORY-BASED ML PREDICTION
+# =========================================================
+
+@app.post(
+    "/api/v1/ml/predict-from-history"
+)
+def predict_trend_from_history(
+    request: HistoryPredictionRequest,
+):
+    """
+    Build prediction features automatically from
+    sequential patient history and classify the
+    direction of the next glucose reading.
+
+    Only supplied historical information is used.
+
+    This endpoint does not provide diagnosis,
+    medication dosing, or treatment
+    recommendations.
+    """
+
+    try:
+        records = [
+            record.model_dump()
+            for record in request.records
+        ]
+
+        return predict_from_patient_history(
+            records
+        )
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Glucose trend model is not "
+                "currently available."
+            ),
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Patient history prediction "
+                "failed."
+            ),
+        )
