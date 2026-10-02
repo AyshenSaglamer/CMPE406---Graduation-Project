@@ -49,17 +49,75 @@ from services.voice_service import (
 
 
 # ============================================================
+# OPENAPI TAGS
+# ============================================================
+
+OPENAPI_TAGS = [
+    {
+        "name": "System",
+        "description": (
+            "Service status and health-check endpoints."
+        ),
+    },
+    {
+        "name": "NLP",
+        "description": (
+            "Natural-language processing endpoints for "
+            "converting patient-entered health text into "
+            "structured DiaMate log data."
+        ),
+    },
+    {
+        "name": "Machine Learning",
+        "description": (
+            "Experimental machine-learning endpoints for "
+            "classifying future glucose trend patterns. "
+            "These endpoints do not provide diagnosis, "
+            "treatment, or insulin-dosing recommendations."
+        ),
+    },
+    {
+        "name": "Insights",
+        "description": (
+            "Patient-history analytics, personalized "
+            "pattern detection, and descriptive insight "
+            "generation."
+        ),
+    },
+    {
+        "name": "Voice",
+        "description": (
+            "Speech-to-Text and NLP processing for "
+            "voice-based health logging."
+        ),
+    },
+]
+
+
+# ============================================================
 # FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
     title="DiaMate AI Service",
     description=(
-        "AI, analytics, NLP, machine learning, "
-        "and voice service for the DiaMate "
-        "diabetes self-management support system."
+        "AI microservice for the DiaMate diabetes "
+        "self-management support system.\n\n"
+        "The service provides natural-language health "
+        "logging, voice input processing, patient-history "
+        "analytics, personalized pattern detection, and "
+        "experimental XGBoost-based glucose trend "
+        "classification.\n\n"
+        "**Safety:** DiaMate is a self-management support "
+        "tool. The AI service does not diagnose medical "
+        "conditions, prescribe treatment, or recommend "
+        "insulin doses."
     ),
     version="1.0.0",
+    openapi_tags=OPENAPI_TAGS,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 
@@ -75,7 +133,15 @@ register_exception_handlers(app)
 # ============================================================
 
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["System"],
+    summary="Get AI service information",
+    description=(
+        "Returns basic information confirming that the "
+        "DiaMate AI service is running."
+    ),
+)
 def root():
     return {
         "service": "DiaMate AI Service",
@@ -83,7 +149,15 @@ def root():
     }
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["System"],
+    summary="Check AI service health",
+    description=(
+        "Lightweight health-check endpoint for deployment, "
+        "Docker, and service monitoring."
+    ),
+)
 def health():
     return {
         "status": "healthy",
@@ -95,7 +169,17 @@ def health():
 # ============================================================
 
 
-@app.post("/api/v1/nlp/parse")
+@app.post(
+    "/api/v1/nlp/parse",
+    tags=["NLP"],
+    summary="Parse a single health-log entry",
+    description=(
+        "Converts one natural-language patient health log "
+        "into structured data. Supported log categories "
+        "include glucose, insulin, meals/carbohydrates, "
+        "and physical activity."
+    ),
+)
 def parse_text(
     request: ParseRequest,
 ):
@@ -104,7 +188,17 @@ def parse_text(
     )
 
 
-@app.post("/api/v1/nlp/parse-multiple")
+@app.post(
+    "/api/v1/nlp/parse-multiple",
+    tags=["NLP"],
+    summary="Parse multiple health-log entries",
+    description=(
+        "Extracts multiple supported health-log intents "
+        "from a single natural-language input. This allows "
+        "a patient to describe several actions or readings "
+        "in one sentence."
+    ),
+)
 def parse_multiple(
     request: ParseRequest,
 ):
@@ -118,7 +212,18 @@ def parse_multiple(
 # ============================================================
 
 
-@app.post("/api/v1/ml/predict-trend")
+@app.post(
+    "/api/v1/ml/predict-trend",
+    tags=["Machine Learning"],
+    summary="Classify an experimental future glucose trend",
+    description=(
+        "Uses the saved XGBoost model and supplied feature "
+        "values to classify the next glucose trend as "
+        "LOWER, STABLE, or HIGHER. This output is "
+        "experimental and is not a diagnosis, treatment "
+        "recommendation, or insulin-dosing recommendation."
+    ),
+)
 def predict_trend(
     request: TrendPredictionRequest,
 ):
@@ -153,7 +258,16 @@ def predict_trend(
 
 
 @app.post(
-    "/api/v1/ml/predict-from-history"
+    "/api/v1/ml/predict-from-history",
+    tags=["Machine Learning"],
+    summary="Classify a trend from patient history",
+    description=(
+        "Builds patient-specific model features from "
+        "sequential historical records and applies the "
+        "saved XGBoost model to classify the next glucose "
+        "trend. Patient histories must not contain records "
+        "from multiple patients."
+    ),
 )
 def predict_trend_from_history(
     request: HistoryPredictionRequest,
@@ -198,7 +312,20 @@ def predict_trend_from_history(
 # ============================================================
 
 
-@app.post("/api/v1/insights/summary")
+@app.post(
+    "/api/v1/insights/summary",
+    tags=["Insights"],
+    summary="Generate a patient insight summary",
+    description=(
+        "Generates a descriptive summary from one "
+        "patient's historical records. The response can "
+        "include glucose statistics, configured "
+        "time-in-range analysis, personalized patterns, "
+        "descriptive associations, and experimental ML "
+        "trend information when available. Associations "
+        "do not establish causation."
+    ),
+)
 def patient_insight_summary(
     request: PatientSummaryRequest,
 ):
@@ -235,9 +362,27 @@ def patient_insight_summary(
 # ============================================================
 
 
-@app.post("/api/v1/voice/parse")
+@app.post(
+    "/api/v1/voice/parse",
+    tags=["Voice"],
+    summary="Process a voice health log",
+    description=(
+        "Accepts a supported audio file, validates the "
+        "upload, converts speech to text with Whisper, "
+        "and sends the resulting transcript through the "
+        "existing multi-intent NLP pipeline. The current "
+        "Speech-to-Text configuration is optimized for "
+        "English diabetes self-management vocabulary."
+    ),
+)
 async def parse_voice(
-    audio: UploadFile = File(...),
+    audio: UploadFile = File(
+        ...,
+        description=(
+            "Audio health-log file. Supported formats "
+            "include WAV, MP3, M4A, WEBM, and OGG."
+        ),
+    ),
 ):
     try:
         audio_data = await audio.read()
