@@ -1,6 +1,7 @@
 package com.diamate.backend.service;
 
 import com.diamate.backend.dto.AiParseRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -13,9 +14,14 @@ public class AiService {
 
     private final RestClient restClient;
 
-    public AiService() {
+    public AiService(
+            @Value(
+                "${AI_SERVICE_BASE_URL:http://localhost:8000}"
+            )
+            String aiServiceBaseUrl
+    ) {
         this.restClient = RestClient.builder()
-                .baseUrl("http://localhost:8000")
+                .baseUrl(aiServiceBaseUrl)
                 .build();
     }
 
@@ -46,7 +52,7 @@ public class AiService {
                     .retrieve()
                     .body(Map.class);
 
-            // Handle an unexpected empty response from FastAPI
+            // Handle unexpected empty response from FastAPI
             if (response == null) {
                 return createErrorResponse(
                         "EMPTY_RESPONSE",
@@ -57,8 +63,6 @@ public class AiService {
             return response;
 
         } catch (RestClientException exception) {
-
-            // Handle FastAPI connection/service failures
             return createErrorResponse(
                     "AI_SERVICE_UNAVAILABLE",
                     "The AI service is currently unavailable."
@@ -70,7 +74,6 @@ public class AiService {
             String status,
             String message
     ) {
-
         Map<String, Object> response = new HashMap<>();
 
         response.put("intent", "UNKNOWN");
