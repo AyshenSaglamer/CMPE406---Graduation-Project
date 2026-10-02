@@ -17,6 +17,7 @@ from models.schemas import (
 from ml.history_prediction import (
     predict_from_patient_history,
 )
+
 from ml.prediction import (
     predict_with_saved_model,
 )
@@ -24,16 +25,24 @@ from ml.prediction import (
 from services.audio_service import (
     validate_audio_upload,
 )
+
+from services.exception_handlers import (
+    register_exception_handlers,
+)
+
 from services.nlp_service import (
     parse_multiple_entries,
     parse_nlp_text,
 )
+
 from services.speech_to_text_service import (
     transcribe_audio,
 )
+
 from services.summary_service import (
     build_patient_summary,
 )
+
 from services.voice_service import (
     transcribe_and_process_audio,
 )
@@ -55,8 +64,16 @@ app = FastAPI(
 
 
 # ============================================================
-# ROOT
+# GLOBAL EXCEPTION HANDLERS
 # ============================================================
+
+register_exception_handlers(app)
+
+
+# ============================================================
+# BASIC ENDPOINTS
+# ============================================================
+
 
 @app.get("/")
 def root():
@@ -66,10 +83,6 @@ def root():
     }
 
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
-
 @app.get("/health")
 def health():
     return {
@@ -78,17 +91,14 @@ def health():
 
 
 # ============================================================
-# NLP
+# NLP ENDPOINTS
 # ============================================================
+
 
 @app.post("/api/v1/nlp/parse")
 def parse_text(
     request: ParseRequest,
 ):
-    """
-    Parse a single natural-language health log.
-    """
-
     return parse_nlp_text(
         request.text
     )
@@ -98,29 +108,20 @@ def parse_text(
 def parse_multiple(
     request: ParseRequest,
 ):
-    """
-    Parse one or more health logs from a single
-    natural-language sentence.
-    """
-
     return parse_multiple_entries(
         request.text
     )
 
 
 # ============================================================
-# MACHINE LEARNING
+# MACHINE LEARNING ENDPOINTS
 # ============================================================
+
 
 @app.post("/api/v1/ml/predict-trend")
 def predict_trend(
     request: TrendPredictionRequest,
 ):
-    """
-    Predict the experimental next glucose trend
-    using prepared model features.
-    """
-
     try:
         return predict_with_saved_model(
             request.model_dump()
@@ -145,20 +146,18 @@ def predict_trend(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Glucose trend prediction failed."
+                "Glucose trend prediction "
+                "failed."
             ),
         )
 
 
-@app.post("/api/v1/ml/predict-from-history")
+@app.post(
+    "/api/v1/ml/predict-from-history"
+)
 def predict_trend_from_history(
     request: HistoryPredictionRequest,
 ):
-    """
-    Create model features from patient history
-    and predict the experimental next glucose trend.
-    """
-
     try:
         records = [
             record.model_dump()
@@ -188,25 +187,21 @@ def predict_trend_from_history(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Patient history prediction failed."
+                "Patient history prediction "
+                "failed."
             ),
         )
 
 
 # ============================================================
-# PATIENT ANALYTICS / AI INSIGHTS
+# PATIENT INSIGHT SUMMARY
 # ============================================================
+
 
 @app.post("/api/v1/insights/summary")
 def patient_insight_summary(
     request: PatientSummaryRequest,
 ):
-    """
-    Generate patient-specific analytics,
-    experimental ML prediction, and
-    human-readable insights.
-    """
-
     try:
         records = [
             record.model_dump()
@@ -236,36 +231,15 @@ def patient_insight_summary(
 
 
 # ============================================================
-# VOICE / SPEECH-TO-TEXT
+# VOICE ENDPOINT
 # ============================================================
+
 
 @app.post("/api/v1/voice/parse")
 async def parse_voice(
     audio: UploadFile = File(...),
 ):
-    """
-    Accept an uploaded audio file.
-
-    Pipeline:
-
-    Audio
-        ->
-    Validation
-        ->
-    Whisper Speech-to-Text
-        ->
-    Transcript
-        ->
-    DiaMate NLP
-        ->
-    Structured health logs
-    """
-
     try:
-        # ----------------------------------------------------
-        # 1. Read uploaded audio
-        # ----------------------------------------------------
-
         audio_data = await audio.read()
 
         filename = (
@@ -277,7 +251,7 @@ async def parse_voice(
         )
 
         # ----------------------------------------------------
-        # 2. Validate uploaded audio
+        # Validate uploaded audio
         # ----------------------------------------------------
 
         validate_audio_upload(
@@ -286,16 +260,12 @@ async def parse_voice(
             audio_data=audio_data,
         )
 
-        # ----------------------------------------------------
-        # 3. Get file extension
-        # ----------------------------------------------------
-
         extension = os.path.splitext(
             filename
         )[1].lower()
 
         # ----------------------------------------------------
-        # 4. Create Whisper transcriber
+        # Whisper Speech-to-Text adapter
         # ----------------------------------------------------
 
         def whisper_transcriber(
@@ -307,7 +277,7 @@ async def parse_voice(
             )
 
         # ----------------------------------------------------
-        # 5. Speech-to-Text -> NLP
+        # Audio -> Whisper -> Transcript -> NLP
         # ----------------------------------------------------
 
         return transcribe_and_process_audio(
@@ -325,8 +295,8 @@ async def parse_voice(
         raise HTTPException(
             status_code=503,
             detail=(
-                "Speech-to-Text service is "
-                "not currently available."
+                "Speech-to-Text service is not "
+                "currently available."
             ),
         )
 

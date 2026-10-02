@@ -8,6 +8,30 @@ from main import app
 client = TestClient(app)
 
 
+# =========================================================
+# ERROR CONTRACT HELPER
+# =========================================================
+
+def assert_api_error(
+    response,
+    *,
+    status_code,
+    code,
+    message=None,
+):
+    assert response.status_code == status_code
+
+    body = response.json()
+
+    assert body["status"] == "ERROR"
+    assert body["error"]["code"] == code
+
+    if message is not None:
+        assert body["error"]["message"] == message
+
+    return body
+
+
 VALID_REQUEST = {
     "glucose_mg_dl": 135,
     "previous_glucose": 120,
@@ -121,15 +145,14 @@ def test_model_unavailable_returns_503(
         json=VALID_REQUEST,
     )
 
-    assert response.status_code == 503
-
-    body = response.json()
-
-    assert "detail" in body
-
-    assert body["detail"] == (
-        "Glucose trend model is not "
-        "currently available."
+    assert_api_error(
+        response,
+        status_code=503,
+        code="SERVICE_UNAVAILABLE",
+        message=(
+            "Glucose trend model is not "
+            "currently available."
+        ),
     )
 
 
@@ -146,15 +169,15 @@ def test_prediction_validation_error_returns_422(
         json=VALID_REQUEST,
     )
 
-    assert response.status_code == 422
-
-    body = response.json()
-
-    assert "detail" in body
+    body = assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+    )
 
     assert (
         "Invalid prediction input"
-        in body["detail"]
+        in body["error"]["message"]
     )
 
 
@@ -171,11 +194,14 @@ def test_unexpected_prediction_error_returns_500(
         json=VALID_REQUEST,
     )
 
-    assert response.status_code == 500
-
-    body = response.json()
-
-    assert "detail" in body
+    assert_api_error(
+        response,
+        status_code=500,
+        code="INTERNAL_ERROR",
+        message=(
+            "Glucose trend prediction failed."
+        ),
+    )
 
 
 # =========================================================

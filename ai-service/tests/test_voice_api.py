@@ -8,6 +8,26 @@ from main import app
 client = TestClient(app)
 
 
+# =========================================================
+# ERROR CONTRACT HELPER
+# =========================================================
+
+def assert_api_error(
+    response,
+    *,
+    status_code,
+    code,
+    message,
+):
+    assert response.status_code == status_code
+
+    body = response.json()
+
+    assert body["status"] == "ERROR"
+    assert body["error"]["code"] == code
+    assert body["error"]["message"] == message
+
+
 SUCCESSFUL_NLP_RESPONSE = {
     "status": "SUCCESS",
     "input_type": "VOICE",
@@ -35,6 +55,10 @@ SUCCESSFUL_NLP_RESPONSE = {
     ],
 }
 
+
+# =========================================================
+# SUCCESS
+# =========================================================
 
 @patch(
     "main.transcribe_and_process_audio"
@@ -78,6 +102,10 @@ def test_voice_endpoint_success(
     mock_process_audio.assert_called_once()
 
 
+# =========================================================
+# REQUEST VALIDATION
+# =========================================================
+
 def test_voice_endpoint_missing_file():
     response = client.post(
         "/api/v1/voice/parse"
@@ -98,11 +126,11 @@ def test_voice_endpoint_empty_file():
         },
     )
 
-    assert response.status_code == 422
-
-    assert (
-        response.json()["detail"]
-        == "Audio file cannot be empty."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message="Audio file cannot be empty.",
     )
 
 
@@ -118,11 +146,13 @@ def test_voice_endpoint_invalid_extension():
         },
     )
 
-    assert response.status_code == 422
-
-    assert (
-        response.json()["detail"]
-        == "Unsupported audio file extension."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
+            "Unsupported audio file extension."
+        ),
     )
 
 
@@ -138,13 +168,19 @@ def test_voice_endpoint_invalid_content_type():
         },
     )
 
-    assert response.status_code == 422
-
-    assert (
-        response.json()["detail"]
-        == "Unsupported audio content type."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
+            "Unsupported audio content type."
+        ),
     )
 
+
+# =========================================================
+# SPEECH-TO-TEXT ERRORS
+# =========================================================
 
 @patch(
     "main.transcribe_and_process_audio"
@@ -168,14 +204,14 @@ def test_voice_endpoint_no_speech(
         },
     )
 
-    assert response.status_code == 422
-
-    assert (
-        response.json()["detail"]
-        == (
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
             "No speech could be detected "
             "in the audio."
-        )
+        ),
     )
 
 
@@ -200,13 +236,19 @@ def test_voice_endpoint_stt_runtime_error(
         },
     )
 
-    assert response.status_code == 503
-
-    assert (
-        response.json()["detail"]
-        == "Speech-to-Text engine failed."
+    assert_api_error(
+        response,
+        status_code=503,
+        code="SERVICE_UNAVAILABLE",
+        message=(
+            "Speech-to-Text engine failed."
+        ),
     )
 
+
+# =========================================================
+# UNEXPECTED ERROR
+# =========================================================
 
 @patch(
     "main.transcribe_and_process_audio"
@@ -229,9 +271,9 @@ def test_voice_endpoint_unexpected_error(
         },
     )
 
-    assert response.status_code == 500
-
-    assert (
-        response.json()["detail"]
-        == "Voice processing failed."
+    assert_api_error(
+        response,
+        status_code=500,
+        code="INTERNAL_ERROR",
+        message="Voice processing failed.",
     )

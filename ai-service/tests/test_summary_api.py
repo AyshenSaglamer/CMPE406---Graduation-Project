@@ -8,6 +8,26 @@ from main import app
 client = TestClient(app)
 
 
+# =========================================================
+# ERROR CONTRACT HELPER
+# =========================================================
+
+def assert_api_error(
+    response,
+    *,
+    status_code,
+    code,
+    message,
+):
+    assert response.status_code == status_code
+
+    body = response.json()
+
+    assert body["status"] == "ERROR"
+    assert body["error"]["code"] == code
+    assert body["error"]["message"] == message
+
+
 VALID_REQUEST = {
     "records": [
         {
@@ -391,11 +411,14 @@ def test_invalid_range_order_returns_422(
         },
     )
 
-    assert response.status_code == 422
-
-    assert response.json()["detail"] == (
-        "range_low must be lower than "
-        "range_high."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
+            "range_low must be lower than "
+            "range_high."
+        ),
     )
 
 
@@ -413,11 +436,14 @@ def test_multiple_patients_returns_422(
         json=VALID_REQUEST,
     )
 
-    assert response.status_code == 422
-
-    assert response.json()["detail"] == (
-        "Summary history must contain "
-        "exactly one patient."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
+            "Summary history must contain "
+            "exactly one patient."
+        ),
     )
 
 
@@ -438,9 +464,12 @@ def test_unexpected_error_returns_500(
         json=VALID_REQUEST,
     )
 
-    assert response.status_code == 500
-
-    assert response.json()["detail"] == (
-        "Patient insight summary "
-        "generation failed."
+    assert_api_error(
+        response,
+        status_code=500,
+        code="INTERNAL_ERROR",
+        message=(
+            "Patient insight summary "
+            "generation failed."
+        ),
     )

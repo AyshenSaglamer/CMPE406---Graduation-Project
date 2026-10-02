@@ -8,6 +8,26 @@ from main import app
 client = TestClient(app)
 
 
+# =========================================================
+# ERROR CONTRACT HELPER
+# =========================================================
+
+def assert_api_error(
+    response,
+    *,
+    status_code,
+    code,
+    message,
+):
+    assert response.status_code == status_code
+
+    body = response.json()
+
+    assert body["status"] == "ERROR"
+    assert body["error"]["code"] == code
+    assert body["error"]["message"] == message
+
+
 VALID_HISTORY_REQUEST = {
     "records": [
         {
@@ -235,11 +255,14 @@ def test_multiple_patients_returns_422(
         json=VALID_HISTORY_REQUEST,
     )
 
-    assert response.status_code == 422
-
-    assert response.json()["detail"] == (
-        "Prediction history must contain "
-        "exactly one patient."
+    assert_api_error(
+        response,
+        status_code=422,
+        code="INVALID_INPUT",
+        message=(
+            "Prediction history must contain "
+            "exactly one patient."
+        ),
     )
 
 
@@ -330,11 +353,14 @@ def test_model_unavailable_returns_503(
         json=VALID_HISTORY_REQUEST,
     )
 
-    assert response.status_code == 503
-
-    assert response.json()["detail"] == (
-        "Glucose trend model is not "
-        "currently available."
+    assert_api_error(
+        response,
+        status_code=503,
+        code="SERVICE_UNAVAILABLE",
+        message=(
+            "Glucose trend model is not "
+            "currently available."
+        ),
     )
 
 
@@ -351,8 +377,11 @@ def test_unexpected_error_returns_500(
         json=VALID_HISTORY_REQUEST,
     )
 
-    assert response.status_code == 500
-
-    assert response.json()["detail"] == (
-        "Patient history prediction failed."
+    assert_api_error(
+        response,
+        status_code=500,
+        code="INTERNAL_ERROR",
+        message=(
+            "Patient history prediction failed."
+        ),
     )
