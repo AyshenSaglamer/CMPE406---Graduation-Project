@@ -1,9 +1,11 @@
+from datetime import datetime
 from typing import List
 
 from pydantic import (
     BaseModel,
     Field,
     field_validator,
+    model_validator,
 )
 
 
@@ -16,9 +18,7 @@ class ParseRequest(BaseModel):
         ...,
         min_length=1,
         max_length=500,
-        description=(
-            "Natural-language health log input."
-        ),
+        description="Natural-language health log input.",
         examples=[
             (
                 "My glucose is 125 and I took "
@@ -37,8 +37,7 @@ class ParseRequest(BaseModel):
 
         if not cleaned_value:
             raise ValueError(
-                "Text must not be empty "
-                "or whitespace."
+                "Text must not be empty or whitespace."
             )
 
         return cleaned_value
@@ -66,18 +65,14 @@ class TrendPredictionRequest(BaseModel):
     carbs_g: float = Field(
         ...,
         ge=0,
-        description=(
-            "Carbohydrate amount in grams."
-        ),
+        description="Carbohydrate amount in grams.",
         examples=[40],
     )
 
     activity_minutes: float = Field(
         ...,
         ge=0,
-        description=(
-            "Activity duration in minutes."
-        ),
+        description="Activity duration in minutes.",
         examples=[30],
     )
 
@@ -85,9 +80,7 @@ class TrendPredictionRequest(BaseModel):
         ...,
         ge=0,
         le=23,
-        description=(
-            "Hour of day from 0 to 23."
-        ),
+        description="Hour of day from 0 to 23.",
         examples=[14],
     )
 
@@ -96,8 +89,7 @@ class TrendPredictionRequest(BaseModel):
         ge=0,
         le=6,
         description=(
-            "Day of week where Monday=0 "
-            "and Sunday=6."
+            "Day of week where Monday=0 and Sunday=6."
         ),
         examples=[2],
     )
@@ -106,9 +98,7 @@ class TrendPredictionRequest(BaseModel):
         ...,
         ge=1,
         le=12,
-        description=(
-            "Calendar month from 1 to 12."
-        ),
+        description="Calendar month from 1 to 12.",
         examples=[9],
     )
 
@@ -117,8 +107,7 @@ class TrendPredictionRequest(BaseModel):
         ge=0,
         le=1,
         description=(
-            "Weekend indicator: "
-            "0 for no, 1 for yes."
+            "Weekend indicator: 0 for no, 1 for yes."
         ),
         examples=[0],
     )
@@ -134,21 +123,15 @@ class PatientHistoryRecord(BaseModel):
         min_length=1,
         max_length=100,
         description=(
-            "Anonymous or internal patient "
-            "identifier."
+            "Anonymous or internal patient identifier."
         ),
         examples=["patient_123"],
     )
 
-    timestamp: str = Field(
+    timestamp: datetime = Field(
         ...,
-        min_length=1,
-        description=(
-            "Timestamp of the patient record."
-        ),
-        examples=[
-            "2026-10-01T14:00:00"
-        ],
+        description="Timestamp of the patient record.",
+        examples=["2026-10-01T14:00:00"],
     )
 
     glucose_mg_dl: float = Field(
@@ -161,20 +144,14 @@ class PatientHistoryRecord(BaseModel):
     carbs_g: float = Field(
         ...,
         ge=0,
-        description=(
-            "Logged carbohydrate amount "
-            "in grams."
-        ),
+        description="Logged carbohydrate amount in grams.",
         examples=[40],
     )
 
     activity_minutes: float = Field(
         ...,
         ge=0,
-        description=(
-            "Logged activity duration "
-            "in minutes."
-        ),
+        description="Logged activity duration in minutes.",
         examples=[20],
     )
 
@@ -203,8 +180,7 @@ class HistoryPredictionRequest(BaseModel):
         ...,
         min_length=2,
         description=(
-            "Sequential records belonging "
-            "to one patient."
+            "Sequential records belonging to one patient."
         ),
     )
 
@@ -218,8 +194,7 @@ class PatientSummaryRequest(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Historical records belonging "
-            "to one patient."
+            "Historical records belonging to one patient."
         ),
     )
 
@@ -227,8 +202,8 @@ class PatientSummaryRequest(BaseModel):
         default=70.0,
         gt=0,
         description=(
-            "Configured lower glucose range "
-            "boundary in mg/dL."
+            "Configured lower glucose range boundary "
+            "in mg/dL."
         ),
         examples=[70],
     )
@@ -237,8 +212,17 @@ class PatientSummaryRequest(BaseModel):
         default=180.0,
         gt=0,
         description=(
-            "Configured upper glucose range "
-            "boundary in mg/dL."
+            "Configured upper glucose range boundary "
+            "in mg/dL."
         ),
         examples=[180],
     )
+
+    @model_validator(mode="after")
+    def validate_glucose_range(self):
+        if self.range_low >= self.range_high:
+            raise ValueError(
+                "range_low must be less than range_high."
+            )
+
+        return self

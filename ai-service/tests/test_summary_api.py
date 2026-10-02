@@ -388,18 +388,10 @@ def test_malformed_json_rejected():
 
 
 # =========================================================
-# SERVICE VALIDATION
+# SCHEMA VALIDATION
 # =========================================================
 
-@patch("main.build_patient_summary")
-def test_invalid_range_order_returns_422(
-    mock_summary,
-):
-    mock_summary.side_effect = ValueError(
-        "range_low must be lower than "
-        "range_high."
-    )
-
+def test_invalid_range_order_returns_422():
     response = client.post(
         "/api/v1/insights/summary",
         json={
@@ -411,16 +403,25 @@ def test_invalid_range_order_returns_422(
         },
     )
 
-    assert_api_error(
-        response,
-        status_code=422,
-        code="INVALID_INPUT",
-        message=(
-            "range_low must be lower than "
-            "range_high."
-        ),
+    body = response.json()
+
+    assert response.status_code == 422
+    assert body["status"] == "ERROR"
+
+    assert (
+        body["error"]["code"]
+        == "VALIDATION_ERROR"
     )
 
+    assert (
+        "range_low must be less than range_high"
+        in body["error"]["message"]
+    )
+
+
+# =========================================================
+# SERVICE VALIDATION
+# =========================================================
 
 @patch("main.build_patient_summary")
 def test_multiple_patients_returns_422(
