@@ -13,6 +13,9 @@ from ml.history_prediction import (
 from services.insight_service import (
     generate_insights,
 )
+from services.pattern_service import (
+    analyze_patient_patterns,
+)
 
 
 def build_patient_summary(
@@ -21,33 +24,46 @@ def build_patient_summary(
     range_high: float = 180.0,
 ) -> Dict:
     """
-    Build a combined descriptive analytics and
-    experimental ML summary from one patient's
-    historical records.
+    Build a unified patient AI summary containing:
 
-    Glucose range boundaries are supplied to this
-    service and should ultimately come from the
-    patient's configured profile settings.
+    - descriptive glucose analytics
+    - configured time-in-range analysis
+    - personalized descriptive patterns
+    - experimental XGBoost trend prediction
+    - human-readable insights
 
-    This service does not select medical targets
-    and does not provide diagnosis, treatment,
-    or medication dosing advice.
+    This service supports diabetes self-management
+    and does not provide diagnosis, treatment, or
+    medication dosing advice.
     """
+
+    # ========================================================
+    # INPUT VALIDATION
+    # ========================================================
 
     if not records:
         raise ValueError(
             "Patient history cannot be empty."
         )
 
-    if range_low <= 0 or range_high <= 0:
+    if (
+        range_low <= 0
+        or range_high <= 0
+    ):
         raise ValueError(
-            "Range bounds must be greater than zero."
+            "Range bounds must be greater "
+            "than zero."
         )
 
     if range_low >= range_high:
         raise ValueError(
-            "range_low must be lower than range_high."
+            "range_low must be lower "
+            "than range_high."
         )
+
+    # ========================================================
+    # NORMALIZE BACKEND DATA
+    # ========================================================
 
     dataframe = normalize_backend_records(
         records
@@ -63,33 +79,45 @@ def build_patient_summary(
             "exactly one patient."
         )
 
+    patient_id = str(
+        dataframe.iloc[0]["patient_id"]
+    )
+
+    # ========================================================
+    # GLUCOSE ANALYTICS
+    # ========================================================
+
     glucose_values = (
         dataframe["glucose_mg_dl"]
         .astype(float)
         .tolist()
     )
 
-    # -----------------------------------------------------
-    # Descriptive glucose statistics
-    # -----------------------------------------------------
-
-    statistics = calculate_glucose_statistics(
-        glucose_values
+    statistics = (
+        calculate_glucose_statistics(
+            glucose_values
+        )
     )
 
-    # -----------------------------------------------------
-    # Time in range
-    # -----------------------------------------------------
-
-    time_in_range = calculate_time_in_range(
-        glucose_values,
-        lower_bound=range_low,
-        upper_bound=range_high,
+    time_in_range = (
+        calculate_time_in_range(
+            glucose_values,
+            lower_bound=range_low,
+            upper_bound=range_high,
+        )
     )
 
-    # -----------------------------------------------------
-    # Experimental ML prediction
-    # -----------------------------------------------------
+    # ========================================================
+    # PERSONALIZED PATTERN DETECTION
+    # ========================================================
+
+    patterns = analyze_patient_patterns(
+        records
+    )
+
+    # ========================================================
+    # XGBOOST FUTURE TREND PREDICTION
+    # ========================================================
 
     prediction = None
     prediction_status = "NOT_AVAILABLE"
@@ -109,9 +137,9 @@ def build_patient_summary(
                 "MODEL_NOT_AVAILABLE"
             )
 
-    # -----------------------------------------------------
-    # Explainable insight generation
-    # -----------------------------------------------------
+    # ========================================================
+    # GENERAL INSIGHT ENGINE
+    # ========================================================
 
     insights = generate_insights(
         statistics=statistics,
@@ -119,36 +147,100 @@ def build_patient_summary(
         prediction=prediction,
     )
 
-    # -----------------------------------------------------
-    # Combined response
-    # -----------------------------------------------------
+    # ========================================================
+    # COMBINE INSIGHTS
+    # ========================================================
+
+    combined_insights = list(
+        insights.get(
+            "insights",
+            [],
+        )
+    )
+
+    pattern_insights = patterns.get(
+        "insights",
+        [],
+    )
+
+    combined_insights.extend(
+        pattern_insights
+    )
+
+    combined_insight_summary = {
+        "status": (
+            "SUCCESS"
+            if combined_insights
+            else "NO_INSIGHTS"
+        ),
+        "insight_count": len(
+            combined_insights
+        ),
+        "insights": combined_insights,
+        "purpose": (
+            "personalized_patient_summary"
+        ),
+        "disclaimer": (
+            "These insights summarize patterns "
+            "and associations in logged data. "
+            "They do not establish causation and "
+            "are not medical diagnosis, treatment, "
+            "or medication dosing advice."
+        ),
+    }
+
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
 
     return {
         "status": "SUCCESS",
-        "patient_id": str(
-            dataframe.iloc[0]["patient_id"]
+
+        "patient_id": patient_id,
+
+        "record_count": len(
+            dataframe
         ),
-        "record_count": len(dataframe),
+
         "configured_range": {
-            "low_mg_dl": float(range_low),
-            "high_mg_dl": float(range_high),
+            "low_mg_dl": float(
+                range_low
+            ),
+            "high_mg_dl": float(
+                range_high
+            ),
         },
+
         "analytics": {
-            "glucose_statistics": statistics,
-            "time_in_range": time_in_range,
+            "glucose_statistics": (
+                statistics
+            ),
+            "time_in_range": (
+                time_in_range
+            ),
         },
+
+        "personalized_patterns": (
+            patterns
+        ),
+
         "ml_prediction": {
             "status": prediction_status,
             "result": prediction,
         },
-        "insight_summary": insights,
+
+        "insight_summary": (
+            combined_insight_summary
+        ),
+
         "purpose": (
             "diabetes_self_management_support"
         ),
+
         "disclaimer": (
             "This summary describes patterns "
-            "in logged data and does not provide "
-            "medical diagnosis, treatment, or "
-            "medication dosing advice."
+            "and associations in logged data and "
+            "does not provide medical diagnosis, "
+            "treatment, or medication dosing advice."
         ),
     }
