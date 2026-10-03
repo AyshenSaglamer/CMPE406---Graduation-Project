@@ -21,4 +21,5 @@ public record JwtProperties(
         @NotBlank String secret,
         @NotNull Duration expiration,
         @NotBlank String issuer) {
+	
 }

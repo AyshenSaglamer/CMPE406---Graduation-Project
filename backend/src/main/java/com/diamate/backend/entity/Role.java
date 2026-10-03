@@ -8,4 +8,5 @@ public enum Role {
     CLINICIAN,
     CAREGIVER,
     ADMIN
+    
 }

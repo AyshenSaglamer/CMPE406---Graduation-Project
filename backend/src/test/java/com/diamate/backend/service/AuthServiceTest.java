@@ -9,6 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,10 +25,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.diamate.backend.dto.AuthResponse;
-import com.diamate.backend.dto.LoginRequest;
-import com.diamate.backend.dto.RegisterRequest;
-import com.diamate.backend.dto.UserResponse;
+import com.diamate.backend.api.dto.request.LoginRequest;
+import com.diamate.backend.api.dto.request.RegisterRequest;
+import com.diamate.backend.api.dto.response.AuthResponse;
+import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AccountDisabledException;
@@ -38,12 +42,15 @@ import com.diamate.backend.security.JwtService;
 /**
  * Unit tests: no Spring context and no database. The repository and JwtService are Mockito mocks;
  * the password encoder is a real BCrypt encoder (cost 4 instead of 10, to keep the tests fast).
+ * "Today" is fixed to 2026-10-03 so the minimum-age rule can be tested exactly on the birthday boundary.
  */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
     private static final String PATIENT_EMAIL = "patient01@diamate.example";
     private static final String RIGHT_PASSWORD = "RightPass1";
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 3);
+    private static final LocalDate ADULT_BIRTH_DATE = LocalDate.of(2000, 1, 15);
 
     @Mock
     private UserRepository userRepository;
@@ -57,7 +64,8 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, passwordEncoder, jwtService);
+        Clock fixedClock = Clock.fixed(TODAY.atStartOfDay(ZoneId.of("UTC")).toInstant(), ZoneId.of("UTC"));
+        authService = new AuthService(userRepository, passwordEncoder, jwtService, fixedClock);
     }
 
     // ---------- register ----------
@@ -68,22 +76,57 @@ class AuthServiceTest {
         when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 42L));
 
         UserResponse response = authService.register(
-                new RegisterRequest("  Melih K ", "  Melih@Example.COM ", "Secret123", Role.PATIENT));
+                register("  Melih ", " Kocabıyık ", "  Melih@Example.COM ", Role.PATIENT, ADULT_BIRTH_DATE));
 
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(saved.capture());
         assertThat(saved.getValue().getEmail()).isEqualTo("melih@example.com");
-        assertThat(saved.getValue().getFullName()).isEqualTo("Melih K");
+        assertThat(saved.getValue().getFirstName()).isEqualTo("Melih");
+        assertThat(saved.getValue().getLastName()).isEqualTo("Kocabıyık");
+        assertThat(saved.getValue().getDateOfBirth()).isEqualTo(ADULT_BIRTH_DATE);
+        assertThat(saved.getValue().getGender()).isEqualTo(Gender.MALE);
         assertThat(saved.getValue().getPasswordHash()).startsWith("$2a$").isNotEqualTo("Secret123");
         assertThat(passwordEncoder.matches("Secret123", saved.getValue().getPasswordHash())).isTrue();
         assertThat(saved.getValue().isActive()).isTrue();
-        assertThat(response).isEqualTo(new UserResponse(42L, "Melih K", "melih@example.com", Role.PATIENT));
+        assertThat(response).isEqualTo(new UserResponse(42L, "Melih", "Kocabıyık", "melih@example.com", Role.PATIENT));
+    }
+
+    @Test
+    void registerAcceptsSomeoneTurning16Today() {
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 43L));
+
+        UserResponse response = authService.register(
+                register("Deniz", "Yılmaz", "deniz@example.com", Role.PATIENT, TODAY.minusYears(16)));
+
+        assertThat(response.id()).isEqualTo(43L);
+    }
+
+    @Test
+    void registerRejectsSomeoneTurning16TomorrowWithoutTouchingTheDatabase() {
+        assertThatThrownBy(() -> authService.register(
+                register("Deniz", "Yılmaz", "deniz@example.com", Role.PATIENT, TODAY.minusYears(16).plusDays(1))))
+                .isInstanceOf(RegistrationNotAllowedException.class)
+                .hasMessage("You must be at least 16 years old to register");
+
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void minimumAgeAppliesToEveryRole() {
+        LocalDate fifteenYearsOld = TODAY.minusYears(15);
+        for (Role role : new Role[] { Role.PATIENT, Role.CAREGIVER, Role.CLINICIAN }) {
+            assertThatThrownBy(() -> authService.register(
+                    register("Young", "User", "young@example.com", role, fifteenYearsOld)))
+                    .isInstanceOf(RegistrationNotAllowedException.class);
+        }
+        verifyNoInteractions(userRepository);
     }
 
     @Test
     void registerRejectsAdminWithoutTouchingTheDatabase() {
         assertThatThrownBy(() -> authService.register(
-                new RegisterRequest("X", "x@example.com", "Secret123", Role.ADMIN)))
+                register("X", "Y", "x@example.com", Role.ADMIN, ADULT_BIRTH_DATE)))
                 .isInstanceOf(RegistrationNotAllowedException.class);
 
         verifyNoInteractions(userRepository);
@@ -94,7 +137,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmail("taken@example.com")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.register(
-                new RegisterRequest("X", "TAKEN@example.com", "Secret123", Role.CAREGIVER)))
+                register("X", "Y", "TAKEN@example.com", Role.CAREGIVER, ADULT_BIRTH_DATE)))
                 .isInstanceOf(EmailAlreadyRegisteredException.class);
 
         verify(userRepository, never()).saveAndFlush(any());
@@ -108,7 +151,7 @@ class AuthServiceTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
 
         assertThatThrownBy(() -> authService.register(
-                new RegisterRequest("X", "race@example.com", "Secret123", Role.CLINICIAN)))
+                register("X", "Y", "race@example.com", Role.CLINICIAN, ADULT_BIRTH_DATE)))
                 .isInstanceOf(EmailAlreadyRegisteredException.class);
     }
 
@@ -126,7 +169,7 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("test-token");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600L);
-        assertThat(response.user()).isEqualTo(new UserResponse(5L, "Demo Patient 01", PATIENT_EMAIL, Role.PATIENT));
+        assertThat(response.user()).isEqualTo(new UserResponse(5L, "Demo Patient", "01", PATIENT_EMAIL, Role.PATIENT));
         assertThat(patient.getLastLoginAt()).isNotNull();
     }
 
@@ -171,8 +214,14 @@ class AuthServiceTest {
 
     // ---------- helpers ----------
 
+    private static RegisterRequest register(String firstName, String lastName, String email, Role role,
+            LocalDate dateOfBirth) {
+        return new RegisterRequest(firstName, lastName, email, "Secret123", role, dateOfBirth, Gender.MALE);
+    }
+
     private User patient(boolean active) {
-        User user = new User(PATIENT_EMAIL, passwordEncoder.encode(RIGHT_PASSWORD), Role.PATIENT, "Demo Patient 01");
+        User user = new User(PATIENT_EMAIL, passwordEncoder.encode(RIGHT_PASSWORD), Role.PATIENT,
+                "Demo Patient", "01", LocalDate.of(1992, 7, 1), Gender.MALE);
         withId(user, 5L);
         ReflectionTestUtils.setField(user, "active", active);
         return user;

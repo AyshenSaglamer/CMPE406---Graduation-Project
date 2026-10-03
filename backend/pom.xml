@@ -42,6 +42,17 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Versioned database migrations (src/main/resources/db/migration), applied on startup -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- /actuator/health with a live database connectivity check -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

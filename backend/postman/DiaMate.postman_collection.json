@@ -96,7 +96,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Melih Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\"\n}"
+              "raw": "{\n  \"firstName\": \"Melih\",\n  \"lastName\": \"Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\",\n  \"dateOfBirth\": \"2000-01-15\",\n  \"gender\": \"MALE\"\n}"
             }
           },
           "event": [
@@ -133,7 +133,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Melih Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\"\n}"
+              "raw": "{\n  \"firstName\": \"Melih\",\n  \"lastName\": \"Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CAREGIVER\",\n  \"dateOfBirth\": \"2000-01-15\",\n  \"gender\": \"MALE\"\n}"
             }
           },
           "event": [
@@ -162,7 +162,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123\",\n  \"role\": \"PATIENT\"\n}"
+              "raw": "{\n  \"firstName\": \"\",\n  \"lastName\": \"\",\n  \"email\": \"not-an-email\",\n  \"password\": \"123\",\n  \"role\": \"PATIENT\"\n}"
             }
           },
           "event": [
@@ -174,7 +174,7 @@
                   "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
                   "pm.test('Field errors are listed', () => {",
                   "  const e = pm.response.json().errors;",
-                  "  pm.expect(e).to.have.all.keys('fullName', 'email', 'password');",
+                  "  pm.expect(e).to.have.all.keys('firstName', 'lastName', 'email', 'password', 'dateOfBirth', 'gender');",
                   "});"
                 ]
               }
@@ -194,7 +194,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"X\",\n  \"email\": \"admin.attempt@diamate.test\",\n  \"password\": \"Secret123\",\n  \"role\": \"ADMIN\"\n}"
+              "raw": "{\n  \"firstName\": \"X\",\n  \"lastName\": \"Y\",\n  \"email\": \"admin.attempt@diamate.test\",\n  \"password\": \"Secret123\",\n  \"role\": \"ADMIN\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"OTHER\"\n}"
             }
           },
           "event": [
@@ -205,6 +205,35 @@
                 "exec": [
                   "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
                   "pm.test('ADMIN is refused', () => pm.expect(pm.response.json().detail).to.include('ADMIN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register under 16 -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Genc\",\n  \"lastName\": \"Kullanici\",\n  \"email\": \"under16@diamate.test\",\n  \"password\": \"Secret123\",\n  \"role\": \"PATIENT\",\n  \"dateOfBirth\": \"2015-06-01\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Minimum age message', () => pm.expect(pm.response.json().detail).to.eql('You must be at least 16 years old to register'));"
                 ]
               }
             }
@@ -262,7 +291,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Role is CAREGIVER', () => pm.expect(pm.response.json().user.role).to.eql('CAREGIVER'));"
+                  "pm.test('Role is CAREGIVER', () => pm.expect(pm.response.json().user.role).to.eql('CAREGIVER'));",
+                  "pm.test('Returns first and last name separately', () => { const u = pm.response.json().user; pm.expect(u).to.have.property('firstName'); pm.expect(u).to.have.property('lastName'); pm.expect(u).to.not.have.property('fullName'); });"
                 ]
               }
             }
@@ -298,7 +328,8 @@
                   "  pm.expect(body.expiresIn).to.eql(3600);",
                   "});",
                   "pm.test('Returns the patient', () => pm.expect(body.user.role).to.eql('PATIENT'));",
-                  "pm.collectionVariables.set('accessToken', body.accessToken);"
+                  "pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "pm.test('Returns first and last name separately', () => { const u = pm.response.json().user; pm.expect(u).to.have.property('firstName'); pm.expect(u).to.have.property('lastName'); pm.expect(u).to.not.have.property('fullName'); });"
                 ]
               }
             }

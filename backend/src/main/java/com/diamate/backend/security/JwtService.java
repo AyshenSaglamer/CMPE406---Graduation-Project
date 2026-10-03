@@ -42,4 +42,5 @@ public class JwtService {
     public long getExpirationSeconds() {
         return properties.expiration().toSeconds();
     }
+    
 }

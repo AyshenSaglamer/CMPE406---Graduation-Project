@@ -1,4 +1,4 @@
-package com.diamate.backend.controller;
+package com.diamate.backend.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -17,11 +17,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.diamate.backend.dto.AuthResponse;
-import com.diamate.backend.dto.UserResponse;
+import com.diamate.backend.api.dto.response.AuthResponse;
+import com.diamate.backend.api.dto.response.UserResponse;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
+import com.diamate.backend.exception.RegistrationNotAllowedException;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AuthService;
 
@@ -45,15 +46,18 @@ class AuthControllerTest {
     @Test
     void registerReturns201WithUserAndNoPasswordFields() throws Exception {
         when(authService.register(any())).thenReturn(
-                new UserResponse(42L, "Melih Test", "melih.test@diamate.test", Role.CAREGIVER));
+                new UserResponse(42L, "Melih", "Test", "melih.test@diamate.test", Role.CAREGIVER));
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"Melih Test","email":"melih.test@diamate.test","password":"Secret123","role":"CAREGIVER"}
+                                {"firstName":"Melih","lastName":"Test","email":"melih.test@diamate.test","password":"Secret123",
+                                 "role":"CAREGIVER","dateOfBirth":"2000-01-15","gender":"MALE"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(42))
+                .andExpect(jsonPath("$.firstName").value("Melih"))
+                .andExpect(jsonPath("$.lastName").value("Test"))
                 .andExpect(jsonPath("$.email").value("melih.test@diamate.test"))
                 .andExpect(jsonPath("$.role").value("CAREGIVER"))
                 .andExpect(jsonPath("$.password").doesNotExist())
@@ -65,12 +69,15 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"","email":"not-an-email","password":"123","role":"PATIENT"}
+                                {"firstName":"","lastName":"","email":"not-an-email","password":"123","role":"PATIENT"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.title").value("Validation failed"))
-                .andExpect(jsonPath("$.errors.fullName").value("Full name is required"))
+                .andExpect(jsonPath("$.errors.firstName").value("First name is required"))
+                .andExpect(jsonPath("$.errors.lastName").value("Last name is required"))
+                .andExpect(jsonPath("$.errors.dateOfBirth").value("Date of birth is required"))
+                .andExpect(jsonPath("$.errors.gender").value("Gender is required"))
                 .andExpect(jsonPath("$.errors.email").value("Email format is invalid"))
                 .andExpect(jsonPath("$.errors.password").value("Password must be at least 8 characters"));
 
@@ -82,11 +89,54 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"X","email":"x@example.com","password":"Secret123","role":"DOCTOR"}
+                                {"firstName":"X","lastName":"Y","email":"x@example.com","password":"Secret123","role":"DOCTOR",
+                                 "dateOfBirth":"2000-01-15","gender":"MALE"}
                                 """))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerWithFutureBirthDateReturns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"X","lastName":"Y","email":"x@example.com","password":"Secret123",
+                                 "role":"PATIENT","dateOfBirth":"2999-01-01","gender":"OTHER"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.dateOfBirth").value("Date of birth must be in the past"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerWithUnknownGenderReturns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"X","lastName":"Y","email":"x@example.com","password":"Secret123",
+                                 "role":"PATIENT","dateOfBirth":"2000-01-15","gender":"UNKNOWN"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerUnder16Returns400WithMessage() throws Exception {
+        when(authService.register(any())).thenThrow(
+                new RegistrationNotAllowedException("You must be at least 16 years old to register"));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"Young","lastName":"User","email":"young@example.com","password":"Secret123",
+                                 "role":"PATIENT","dateOfBirth":"2015-06-01","gender":"FEMALE"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("You must be at least 16 years old to register"));
     }
 
     @Test
@@ -96,7 +146,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"fullName":"X","email":"taken@example.com","password":"Secret123","role":"PATIENT"}
+                                {"firstName":"X","lastName":"Y","email":"taken@example.com","password":"Secret123","role":"PATIENT",
+                                 "dateOfBirth":"2000-01-15","gender":"FEMALE"}
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Email is already registered"));
@@ -105,7 +156,7 @@ class AuthControllerTest {
     @Test
     void loginReturns200WithBearerToken() throws Exception {
         when(authService.login(any())).thenReturn(new AuthResponse("test-token", "Bearer", 3600,
-                new UserResponse(5L, "Demo Patient 01", "patient01@diamate.example", Role.PATIENT)));
+                new UserResponse(5L, "Demo Patient", "01", "patient01@diamate.example", Role.PATIENT)));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

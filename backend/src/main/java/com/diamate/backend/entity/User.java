@@ -1,6 +1,7 @@
 package com.diamate.backend.entity;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
@@ -15,8 +16,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * Maps the users table (see Database/sql/06_app_schema.sql).
- * The two-factor columns are not mapped yet because nothing uses them.
+ * Maps the users table (see Database/sql/06_app_schema.sql and db/migration).
+ * Not mapped: the two-factor columns (nothing uses them yet) and full_name, which the database
+ * generates from first_name and last_name.
  */
 @Entity
 @Table(name = "users")
@@ -36,8 +38,18 @@ public class User {
     @Column(nullable = false, length = 20)
     private Role role;
 
-    @Column(name = "full_name", nullable = false, length = 100)
-    private String fullName;
+    @Column(name = "first_name", nullable = false, length = 50)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false, length = 50)
+    private String lastName;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private Gender gender;
 
     @Column(length = 30)
     private String phone;
@@ -74,11 +86,15 @@ public class User {
         // required by JPA
     }
 
-    public User(String email, String passwordHash, Role role, String fullName) {
+    public User(String email, String passwordHash, Role role, String firstName, String lastName,
+            LocalDate dateOfBirth, Gender gender) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
-        this.fullName = fullName;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.dateOfBirth = dateOfBirth;
+        this.gender = gender;
     }
 
     public Long getId() {
@@ -97,8 +113,20 @@ public class User {
         return role;
     }
 
-    public String getFullName() {
-        return fullName;
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public LocalDate getDateOfBirth() {
+        return dateOfBirth;
+    }
+
+    public Gender getGender() {
+        return gender;
     }
 
     public String getPhone() {
@@ -140,4 +168,5 @@ public class User {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+    
 }

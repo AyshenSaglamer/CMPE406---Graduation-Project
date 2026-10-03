@@ -41,6 +41,17 @@ cd ../DiaMate
 
 Sonuç: `public` şemasında 30 uygulama tablosu, `research` şemasında 14 veri seti tablosu, 12 demo hesap (bkz. `../Database/docs/DEMO_ACCOUNTS.md`).
 
+### Şema değişiklikleri (Flyway)
+
+`Database` paketinin kurduğu şema **sürüm 1** sayılır. Sonraki değişiklikler `src/main/resources/db/migration/V2__...sql`, `V3__...sql` dosyalarıdır; backend açılırken **Flyway** bunları sırayla ve yalnızca bir kez uygular (kayıt: `flyway_schema_history` tablosu).
+
+| Sürüm | Değişiklik |
+|---|---|
+| V1 | `Database/sql` paketi (başlangıç noktası) |
+| V2 | `users`: `full_name` yerine `first_name` + `last_name` (`full_name` artık bunlardan otomatik üretilir), `date_of_birth` ve `gender` eklendi; bu iki bilgi `patient_profiles`'tan `users`'a taşındı |
+
+Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik için yeni sürüm dosyası eklenir.
+
 > Backend **yalnızca** 5434'teki Docker veritabanına bağlanır. pgAdmin'deki 5433 ("PostgreSQL 18") kurulumu referanstır.
 > `docker compose down -v` **tüm veriyi siler**; `docker compose stop` ya da `-v` olmadan `docker compose down` veriyi korur.
 
@@ -69,7 +80,7 @@ Postman: `postman/DiaMate.postman_collection.json` dosyasını içe aktarın ve 
 |---|---|---|---|
 | GET | `/api/v1/health` | herkese açık | Uygulama ayakta mı |
 | GET | `/actuator/health` | herkese açık | Veritabanı bağlantısı dahil sağlık durumu |
-| POST | `/api/v1/auth/register` | herkese açık | `{fullName, email, password, role}` → 201. Rol: `PATIENT`, `CAREGIVER`, `CLINICIAN` (`ADMIN` kayıt olamaz) |
+| POST | `/api/v1/auth/register` | herkese açık | `{firstName, lastName, email, password, role, dateOfBirth, gender}` → 201. Rol: `PATIENT`, `CAREGIVER`, `CLINICIAN` (`ADMIN` kayıt olamaz). `dateOfBirth` `yyyy-MM-dd`, **en az 16 yaş**. `gender`: `FEMALE`, `MALE`, `OTHER` |
 | POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, user}` |
 
 Diğer tüm adresler `Authorization: Bearer <accessToken>` ister (yoksa 401).
@@ -78,13 +89,16 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister (yoksa 401).
 
 ```
 com.diamate.backend
-├── controller   HTTP katmanı (endpoint'ler)
-├── service      iş mantığı
-├── repository   veritabanı erişimi (Spring Data JPA)
-├── entity       JPA entity'leri (veritabanı tabloları)
-├── dto          API istek/cevap modelleri
-├── security     BCrypt, JWT üretimi/doğrulaması, güvenlik kuralları
-└── exception    uygulama hataları ve merkezi hata yönetimi
+├── api
+│   ├── controller   HTTP katmanı (endpoint'ler)
+│   └── dto
+│       ├── request  API'ye gelen veriler (doğrulama kuralları burada)
+│       └── response API'den dönen veriler
+├── service          iş mantığı
+├── repository       veritabanı erişimi (Spring Data JPA)
+├── entity           JPA entity'leri (veritabanı tabloları)
+├── security         BCrypt, JWT üretimi/doğrulaması, güvenlik kuralları
+└── exception        uygulama hataları ve merkezi hata yönetimi
 ```
 
 Veritabanı şeması ve eşleme notları: `../Database/docs/BACKEND_NOTES.md`, `../Database/docs/DATA_DICTIONARY.md`.
