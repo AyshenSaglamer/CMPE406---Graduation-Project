@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../models/child_profile.dart';
-import 'add_child_screen.dart';
-import 'child_profile_screen.dart';
+import '../models/family_member.dart';
+import 'add_family_member_screen.dart';
 import 'role_selection_screen.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
@@ -15,43 +14,55 @@ class CaregiverDashboardScreen extends StatefulWidget {
 
 class _CaregiverDashboardScreenState
     extends State<CaregiverDashboardScreen> {
-  final List<ChildProfile> children = [];
+  final List<FamilyMember> familyMembers = [];
 
   int selectedIndex = 0;
 
-  Future<void> _addChild() async {
-    final child = await Navigator.push<ChildProfile>(
+  // ------------------------------------------------------------
+  // ADD FAMILY MEMBER
+  // ------------------------------------------------------------
+
+  Future<void> _addFamilyMember() async {
+    final member = await Navigator.push<FamilyMember>(
       context,
       MaterialPageRoute(
-        builder: (_) => const AddChildScreen(),
+        builder: (_) => const AddFamilyMemberScreen(),
       ),
     );
 
-    if (child != null) {
+    if (member != null) {
       setState(() {
-        children.add(child);
+        familyMembers.add(member);
       });
     }
   }
 
-  void _openChild(ChildProfile child) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChildProfileScreen(
-          child: child,
-        ),
-      ),
+  // ------------------------------------------------------------
+  // OPEN FAMILY MEMBER
+  // ------------------------------------------------------------
+
+  void _openFamilyMember(FamilyMember member) {
+    _showFeatureMessage(
+      '${member.name} profile will open here.',
     );
   }
+
+  // ------------------------------------------------------------
+  // MESSAGE
+  // ------------------------------------------------------------
 
   void _showFeatureMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
+
+  // ------------------------------------------------------------
+  // LOGOUT
+  // ------------------------------------------------------------
 
   void _showLogoutDialog() {
     showDialog<void>(
@@ -99,12 +110,17 @@ class _CaregiverDashboardScreenState
     );
   }
 
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: _buildCurrentPage(),
       ),
+
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
@@ -115,7 +131,8 @@ class _CaregiverDashboardScreenState
         height: 76,
         backgroundColor: Colors.white,
         indicatorColor: const Color(0xFFE8F3FF),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior:
+            NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -142,6 +159,10 @@ class _CaregiverDashboardScreenState
     );
   }
 
+  // ------------------------------------------------------------
+  // CURRENT PAGE
+  // ------------------------------------------------------------
+
   Widget _buildCurrentPage() {
     switch (selectedIndex) {
       case 0:
@@ -161,9 +182,18 @@ class _CaregiverDashboardScreenState
     }
   }
 
+  // ============================================================
+  // HOME PAGE
+  // ============================================================
+
   Widget _buildHomePage() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 26),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        14,
+        18,
+        26,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -176,7 +206,7 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 22),
 
           const Text(
-            'My Children',
+            'Family Members',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
@@ -185,17 +215,22 @@ class _CaregiverDashboardScreenState
 
           const SizedBox(height: 8),
 
-          if (children.isEmpty)
-            _EmptyChildrenCard(
-              onAddChild: _addChild,
-            )
+          // ------------------------------------------------------
+          // HOME'DA SADECE ÜYELER GÖSTERİLİYOR.
+          // ADD FAMILY MEMBER BUTONU YOK.
+          // ------------------------------------------------------
+
+          if (familyMembers.isEmpty)
+            _EmptyFamilyCard()
           else
-            ...children.map(
-              (child) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ChildCard(
-                  child: child,
-                  onTap: () => _openChild(child),
+            ...familyMembers.map(
+              (member) => Padding(
+                padding: const EdgeInsets.only(
+                  bottom: 12,
+                ),
+                child: _FamilyMemberCard(
+                  member: member,
+                  onTap: () => _openFamilyMember(member),
                 ),
               ),
             ),
@@ -211,6 +246,10 @@ class _CaregiverDashboardScreenState
       ),
     );
   }
+
+  // ============================================================
+  // HEADER
+  // ============================================================
 
   Widget _buildHeader() {
     return Row(
@@ -280,6 +319,10 @@ class _CaregiverDashboardScreenState
     );
   }
 
+  // ============================================================
+  // OVERVIEW CARD
+  // ============================================================
+
   Widget _buildOverviewCard() {
     return Container(
       width: double.infinity,
@@ -301,7 +344,9 @@ class _CaregiverDashboardScreenState
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.78),
+              color: Colors.white.withValues(
+                alpha: 0.78,
+              ),
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Icon(
@@ -342,11 +387,14 @@ class _CaregiverDashboardScreenState
               vertical: 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.78),
+              color: Colors.white.withValues(
+                alpha: 0.78,
+              ),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
-              '${children.length} ${children.length == 1 ? 'child' : 'children'}',
+              '${familyMembers.length} '
+              '${familyMembers.length == 1 ? 'member' : 'members'}',
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -358,6 +406,10 @@ class _CaregiverDashboardScreenState
       ),
     );
   }
+
+  // ============================================================
+  // FAMILY INSIGHT
+  // ============================================================
 
   Widget _buildFamilyInsight() {
     return Card(
@@ -417,6 +469,10 @@ class _CaregiverDashboardScreenState
     );
   }
 
+  // ============================================================
+  // QUICK ACTIONS
+  // ============================================================
+
   Widget _buildQuickActions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,17 +489,9 @@ class _CaregiverDashboardScreenState
 
         Row(
           children: [
-            Expanded(
-              child: _CaregiverActionCard(
-                icon: Icons.person_add_alt_1_rounded,
-                title: 'Add Child',
-                background: const Color(0xFFEAF5FF),
-                iconColor: const Color(0xFF168AF7),
-                onTap: _addChild,
-              ),
-            ),
-
-            const SizedBox(width: 10),
+            // --------------------------------------------------
+            // REMINDERS
+            // --------------------------------------------------
 
             Expanded(
               child: _CaregiverActionCard(
@@ -460,6 +508,10 @@ class _CaregiverDashboardScreenState
             ),
 
             const SizedBox(width: 10),
+
+            // --------------------------------------------------
+            // REPORTS
+            // --------------------------------------------------
 
             Expanded(
               child: _CaregiverActionCard(
@@ -480,9 +532,18 @@ class _CaregiverDashboardScreenState
     );
   }
 
+  // ============================================================
+  // FAMILY PAGE
+  // ============================================================
+
   Widget _buildFamilyPage() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        20,
+        18,
+        30,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -506,35 +567,65 @@ class _CaregiverDashboardScreenState
 
           const SizedBox(height: 20),
 
-          if (children.isEmpty)
-            _EmptyChildrenCard(
-              onAddChild: _addChild,
-            )
+          if (familyMembers.isEmpty)
+            _EmptyFamilyCard()
           else
-            ...children.map(
-              (child) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ChildCard(
-                  child: child,
-                  onTap: () => _openChild(child),
+            ...familyMembers.map(
+              (member) => Padding(
+                padding: const EdgeInsets.only(
+                  bottom: 12,
+                ),
+                child: _FamilyMemberCard(
+                  member: member,
+                  onTap: () => _openFamilyMember(member),
                 ),
               ),
             ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+
+          // ----------------------------------------------------
+          // TEK ADD FAMILY MEMBER BUTONU SADECE BURADA
+          // ----------------------------------------------------
 
           SizedBox(
             width: double.infinity,
             height: 54,
+            child: ElevatedButton.icon(
+              onPressed: _addFamilyMember,
+              icon: const Icon(
+                Icons.add_rounded,
+              ),
+              label: const Text(
+                'Add Family Member',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF765BD4),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  // ============================================================
+  // REMINDERS
+  // ============================================================
+
   Widget _buildReminderPage() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        20,
+        18,
+        30,
+      ),
       children: [
         const Text(
           'Reminders',
@@ -556,33 +647,42 @@ class _CaregiverDashboardScreenState
 
         const SizedBox(height: 20),
 
-        _FamilyReminderCard(
+        const _FamilyReminderCard(
           time: '08:00',
           title: 'Morning glucose check',
-          subtitle: 'Emma',
+          subtitle: 'Family Member',
           enabled: true,
         ),
 
-        _FamilyReminderCard(
+        const _FamilyReminderCard(
           time: '12:30',
-          title: 'Insulin',
-          subtitle: 'Emma',
+          title: 'Medication',
+          subtitle: 'Family Member',
           enabled: true,
         ),
 
-        _FamilyReminderCard(
+        const _FamilyReminderCard(
           time: '20:00',
           title: 'Evening glucose check',
-          subtitle: 'Emma',
+          subtitle: 'Family Member',
           enabled: false,
         ),
       ],
     );
   }
 
+  // ============================================================
+  // MORE
+  // ============================================================
+
   Widget _buildMorePage() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        20,
+        18,
+        30,
+      ),
       children: [
         const Text(
           'More',
@@ -607,7 +707,7 @@ class _CaregiverDashboardScreenState
         _MoreOption(
           icon: Icons.people_outline_rounded,
           title: 'Family Members',
-          subtitle: 'Manage children and profiles',
+          subtitle: 'Manage family profiles',
           onTap: () {
             setState(() {
               selectedIndex = 1;
@@ -652,17 +752,67 @@ class _CaregiverDashboardScreenState
   }
 }
 
-class _ChildCard extends StatelessWidget {
-  final ChildProfile child;
+// ============================================================================
+// FAMILY MEMBER CARD
+// ============================================================================
+
+class _FamilyMemberCard extends StatelessWidget {
+  final FamilyMember member;
   final VoidCallback onTap;
 
-  const _ChildCard({
-    required this.child,
+  const _FamilyMemberCard({
+    required this.member,
     required this.onTap,
   });
 
+  IconData _getIcon() {
+    switch (member.relationship) {
+      case 'Mother':
+        return Icons.woman_rounded;
+
+      case 'Father':
+        return Icons.man_rounded;
+
+      case 'Spouse':
+        return Icons.favorite_rounded;
+
+      case 'Sibling':
+        return Icons.people_rounded;
+
+      case 'Child':
+        return Icons.child_care_rounded;
+
+      default:
+        return Icons.person_rounded;
+    }
+  }
+
+  Color _getIconColor() {
+    switch (member.relationship) {
+      case 'Mother':
+        return const Color(0xFFE85D9E);
+
+      case 'Father':
+        return const Color(0xFF168AF7);
+
+      case 'Spouse':
+        return const Color(0xFFE85D75);
+
+      case 'Sibling':
+        return const Color(0xFF765BD4);
+
+      case 'Child':
+        return const Color(0xFF168AF7);
+
+      default:
+        return const Color(0xFF667085);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final iconColor = _getIconColor();
+
     return Card(
       child: InkWell(
         onTap: onTap,
@@ -675,12 +825,14 @@ class _ChildCard extends StatelessWidget {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
+                  color: iconColor.withValues(
+                    alpha: 0.10,
+                  ),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: const Icon(
-                  Icons.child_care_rounded,
-                  color: Color(0xFF168AF7),
+                child: Icon(
+                  _getIcon(),
+                  color: iconColor,
                   size: 30,
                 ),
               ),
@@ -689,10 +841,11 @@ class _ChildCard extends StatelessWidget {
 
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
-                      child.name,
+                      member.name,
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
@@ -702,39 +855,22 @@ class _ChildCard extends StatelessWidget {
                     const SizedBox(height: 4),
 
                     Text(
-                      child.diabetesType,
+                      member.relationship,
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF718096),
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
 
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.water_drop_rounded,
-                          size: 14,
-                          color: Color(0xFF168AF7),
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          '112 mg/dL',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          '• Today 08:30',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF8A97A5),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      member.gender,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF8A97A5),
+                      ),
                     ),
                   ],
                 ),
@@ -752,12 +888,12 @@ class _ChildCard extends StatelessWidget {
   }
 }
 
-class _EmptyChildrenCard extends StatelessWidget {
-  final VoidCallback onAddChild;
+// ============================================================================
+// EMPTY FAMILY CARD
+// ============================================================================
 
-  const _EmptyChildrenCard({
-    required this.onAddChild,
-  });
+class _EmptyFamilyCard extends StatelessWidget {
+  const _EmptyFamilyCard();
 
   @override
   Widget build(BuildContext context) {
@@ -773,20 +909,21 @@ class _EmptyChildrenCard extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF5FF),
+                color: const Color(0xFFF0ECFF),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: const Icon(
-                Icons.child_care_rounded,
+                Icons.family_restroom_rounded,
                 size: 38,
-                color: Color(0xFF168AF7),
+                color: Color(0xFF765BD4),
               ),
             ),
 
             const SizedBox(height: 16),
 
             const Text(
-              'No children added yet',
+              'No family members added yet',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -796,29 +933,13 @@ class _EmptyChildrenCard extends StatelessWidget {
             const SizedBox(height: 7),
 
             const Text(
-              'Add a child to start managing their health information.',
+              'Add a family member to start managing '
+              'their health information.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 height: 1.45,
                 color: Color(0xFF718096),
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            SizedBox(
-              height: 48,
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onAddChild,
-                icon: const Icon(
-                  Icons.add_rounded,
-                  size: 20,
-                ),
-                label: const Text(
-                  'Add Child',
-                ),
               ),
             ),
           ],
@@ -827,6 +948,10 @@ class _EmptyChildrenCard extends StatelessWidget {
     );
   }
 }
+
+// ============================================================================
+// QUICK ACTION CARD
+// ============================================================================
 
 class _CaregiverActionCard extends StatelessWidget {
   final IconData icon;
@@ -890,6 +1015,10 @@ class _CaregiverActionCard extends StatelessWidget {
   }
 }
 
+// ============================================================================
+// REMINDER CARD
+// ============================================================================
+
 class _FamilyReminderCard extends StatelessWidget {
   final String time;
   final String title;
@@ -932,7 +1061,8 @@ class _FamilyReminderCard extends StatelessWidget {
 
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
@@ -968,6 +1098,10 @@ class _FamilyReminderCard extends StatelessWidget {
     );
   }
 }
+
+// ============================================================================
+// MORE OPTION
+// ============================================================================
 
 class _MoreOption extends StatelessWidget {
   final IconData icon;
@@ -1014,7 +1148,8 @@ class _MoreOption extends StatelessWidget {
 
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
