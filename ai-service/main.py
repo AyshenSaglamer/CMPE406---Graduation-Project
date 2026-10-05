@@ -8,6 +8,7 @@ from fastapi import (
 )
 
 from models.schemas import (
+    AnomalyDetectionRequest,
     HistoryPredictionRequest,
     ParseRequest,
     PatientSummaryRequest,
@@ -20,6 +21,10 @@ from ml.history_prediction import (
 
 from ml.prediction import (
     predict_with_saved_model,
+)
+
+from services.anomaly_service import (
+    analyze_patient_glucose_anomaly,
 )
 
 from services.audio_service import (
@@ -80,8 +85,8 @@ OPENAPI_TAGS = [
         "name": "Insights",
         "description": (
             "Patient-history analytics, personalized "
-            "pattern detection, and descriptive insight "
-            "generation."
+            "pattern detection, statistical anomaly "
+            "detection, and descriptive insight generation."
         ),
     },
     {
@@ -105,7 +110,8 @@ app = FastAPI(
         "self-management support system.\n\n"
         "The service provides natural-language health "
         "logging, voice input processing, patient-history "
-        "analytics, personalized pattern detection, and "
+        "analytics, personalized pattern detection, "
+        "personalized statistical anomaly detection, and "
         "experimental XGBoost-based glucose trend "
         "classification.\n\n"
         "**Safety:** DiaMate is a self-management support "
@@ -353,6 +359,57 @@ def patient_insight_summary(
             detail=(
                 "Patient insight summary "
                 "generation failed."
+            ),
+        )
+
+
+# ============================================================
+# PERSONALIZED ANOMALY DETECTION
+# ============================================================
+
+
+@app.post(
+    "/api/v1/insights/anomaly",
+    tags=["Insights"],
+    summary="Detect a personalized glucose anomaly",
+    description=(
+        "Compares the latest glucose reading with the "
+        "same patient's previous logged glucose values. "
+        "The earlier records form a personalized "
+        "statistical baseline, while the latest record "
+        "is evaluated using a configurable z-score "
+        "threshold. This endpoint identifies statistical "
+        "unusualness only and does not provide diagnosis, "
+        "clinical risk classification, treatment, or "
+        "medication advice."
+    ),
+)
+def patient_glucose_anomaly(
+    request: AnomalyDetectionRequest,
+):
+    try:
+        records = [
+            record.model_dump()
+            for record in request.records
+        ]
+
+        return analyze_patient_glucose_anomaly(
+            records=records,
+            z_threshold=request.z_threshold,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Personalized glucose anomaly "
+                "detection failed."
             ),
         )
 

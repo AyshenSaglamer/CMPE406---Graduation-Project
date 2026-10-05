@@ -13,6 +13,7 @@ from pydantic import (
 # NLP
 # =========================================================
 
+
 class ParseRequest(BaseModel):
     text: str = Field(
         ...,
@@ -46,6 +47,7 @@ class ParseRequest(BaseModel):
 # =========================================================
 # DIRECT ML PREDICTION
 # =========================================================
+
 
 class TrendPredictionRequest(BaseModel):
     glucose_mg_dl: float = Field(
@@ -117,6 +119,7 @@ class TrendPredictionRequest(BaseModel):
 # PATIENT HISTORY RECORD
 # =========================================================
 
+
 class PatientHistoryRecord(BaseModel):
     patient_id: str = Field(
         ...,
@@ -175,6 +178,7 @@ class PatientHistoryRecord(BaseModel):
 # PATIENT HISTORY ML PREDICTION
 # =========================================================
 
+
 class HistoryPredictionRequest(BaseModel):
     records: List[PatientHistoryRecord] = Field(
         ...,
@@ -188,6 +192,7 @@ class HistoryPredictionRequest(BaseModel):
 # =========================================================
 # PATIENT INSIGHT SUMMARY
 # =========================================================
+
 
 class PatientSummaryRequest(BaseModel):
     records: List[PatientHistoryRecord] = Field(
@@ -226,3 +231,44 @@ class PatientSummaryRequest(BaseModel):
             )
 
         return self
+
+
+# =========================================================
+# PERSONALIZED ANOMALY DETECTION
+# =========================================================
+
+
+class AnomalyDetectionRequest(BaseModel):
+    """
+    Request schema for personalized statistical
+    glucose anomaly detection.
+
+    The latest record is treated as the current
+    observation.
+
+    Earlier records form the patient's personal
+    statistical baseline.
+    """
+
+    records: List[PatientHistoryRecord] = Field(
+        ...,
+        min_length=6,
+        description=(
+            "Sequential records belonging to one patient. "
+            "At least 6 records are required: 5 historical "
+            "records for the personal baseline and 1 "
+            "current record."
+        ),
+    )
+
+    z_threshold: float = Field(
+        default=2.0,
+        gt=0,
+        description=(
+            "Statistical z-score threshold used to identify "
+            "a reading as unusual relative to the patient's "
+            "own historical pattern. This is an engineering "
+            "threshold and not a clinical threshold."
+        ),
+        examples=[2.0],
+    )
