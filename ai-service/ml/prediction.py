@@ -7,6 +7,10 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 
+from ml.explainability import (
+    explain_local_prediction,
+    explain_prediction,
+)
 from ml.future_target_builder import MODEL_FEATURES
 from ml.training import (
     LABEL_ENCODER_PATH,
@@ -152,6 +156,11 @@ def predict_glucose_trend(
     Classify the direction of the patient's next
     glucose reading.
 
+    The response includes both:
+
+    1. Global XGBoost feature importance.
+    2. Local SHAP explanation for this prediction.
+
     This is an experimental pattern-classification
     feature. It does not provide diagnosis, treatment,
     or medication-dosing recommendations.
@@ -167,6 +176,10 @@ def predict_glucose_trend(
 
     probabilities = model.predict_proba(
         dataframe
+    )
+
+    predicted_class_index = int(
+        prediction_encoded[0]
     )
 
     predicted_class = encoder.inverse_transform(
@@ -185,17 +198,45 @@ def predict_glucose_trend(
             4,
         )
 
+    # Global Explainable AI:
+    # What features does the model generally rely on?
+    global_explanation = explain_prediction(
+        model,
+        top_n=4,
+    )
+
+    # Local Explainable AI:
+    # What contributed to this specific prediction?
+    local_explanation = explain_local_prediction(
+        model=model,
+        dataframe=dataframe,
+        predicted_class_index=predicted_class_index,
+        top_n=4,
+    )
+
     return {
         "prediction": str(predicted_class),
+
         "probabilities": class_probabilities,
+
         "features": {
             feature: float(
                 dataframe.iloc[0][feature]
             )
             for feature in MODEL_FEATURES
         },
+
+        "explanation": {
+            "global": global_explanation,
+            "local": local_explanation,
+        },
+
         "model_type": "XGBoost",
-        "prediction_target": "next_glucose_trend",
+
+        "prediction_target": (
+            "next_glucose_trend"
+        ),
+
         "purpose": (
             "experimental_future_glucose_"
             "trend_classification"
@@ -208,6 +249,11 @@ def predict_with_saved_model(
     model_path: Path = MODEL_PATH,
     encoder_path: Path = LABEL_ENCODER_PATH,
 ) -> Dict:
+    """
+    Load the saved model and use it to classify
+    the future glucose trend.
+    """
+
     model, encoder = load_model_artifacts(
         model_path=model_path,
         encoder_path=encoder_path,

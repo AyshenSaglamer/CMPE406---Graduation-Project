@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 from sklearn.preprocessing import LabelEncoder
@@ -14,13 +16,36 @@ from ml.prediction import (
 # FAKE MODEL
 # =========================================================
 
+
 class FakeXGBoostModel:
     """
     Lightweight test double for prediction tests.
 
     No real XGBoost model needs to be trained during
     these unit tests.
+
+    The fake model provides:
+    - predictions
+    - probabilities
+    - global feature importance values
+
+    Local SHAP explanations are mocked separately
+    because SHAP requires a real tree-based model.
     """
+
+    def __init__(self):
+        self.feature_importances_ = np.array(
+            [
+                0.20,  # glucose_mg_dl
+                0.25,  # previous_glucose
+                0.15,  # carbs_g
+                0.10,  # activity_minutes
+                0.12,  # hour_of_day
+                0.08,  # day_of_week
+                0.06,  # month
+                0.04,  # is_weekend
+            ]
+        )
 
     def predict(self, dataframe):
         # LabelEncoder classes:
@@ -44,6 +69,7 @@ class FakeXGBoostModel:
 # =========================================================
 # FIXTURES
 # =========================================================
+
 
 @pytest.fixture
 def encoder():
@@ -74,9 +100,52 @@ def valid_features():
     }
 
 
+@pytest.fixture(autouse=True)
+def mock_shap_local_explanation():
+    """
+    Mock only the local SHAP calculation.
+
+    SHAP itself is tested separately in
+    test_explainability.py.
+
+    These prediction unit tests verify that the
+    prediction service correctly integrates the
+    explanation into its response.
+    """
+
+    mock_result = {
+        "method": "SHAP",
+        "scope": "local",
+        "top_contributors": [
+            {
+                "feature": "previous_glucose",
+                "value": 120.0,
+                "shap_value": 1.033,
+                "absolute_contribution": 1.033,
+            },
+            {
+                "feature": "hour_of_day",
+                "value": 14.0,
+                "shap_value": 0.6419,
+                "absolute_contribution": 0.6419,
+            },
+        ],
+        "disclaimer": (
+            "Test SHAP explanation."
+        ),
+    }
+
+    with patch(
+        "ml.prediction.explain_local_prediction",
+        return_value=mock_result,
+    ):
+        yield
+
+
 # =========================================================
 # FEATURE CONTRACT
 # =========================================================
+
 
 def test_model_features_are_expected():
     assert MODEL_FEATURES == [
@@ -94,10 +163,8 @@ def test_model_features_are_expected():
 def test_valid_features_are_accepted(
     valid_features,
 ):
-    dataframe = (
-        _validate_prediction_features(
-            valid_features
-        )
+    dataframe = _validate_prediction_features(
+        valid_features
     )
 
     assert len(dataframe) == 1
@@ -110,6 +177,7 @@ def test_valid_features_are_accepted(
 # =========================================================
 # PREDICTION
 # =========================================================
+
 
 def test_predict_glucose_trend(
     valid_features,
@@ -138,6 +206,29 @@ def test_predict_glucose_trend(
     assert result["purpose"] == (
         "experimental_future_glucose_"
         "trend_classification"
+    )
+
+    # Explainable AI integration
+    assert "explanation" in result
+
+    assert (
+        result["explanation"]["global"]["scope"]
+        == "global"
+    )
+
+    assert (
+        result["explanation"]["global"]["method"]
+        == "xgboost_feature_importance"
+    )
+
+    assert (
+        result["explanation"]["local"]["scope"]
+        == "local"
+    )
+
+    assert (
+        result["explanation"]["local"]["method"]
+        == "SHAP"
     )
 
 
@@ -211,9 +302,65 @@ def test_prediction_returns_current_glucose(
     )
 
 
+def test_prediction_returns_global_explanation(
+    valid_features,
+    encoder,
+):
+    model = FakeXGBoostModel()
+
+    result = predict_glucose_trend(
+        valid_features,
+        model,
+        encoder,
+    )
+
+    explanation = result[
+        "explanation"
+    ]["global"]
+
+    assert (
+        explanation["method"]
+        == "xgboost_feature_importance"
+    )
+
+    assert explanation["scope"] == "global"
+
+    assert len(
+        explanation["top_features"]
+    ) == 4
+
+
+def test_prediction_returns_local_explanation(
+    valid_features,
+    encoder,
+):
+    model = FakeXGBoostModel()
+
+    result = predict_glucose_trend(
+        valid_features,
+        model,
+        encoder,
+    )
+
+    explanation = result[
+        "explanation"
+    ]["local"]
+
+    assert explanation["method"] == "SHAP"
+    assert explanation["scope"] == "local"
+
+    assert (
+        explanation["top_contributors"][0][
+            "feature"
+        ]
+        == "previous_glucose"
+    )
+
+
 # =========================================================
 # MISSING FEATURES
 # =========================================================
+
 
 @pytest.mark.parametrize(
     "missing_feature",
@@ -241,6 +388,7 @@ def test_missing_feature_rejected(
 # =========================================================
 # NUMERIC VALIDATION
 # =========================================================
+
 
 def test_non_numeric_glucose_rejected(
     valid_features,
@@ -295,6 +443,7 @@ def test_infinite_feature_rejected(
 # =========================================================
 # GLUCOSE VALIDATION
 # =========================================================
+
 
 def test_zero_current_glucose_rejected(
     valid_features,
@@ -356,6 +505,7 @@ def test_zero_previous_glucose_rejected(
 # =========================================================
 # OTHER DOMAIN VALIDATION
 # =========================================================
+
 
 def test_negative_carbs_rejected(
     valid_features,
@@ -492,6 +642,7 @@ def test_invalid_weekend_rejected(
 # FUTURE-DATA LEAKAGE PROTECTION
 # =========================================================
 
+
 def test_future_information_is_not_model_feature():
     forbidden_features = {
         "next_glucose",
@@ -508,6 +659,7 @@ def test_future_information_is_not_model_feature():
 # =========================================================
 # ARTIFACT LOADING
 # =========================================================
+
 
 def test_missing_model_file_rejected(
     tmp_path,
