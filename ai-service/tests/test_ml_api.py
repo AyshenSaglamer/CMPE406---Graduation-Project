@@ -32,6 +32,10 @@ def assert_api_error(
     return body
 
 
+# =========================================================
+# VALID REQUEST
+# =========================================================
+
 VALID_REQUEST = {
     "glucose_mg_dl": 135,
     "previous_glucose": 120,
@@ -44,13 +48,55 @@ VALID_REQUEST = {
 }
 
 
+# =========================================================
+# MOCK PREDICTION RESPONSE
+# =========================================================
+
 MOCK_PREDICTION = {
     "prediction": "HIGHER",
+
+    # Existing field kept for backward compatibility.
     "probabilities": {
         "HIGHER": 0.70,
         "LOWER": 0.10,
         "STABLE": 0.20,
     },
+
+    # New confidence information.
+    "confidence": {
+        "score": 0.70,
+        "level": "MODERATE",
+    },
+
+    # New uncertainty information.
+    "uncertainty": {
+        "score": 0.30,
+    },
+
+    # Explicit probability distribution.
+    "class_probabilities": {
+        "HIGHER": 0.70,
+        "LOWER": 0.10,
+        "STABLE": 0.20,
+    },
+
+    "uncertainty_analysis": {
+        "method": (
+            "maximum_class_probability"
+        ),
+        "scope": (
+            "model_prediction_uncertainty"
+        ),
+        "disclaimer": (
+            "Confidence and uncertainty describe "
+            "the machine-learning model's output "
+            "distribution only. They do not represent "
+            "clinical probability, diagnosis, medical "
+            "risk, treatment advice, or medication "
+            "guidance."
+        ),
+    },
+
     "features": {
         "glucose_mg_dl": 135.0,
         "previous_glucose": 120.0,
@@ -61,12 +107,42 @@ MOCK_PREDICTION = {
         "month": 9.0,
         "is_weekend": 0.0,
     },
+
+    "explanation": {
+        "global": {
+            "method": (
+                "xgboost_feature_importance"
+            ),
+            "top_features": [],
+        },
+        "local": {
+            "method": "shap",
+            "top_features": [],
+        },
+    },
+
     "model_type": "XGBoost",
-    "prediction_target": "next_glucose_trend",
+
+    "prediction_target": (
+        "next_glucose_trend"
+    ),
+
     "purpose": (
         "experimental_future_glucose_"
         "trend_classification"
     ),
+
+    "safety": {
+        "clinical_probability": False,
+        "diagnosis": False,
+        "treatment_advice": False,
+        "medication_guidance": False,
+        "message": (
+            "Prediction confidence and uncertainty "
+            "describe the experimental model's output "
+            "distribution only."
+        ),
+    },
 }
 
 
@@ -123,6 +199,248 @@ def test_predict_trend_success(
     assert (
         sent_features["previous_glucose"]
         == 120
+    )
+
+
+# =========================================================
+# CONFIDENCE & UNCERTAINTY
+# =========================================================
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_confidence(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert (
+        body["confidence"]["score"]
+        == 0.70
+    )
+
+    assert (
+        body["confidence"]["level"]
+        == "MODERATE"
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_uncertainty(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert (
+        body["uncertainty"]["score"]
+        == 0.30
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_class_probabilities(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert (
+        body["class_probabilities"]
+        == {
+            "HIGHER": 0.70,
+            "LOWER": 0.10,
+            "STABLE": 0.20,
+        }
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_preserves_old_probabilities(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert (
+        body["probabilities"]
+        == body["class_probabilities"]
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_uncertainty_metadata(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    analysis = (
+        body["uncertainty_analysis"]
+    )
+
+    assert (
+        analysis["method"]
+        == "maximum_class_probability"
+    )
+
+    assert (
+        analysis["scope"]
+        == "model_prediction_uncertainty"
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_uncertainty_disclaimer(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    disclaimer = (
+        body[
+            "uncertainty_analysis"
+        ][
+            "disclaimer"
+        ].lower()
+    )
+
+    assert (
+        "clinical probability"
+        in disclaimer
+    )
+
+    assert "diagnosis" in disclaimer
+    assert "treatment" in disclaimer
+    assert "medication" in disclaimer
+
+
+@patch("main.predict_with_saved_model")
+def test_api_returns_safety_metadata(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    safety = body["safety"]
+
+    assert (
+        safety["clinical_probability"]
+        is False
+    )
+
+    assert (
+        safety["diagnosis"]
+        is False
+    )
+
+    assert (
+        safety["treatment_advice"]
+        is False
+    )
+
+    assert (
+        safety["medication_guidance"]
+        is False
+    )
+
+
+@patch("main.predict_with_saved_model")
+def test_api_preserves_xai(
+    mock_predict,
+):
+    mock_predict.return_value = (
+        MOCK_PREDICTION
+    )
+
+    response = client.post(
+        "/api/v1/ml/predict-trend",
+        json=VALID_REQUEST,
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert "explanation" in body
+
+    assert (
+        "global"
+        in body["explanation"]
+    )
+
+    assert (
+        "local"
+        in body["explanation"]
     )
 
 

@@ -16,6 +16,9 @@ from ml.training import (
     LABEL_ENCODER_PATH,
     MODEL_PATH,
 )
+from ml.uncertainty import (
+    calculate_prediction_uncertainty,
+)
 
 
 def load_model_artifacts(
@@ -156,19 +159,34 @@ def predict_glucose_trend(
     Classify the direction of the patient's next
     glucose reading.
 
-    The response includes both:
+    The response includes:
 
-    1. Global XGBoost feature importance.
-    2. Local SHAP explanation for this prediction.
+    1. Predicted glucose-trend class.
+    2. Class probabilities.
+    3. Descriptive model confidence and uncertainty.
+    4. Global XGBoost feature importance.
+    5. Local SHAP explanation for this prediction.
+
+    Confidence and uncertainty describe model behaviour
+    only. They are not clinical probabilities.
 
     This is an experimental pattern-classification
     feature. It does not provide diagnosis, treatment,
-    or medication-dosing recommendations.
+    clinical-risk estimation, or medication-dosing
+    recommendations.
     """
+
+    # ========================================================
+    # VALIDATE INPUT FEATURES
+    # ========================================================
 
     dataframe = _validate_prediction_features(
         features
     )
+
+    # ========================================================
+    # MODEL PREDICTION
+    # ========================================================
 
     prediction_encoded = model.predict(
         dataframe
@@ -186,27 +204,67 @@ def predict_glucose_trend(
         prediction_encoded.astype(int)
     )[0]
 
-    class_probabilities = {}
+    # ========================================================
+    # CLASS PROBABILITIES
+    # ========================================================
 
-    for index, class_name in enumerate(
-        encoder.classes_
+    probability_values = [
+        float(value)
+        for value in probabilities[0]
+    ]
+
+    class_names = [
+        str(class_name)
+        for class_name in encoder.classes_
+    ]
+
+    class_probabilities = {
+        class_name: round(
+            probability,
+            6,
+        )
+        for class_name, probability in zip(
+            class_names,
+            probability_values,
+        )
+    }
+
+    # ========================================================
+    # CONFIDENCE & UNCERTAINTY
+    # ========================================================
+
+    uncertainty_analysis = (
+        calculate_prediction_uncertainty(
+            probabilities=probability_values,
+            class_names=class_names,
+        )
+    )
+
+    # Defensive consistency check:
+    # model.predict() and the maximum probability should
+    # identify the same class.
+    if (
+        uncertainty_analysis["predicted_class"]
+        != str(predicted_class)
     ):
-        class_probabilities[
-            str(class_name)
-        ] = round(
-            float(probabilities[0][index]),
-            4,
+        raise ValueError(
+            "Model prediction is inconsistent with "
+            "the class-probability distribution."
         )
 
-    # Global Explainable AI:
-    # What features does the model generally rely on?
+    # ========================================================
+    # GLOBAL EXPLAINABLE AI
+    # ========================================================
+
     global_explanation = explain_prediction(
         model,
         top_n=4,
     )
 
-    # Local Explainable AI:
-    # What contributed to this specific prediction?
+    # ========================================================
+    # LOCAL EXPLAINABLE AI / SHAP
+    # ========================================================
+
     local_explanation = explain_local_prediction(
         model=model,
         dataframe=dataframe,
@@ -214,10 +272,56 @@ def predict_glucose_trend(
         top_n=4,
     )
 
-    return {
-        "prediction": str(predicted_class),
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
 
-        "probabilities": class_probabilities,
+    return {
+        "prediction": str(
+            predicted_class
+        ),
+
+        # Kept for backward compatibility with the
+        # existing DiaMate prediction response.
+        "probabilities": (
+            class_probabilities
+        ),
+
+        "confidence": (
+            uncertainty_analysis[
+                "confidence"
+            ]
+        ),
+
+        "uncertainty": (
+            uncertainty_analysis[
+                "uncertainty"
+            ]
+        ),
+
+        "class_probabilities": (
+            uncertainty_analysis[
+                "class_probabilities"
+            ]
+        ),
+
+        "uncertainty_analysis": {
+            "method": (
+                uncertainty_analysis[
+                    "method"
+                ]
+            ),
+            "scope": (
+                uncertainty_analysis[
+                    "scope"
+                ]
+            ),
+            "disclaimer": (
+                uncertainty_analysis[
+                    "disclaimer"
+                ]
+            ),
+        },
 
         "features": {
             feature: float(
@@ -227,8 +331,12 @@ def predict_glucose_trend(
         },
 
         "explanation": {
-            "global": global_explanation,
-            "local": local_explanation,
+            "global": (
+                global_explanation
+            ),
+            "local": (
+                local_explanation
+            ),
         },
 
         "model_type": "XGBoost",
@@ -241,6 +349,21 @@ def predict_glucose_trend(
             "experimental_future_glucose_"
             "trend_classification"
         ),
+
+        "safety": {
+            "clinical_probability": False,
+            "diagnosis": False,
+            "treatment_advice": False,
+            "medication_guidance": False,
+            "message": (
+                "Prediction confidence and uncertainty "
+                "describe the experimental model's output "
+                "distribution only. They must not be "
+                "interpreted as clinical probability, "
+                "diagnosis, medical risk, treatment advice, "
+                "or medication guidance."
+            ),
+        },
     }
 
 
