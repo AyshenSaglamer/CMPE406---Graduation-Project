@@ -9,6 +9,7 @@ from fastapi import (
 
 from models.schemas import (
     AnomalyDetectionRequest,
+    DataQualityRequest,
     HistoryPredictionRequest,
     ParseRequest,
     PatientSummaryRequest,
@@ -34,6 +35,10 @@ from services.audio_service import (
 
 from services.baseline_service import (
     build_personalized_baseline,
+)
+
+from services.data_quality_service import (
+    build_data_quality_report,
 )
 
 from services.exception_handlers import (
@@ -90,8 +95,8 @@ OPENAPI_TAGS = [
         "name": "Insights",
         "description": (
             "Patient-history analytics, personalized "
-            "baseline learning, personalized pattern "
-            "detection, statistical anomaly detection, "
+            "baseline learning, personalized statistical "
+            "anomaly detection, data-quality analysis, "
             "and descriptive insight generation."
         ),
     },
@@ -117,8 +122,8 @@ app = FastAPI(
         "The service provides natural-language health "
         "logging, voice input processing, patient-history "
         "analytics, personalized baseline learning, "
-        "personalized pattern detection, personalized "
-        "statistical anomaly detection, and experimental "
+        "personalized statistical anomaly detection, "
+        "data-quality analysis, and experimental "
         "XGBoost-based glucose trend classification.\n\n"
         "**Safety:** DiaMate is a self-management support "
         "tool. The AI service does not diagnose medical "
@@ -423,15 +428,14 @@ def patient_insight_summary(
     tags=["Insights"],
     summary="Detect a personalized glucose anomaly",
     description=(
-        "Compares the latest glucose reading with the "
-        "same patient's previous logged glucose values. "
-        "The earlier records form a personalized "
-        "statistical baseline, while the latest record "
-        "is evaluated using a configurable z-score "
-        "threshold. This endpoint identifies statistical "
-        "unusualness only and does not provide diagnosis, "
-        "clinical risk classification, treatment, or "
-        "medication advice."
+        "Evaluates the latest glucose reading relative to "
+        "the patient's own historical statistical pattern. "
+        "When sufficient matching time-of-day history is "
+        "available, a contextual baseline is used. "
+        "Otherwise, the analysis falls back to the overall "
+        "historical baseline. Statistical unusualness does "
+        "not represent diagnosis, clinical risk, treatment, "
+        "or medication advice."
     ),
 )
 def patient_glucose_anomaly(
@@ -460,6 +464,56 @@ def patient_glucose_anomaly(
             detail=(
                 "Personalized glucose anomaly "
                 "detection failed."
+            ),
+        )
+
+
+# ============================================================
+# DATA QUALITY ANALYSIS
+# ============================================================
+
+
+@app.post(
+    "/api/v1/insights/data-quality",
+    tags=["Insights"],
+    summary="Analyze patient-history data quality",
+    description=(
+        "Analyzes one patient's historical records for "
+        "data-quality issues such as missing values, "
+        "duplicate records, invalid timestamps, and large "
+        "logging gaps. The configurable logging-gap "
+        "threshold is an engineering threshold and not a "
+        "clinical threshold."
+    ),
+)
+def patient_data_quality(
+    request: DataQualityRequest,
+):
+    try:
+        records = [
+            record.model_dump()
+            for record in request.records
+        ]
+
+        return build_data_quality_report(
+            records=records,
+            large_gap_hours=(
+                request.large_gap_hours
+            ),
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Patient-history data-quality "
+                "analysis failed."
             ),
         )
 
@@ -503,7 +557,7 @@ async def parse_voice(
         )
 
         # ----------------------------------------------------
-        # Validate uploaded audio
+        # VALIDATE AUDIO
         # ----------------------------------------------------
 
         validate_audio_upload(
@@ -517,7 +571,7 @@ async def parse_voice(
         )[1].lower()
 
         # ----------------------------------------------------
-        # Whisper Speech-to-Text adapter
+        # WHISPER TRANSCRIBER ADAPTER
         # ----------------------------------------------------
 
         def whisper_transcriber(
@@ -529,7 +583,7 @@ async def parse_voice(
             )
 
         # ----------------------------------------------------
-        # Audio -> Whisper -> Transcript -> NLP
+        # AUDIO -> WHISPER -> TRANSCRIPT -> NLP
         # ----------------------------------------------------
 
         return transcribe_and_process_audio(

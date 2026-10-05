@@ -404,3 +404,39 @@ class PersonalizedBaselineRequest(BaseModel):
             "personalized glucose baseline."
         ),
     )
+# ============================================================
+# DATA QUALITY ANALYSIS
+# ============================================================
+
+
+class DataQualityRequest(BaseModel):
+    """
+    Request schema for patient-history data-quality
+    analysis.
+
+    The analysis checks logging/data completeness and
+    consistency. It does not evaluate medical status.
+    """
+
+    records: List[PatientHistoryRecord] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Historical records belonging to one patient "
+            "for data-quality analysis."
+        ),
+    )
+
+    large_gap_hours: float = Field(
+        default=24.0,
+        gt=0,
+        description=(
+            "Configurable engineering threshold used to "
+            "identify large time gaps between sequential "
+            "patient-history records. This is not a "
+            "clinical threshold."
+        ),
+        examples=[
+            24.0
+        ],
+    )
