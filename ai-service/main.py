@@ -11,6 +11,7 @@ from models.schemas import (
     AnomalyDetectionRequest,
     DataQualityRequest,
     HistoryPredictionRequest,
+    ModelDriftRequest,
     ParseRequest,
     PatientSummaryRequest,
     PersonalizedBaselineRequest,
@@ -39,6 +40,10 @@ from services.baseline_service import (
 
 from services.data_quality_service import (
     build_data_quality_report,
+)
+
+from services.drift_service import (
+    analyze_model_drift,
 )
 
 from services.exception_handlers import (
@@ -86,9 +91,11 @@ OPENAPI_TAGS = [
         "name": "Machine Learning",
         "description": (
             "Experimental machine-learning endpoints for "
-            "classifying future glucose trend patterns. "
+            "classifying future glucose trend patterns "
+            "and monitoring model-input data drift. "
             "These endpoints do not provide diagnosis, "
-            "treatment, or insulin-dosing recommendations."
+            "treatment, clinical-risk assessment, or "
+            "insulin-dosing recommendations."
         ),
     },
     {
@@ -123,12 +130,15 @@ app = FastAPI(
         "logging, voice input processing, patient-history "
         "analytics, personalized baseline learning, "
         "personalized statistical anomaly detection, "
-        "data-quality analysis, and experimental "
-        "XGBoost-based glucose trend classification.\n\n"
+        "data-quality analysis, experimental "
+        "XGBoost-based glucose trend classification, "
+        "explainable AI, prediction confidence and "
+        "uncertainty, and model-input drift monitoring."
+        "\n\n"
         "**Safety:** DiaMate is a self-management support "
         "tool. The AI service does not diagnose medical "
-        "conditions, prescribe treatment, or recommend "
-        "insulin doses."
+        "conditions, prescribe treatment, estimate "
+        "clinical risk, or recommend insulin doses."
     ),
     version="1.0.0",
     openapi_tags=OPENAPI_TAGS,
@@ -225,7 +235,7 @@ def parse_multiple(
 
 
 # ============================================================
-# MACHINE LEARNING ENDPOINTS
+# MACHINE LEARNING - DIRECT TREND PREDICTION
 # ============================================================
 
 
@@ -236,9 +246,12 @@ def parse_multiple(
     description=(
         "Uses the saved XGBoost model and supplied feature "
         "values to classify the next glucose trend as "
-        "LOWER, STABLE, or HIGHER. This output is "
-        "experimental and is not a diagnosis, treatment "
-        "recommendation, or insulin-dosing recommendation."
+        "LOWER, STABLE, or HIGHER. The prediction response "
+        "can include class probabilities, descriptive "
+        "confidence and uncertainty, and explainable-AI "
+        "information. These outputs describe model "
+        "behaviour and must not be interpreted as "
+        "clinical probabilities."
     ),
 )
 def predict_trend(
@@ -271,6 +284,11 @@ def predict_trend(
                 "Glucose trend prediction failed."
             ),
         )
+
+
+# ============================================================
+# MACHINE LEARNING - HISTORY PREDICTION
+# ============================================================
 
 
 @app.post(
@@ -323,7 +341,66 @@ def predict_trend_from_history(
 
 
 # ============================================================
-# PERSONALIZED BASELINE
+# MACHINE LEARNING - MODEL DRIFT MONITORING
+# ============================================================
+
+
+@app.post(
+    "/api/v1/ml/drift",
+    tags=["Machine Learning"],
+    summary="Analyze model-input data drift",
+    description=(
+        "Compares historical reference patient records "
+        "with newer patient records to identify "
+        "statistical changes in the model-input "
+        "distribution. Drift is an engineering "
+        "model-monitoring signal only. It does not "
+        "represent diagnosis, clinical deterioration, "
+        "medical risk, treatment advice, or medication "
+        "guidance."
+    ),
+)
+def model_input_drift(
+    request: ModelDriftRequest,
+):
+    try:
+        reference_records = [
+            record.model_dump()
+            for record
+            in request.reference_records
+        ]
+
+        current_records = [
+            record.model_dump()
+            for record
+            in request.current_records
+        ]
+
+        return analyze_model_drift(
+            reference_records=reference_records,
+            current_records=current_records,
+            mean_shift_threshold=(
+                request.mean_shift_threshold
+            ),
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Model-input drift analysis failed."
+            ),
+        )
+
+
+# ============================================================
+# INSIGHTS - PERSONALIZED BASELINE
 # ============================================================
 
 
@@ -369,7 +446,7 @@ def personalized_baseline(
 
 
 # ============================================================
-# PATIENT INSIGHT SUMMARY
+# INSIGHTS - PATIENT SUMMARY
 # ============================================================
 
 
@@ -419,7 +496,7 @@ def patient_insight_summary(
 
 
 # ============================================================
-# PERSONALIZED ANOMALY DETECTION
+# INSIGHTS - PERSONALIZED ANOMALY DETECTION
 # ============================================================
 
 
@@ -469,7 +546,7 @@ def patient_glucose_anomaly(
 
 
 # ============================================================
-# DATA QUALITY ANALYSIS
+# INSIGHTS - DATA QUALITY
 # ============================================================
 
 
@@ -519,7 +596,7 @@ def patient_data_quality(
 
 
 # ============================================================
-# VOICE ENDPOINT
+# VOICE
 # ============================================================
 
 

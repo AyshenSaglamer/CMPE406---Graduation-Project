@@ -440,3 +440,52 @@ class DataQualityRequest(BaseModel):
             24.0
         ],
     )
+# ============================================================
+# MODEL DRIFT MONITORING
+# ============================================================
+
+
+class ModelDriftRequest(BaseModel):
+    """
+    Request schema for model-input drift monitoring.
+
+    Reference records represent the historical comparison
+    period, while current records represent newer patient
+    data.
+
+    Drift describes statistical changes in model inputs.
+    It does not represent medical deterioration or risk.
+    """
+
+    reference_records: List[PatientHistoryRecord] = Field(
+        ...,
+        min_length=6,
+        description=(
+            "Historical reference patient records. "
+            "At least six raw records are required because "
+            "the first sequential record cannot provide "
+            "a previous_glucose feature."
+        ),
+    )
+
+    current_records: List[PatientHistoryRecord] = Field(
+        ...,
+        min_length=4,
+        description=(
+            "Newer patient records to compare with the "
+            "reference period. At least four raw records "
+            "are required because the first sequential "
+            "record cannot provide a previous_glucose "
+            "feature."
+        ),
+    )
+
+    mean_shift_threshold: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Engineering threshold for standardized mean "
+            "shift detection. This is a model-monitoring "
+            "threshold and not a clinical threshold."
+        ),
+    )
