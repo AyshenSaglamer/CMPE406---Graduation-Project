@@ -12,6 +12,7 @@ from models.schemas import (
     HistoryPredictionRequest,
     ParseRequest,
     PatientSummaryRequest,
+    PersonalizedBaselineRequest,
     TrendPredictionRequest,
 )
 
@@ -29,6 +30,10 @@ from services.anomaly_service import (
 
 from services.audio_service import (
     validate_audio_upload,
+)
+
+from services.baseline_service import (
+    build_personalized_baseline,
 )
 
 from services.exception_handlers import (
@@ -85,8 +90,9 @@ OPENAPI_TAGS = [
         "name": "Insights",
         "description": (
             "Patient-history analytics, personalized "
-            "pattern detection, statistical anomaly "
-            "detection, and descriptive insight generation."
+            "baseline learning, personalized pattern "
+            "detection, statistical anomaly detection, "
+            "and descriptive insight generation."
         ),
     },
     {
@@ -110,10 +116,10 @@ app = FastAPI(
         "self-management support system.\n\n"
         "The service provides natural-language health "
         "logging, voice input processing, patient-history "
-        "analytics, personalized pattern detection, "
-        "personalized statistical anomaly detection, and "
-        "experimental XGBoost-based glucose trend "
-        "classification.\n\n"
+        "analytics, personalized baseline learning, "
+        "personalized pattern detection, personalized "
+        "statistical anomaly detection, and experimental "
+        "XGBoost-based glucose trend classification.\n\n"
         "**Safety:** DiaMate is a self-management support "
         "tool. The AI service does not diagnose medical "
         "conditions, prescribe treatment, or recommend "
@@ -135,7 +141,7 @@ register_exception_handlers(app)
 
 
 # ============================================================
-# BASIC ENDPOINTS
+# SYSTEM ENDPOINTS
 # ============================================================
 
 
@@ -257,8 +263,7 @@ def predict_trend(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Glucose trend prediction "
-                "failed."
+                "Glucose trend prediction failed."
             ),
         )
 
@@ -307,8 +312,53 @@ def predict_trend_from_history(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Patient history prediction "
-                "failed."
+                "Patient history prediction failed."
+            ),
+        )
+
+
+# ============================================================
+# PERSONALIZED BASELINE
+# ============================================================
+
+
+@app.post(
+    "/api/v1/insights/baseline",
+    tags=["Insights"],
+    summary="Learn a personalized glucose baseline",
+    description=(
+        "Learns descriptive glucose patterns from one "
+        "patient's historical records. The response "
+        "includes an overall personal baseline, "
+        "time-of-day baselines, and weekday/weekend "
+        "baselines. These values describe historical "
+        "patterns only and are not medical target ranges."
+    ),
+)
+def personalized_baseline(
+    request: PersonalizedBaselineRequest,
+):
+    try:
+        records = [
+            record.model_dump()
+            for record in request.records
+        ]
+
+        return build_personalized_baseline(
+            records=records,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Personalized baseline learning failed."
             ),
         )
 
