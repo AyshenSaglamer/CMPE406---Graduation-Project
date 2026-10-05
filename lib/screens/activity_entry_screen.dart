@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/api_enums.dart';
 
 class ActivityEntryScreen extends StatefulWidget {
   const ActivityEntryScreen({super.key});
@@ -21,11 +22,10 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
     'Other',
   ];
 
-  final List<String> intensityOptions = [
-    'Light',
-    'Moderate',
-    'Intense',
-  ];
+  // Labels stay the same on screen. The backend expects LOW / MODERATE / HIGH,
+  // so send activityIntensityOptions[selectedIntensity].
+  final List<String> intensityOptions =
+      activityIntensityOptions.keys.toList();
 
   void _saveActivity() {
     final value = durationController.text.trim();
@@ -53,6 +53,11 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       return;
     }
 
+    // When the activity endpoint is ready, send:
+    // activityType: selectedActivity
+    // durationMinutes: duration
+    // intensity: activityIntensityOptions[selectedIntensity]
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -61,11 +66,14 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       ),
     );
 
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    });
+    Future.delayed(
+      const Duration(milliseconds: 700),
+      () {
+        if (mounted) {
+          Navigator.pop(context);
+        }
+      },
+    );
   }
 
   @override
@@ -83,7 +91,12 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+        padding: const EdgeInsets.fromLTRB(
+          18,
+          8,
+          18,
+          28,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -156,11 +169,13 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF35B779),
+                  backgroundColor:
+                      const Color(0xFF35B779),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(17),
+                    borderRadius:
+                        BorderRadius.circular(17),
                   ),
                 ),
               ),
@@ -192,7 +207,8 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color:
+                  Colors.white.withOpacity(0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -206,7 +222,8 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
 
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Add Activity Record',
@@ -216,7 +233,9 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
                     color: Color(0xFF294637),
                   ),
                 ),
+
                 SizedBox(height: 5),
+
                 Text(
                   'Record your physical activity and duration.',
                   style: TextStyle(
@@ -238,7 +257,8 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       spacing: 10,
       runSpacing: 10,
       children: activityTypes.map((activity) {
-        final isSelected = selectedActivity == activity;
+        final isSelected =
+            selectedActivity == activity;
 
         return ChoiceChip(
           label: Text(activity),
@@ -248,7 +268,8 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
               selectedActivity = activity;
             });
           },
-          selectedColor: const Color(0xFFE3F7EB),
+          selectedColor:
+              const Color(0xFFE3F7EB),
           backgroundColor: Colors.white,
           side: BorderSide(
             color: isSelected
@@ -267,7 +288,8 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
             vertical: 10,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius:
+                BorderRadius.circular(15),
           ),
         );
       }).toList(),
@@ -277,10 +299,16 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
   Widget _buildDurationInput() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        20,
+        18,
+        20,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius:
+            BorderRadius.circular(24),
         border: Border.all(
           color: const Color(0xFFE7EDF3),
         ),
@@ -336,64 +364,88 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
   Widget _buildIntensitySelector() {
     return Row(
       children: intensityOptions.map((intensity) {
-        final isSelected = selectedIntensity == intensity;
+        final isSelected =
+            selectedIntensity == intensity;
 
         final Color selectedColor;
 
         switch (intensity) {
           case 'Light':
-            selectedColor = const Color(0xFF74C69D);
+            selectedColor =
+                const Color(0xFF74C69D);
             break;
+
           case 'Moderate':
-            selectedColor = const Color(0xFF35B779);
+            selectedColor =
+                const Color(0xFF35B779);
             break;
+
           default:
-            selectedColor = const Color(0xFF258A5A);
+            selectedColor =
+                const Color(0xFF258A5A);
         }
 
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(
-              right: intensity == intensityOptions.last ? 0 : 10,
+              right:
+                  intensity == intensityOptions.last
+                      ? 0
+                      : 10,
             ),
             child: Material(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(17),
+              borderRadius:
+                  BorderRadius.circular(17),
               child: InkWell(
                 onTap: () {
                   setState(() {
-                    selectedIntensity = intensity;
+                    selectedIntensity =
+                        intensity;
                   });
                 },
-                borderRadius: BorderRadius.circular(17),
+                borderRadius:
+                    BorderRadius.circular(17),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     vertical: 15,
                     horizontal: 6,
                   ),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? const Color(0xFFEAF8EE)
+                        ? const Color(
+                            0xFFEAF8EE,
+                          )
                         : Colors.white,
-                    borderRadius: BorderRadius.circular(17),
+                    borderRadius:
+                        BorderRadius.circular(17),
                     border: Border.all(
                       color: isSelected
                           ? selectedColor
-                          : const Color(0xFFE1E8EF),
-                      width: isSelected ? 1.5 : 1,
+                          : const Color(
+                              0xFFE1E8EF,
+                            ),
+                      width:
+                          isSelected ? 1.5 : 1,
                     ),
                   ),
                   child: Column(
                     children: [
                       Icon(
                         intensity == 'Light'
-                            ? Icons.directions_walk_rounded
-                            : intensity == 'Moderate'
-                                ? Icons.directions_run_rounded
+                            ? Icons
+                                .directions_walk_rounded
+                            : intensity ==
+                                    'Moderate'
+                                ? Icons
+                                    .directions_run_rounded
                                 : Icons.bolt_rounded,
                         color: isSelected
                             ? selectedColor
-                            : const Color(0xFF7D8996),
+                            : const Color(
+                                0xFF7D8996,
+                              ),
                         size: 22,
                       ),
 
@@ -404,10 +456,13 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontWeight:
+                              FontWeight.w700,
                           color: isSelected
                               ? selectedColor
-                              : const Color(0xFF5F6E7D),
+                              : const Color(
+                                  0xFF5F6E7D,
+                                ),
                         ),
                       ),
                     ],
@@ -427,17 +482,21 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFEDF9F2),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
       ),
       child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.info_outline_rounded,
             color: Color(0xFF35B779),
             size: 21,
           ),
+
           SizedBox(width: 10),
+
           Expanded(
             child: Text(
               'Tracking physical activity can help you review daily patterns together with your other health records.',

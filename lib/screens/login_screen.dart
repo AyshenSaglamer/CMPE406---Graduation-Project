@@ -1,56 +1,46 @@
 import 'package:flutter/material.dart';
-
 import '../models/user_role.dart';
-import 'caregiver_dashboard_screen.dart';
-import 'dashboard_screen.dart';
-import 'doctor_dashboard_screen.dart';
+import '../navigation/session_navigation.dart';
+import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import 'register_screen.dart';
-
 class LoginScreen extends StatefulWidget {
   final UserRole role;
-
   const LoginScreen({
     super.key,
     required this.role,
   });
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
-
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-
   bool obscurePassword = true;
-
+  // Disables the button while the request is running.
+  bool isLoading = false;
   bool get isCaregiver => widget.role == UserRole.caregiver;
-
   bool get isDoctor => widget.role == UserRole.doctor;
-
   String get title {
     return 'Welcome back';
   }
-
   String get subtitle {
     if (isCaregiver) {
       return 'Sign in to your caregiver account';
     }
-
     if (isDoctor) {
       return 'Sign in to your doctor account';
     }
-
     return 'Sign in to continue managing your health';
   }
-
-  // ---------------------------------------------------------
+  // --------------------------------------------------------
   // LOGIN
-  // ---------------------------------------------------------
-
-  void login() {
-    if (emailController.text.trim().isEmpty ||
-        passwordController.text.trim().isEmpty) {
+  // --------------------------------------------------------
+  Future<void> login() async {
+    final email = emailController.text.trim();
+    // Do not trim the password: spaces can be part of it.
+    final password = passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -58,56 +48,47 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
-
       return;
     }
-
-    switch (widget.role) {
-      case UserRole.patient:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const DashboardScreen(),
-          ),
-        );
-        break;
-
-      case UserRole.caregiver:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const CaregiverDashboardScreen(),
-          ),
-        );
-        break;
-
-      case UserRole.doctor:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const DoctorDashboardScreen(),
-          ),
-        );
-        break;
+    setState(() => isLoading = true);
+    try {
+      final user = await authService.login(
+        email: email,
+        password: password,
+      );
+      if (!mounted) return;
+      // Navigate by the role the backend returned, not by the card the user
+      // tapped (widget.role). Otherwise a patient could open the doctor
+      // dashboard just by choosing "Doctor" on the first screen.
+      goToHome(context, user.role);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      // 401: same text for an unknown email and a wrong password.
+      // 403: account disabled. 0: no connection. Others: server text.
+      final message = e.statusCode == 401
+          ? 'Incorrect email or password.'
+          : e.message;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
-
-  // ---------------------------------------------------------
+  // --------------------------------------------------------
   // DISPOSE
-  // ---------------------------------------------------------
-
+  // --------------------------------------------------------
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-
     super.dispose();
   }
-
-  // ---------------------------------------------------------
+  // --------------------------------------------------------
   // BUILD
-  // ---------------------------------------------------------
-
+  // --------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,11 +99,9 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // BACK BUTTON
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
@@ -146,13 +125,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 28),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // LOGO
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Center(
                 child: Container(
                   width: 76,
@@ -179,13 +155,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 22),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // TITLE
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Text(
                 title,
                 textAlign: TextAlign.center,
@@ -195,13 +168,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Color(0xFF172033),
                 ),
               ),
-
               const SizedBox(height: 8),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // SUBTITLE
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
@@ -211,13 +181,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Color(0xFF718096),
                 ),
               ),
-
               const SizedBox(height: 30),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // LOGIN FORM
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -237,11 +204,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // EMAIL LABEL
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     const Text(
                       'Email',
                       style: TextStyle(
@@ -250,13 +215,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Color(0xFF273142),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // EMAIL FIELD
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     TextField(
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -303,13 +265,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 18),
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // PASSWORD LABEL
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     const Text(
                       'Password',
                       style: TextStyle(
@@ -318,13 +277,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Color(0xFF273142),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // PASSWORD FIELD
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     TextField(
                       controller: passwordController,
                       obscureText: obscurePassword,
@@ -377,13 +333,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 10),
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // FORGOT PASSWORD
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -402,20 +355,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
-                    // ------------------------------------------------
+                    // -----------------------------------------------
                     // LOGIN BUTTON
-                    // ------------------------------------------------
-
+                    // -----------------------------------------------
                     SizedBox(
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: login,
+                        onPressed: isLoading ? null : login,
                         style: ElevatedButton.styleFrom(
                           backgroundColor:
                           const Color(0xFF168AF7),
+                          disabledBackgroundColor:
+                          const Color(0xFF168AF7).withValues(alpha: 0.6),
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -423,36 +375,42 @@ class _LoginScreenState extends State<LoginScreen> {
                             BorderRadius.circular(17),
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment:
-                          MainAxisAlignment.center,
-                          children: const [
-                            Text(
-                              'Log In',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
+                        child: isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment:
+                                MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Log In',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 19,
+                                  ),
+                                ],
                               ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 19,
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 22),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // REGISTER
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -463,7 +421,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Color(0xFF718096),
                     ),
                   ),
-
                   TextButton(
                     onPressed: () {
                       Navigator.push(
@@ -484,13 +441,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 14),
-
-              // ------------------------------------------------
+              // -----------------------------------------------
               // PRIVACY NOTICE
-              // ------------------------------------------------
-
+              // -----------------------------------------------
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,

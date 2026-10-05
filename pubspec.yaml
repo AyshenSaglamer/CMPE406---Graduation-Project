@@ -10,6 +10,8 @@ dependencies:
   fl_chart: ^1.2.0
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

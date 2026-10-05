@@ -12,7 +12,8 @@ class GlucoseRecord {
   });
 }
 
-class GlucoseStore extends ValueNotifier<List<GlucoseRecord>> {
+class GlucoseStore
+    extends ValueNotifier<List<GlucoseRecord>> {
   GlucoseStore()
       : super([
           GlucoseRecord(
@@ -20,22 +21,23 @@ class GlucoseStore extends ValueNotifier<List<GlucoseRecord>> {
             dateTime: DateTime.now().subtract(
               const Duration(hours: 2),
             ),
-            measurementTime: 'Morning',
+            measurementTime: 'Fasting',
           ),
         ]);
 
   void addRecord({
     required double glucoseValue,
     required String measurementTime,
+    DateTime? dateTime,
   }) {
     final newRecord = GlucoseRecord(
       value: glucoseValue,
-      dateTime: DateTime.now(),
+      dateTime: dateTime ?? DateTime.now(),
       measurementTime: measurementTime,
     );
 
-    this.value = [
-      ...this.value,
+    value = [
+      ...value,
       newRecord,
     ];
   }
