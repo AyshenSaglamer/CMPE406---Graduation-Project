@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/api_enums.dart';
 
 class ReminderScreen extends StatefulWidget {
   const ReminderScreen({super.key});
@@ -88,9 +89,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeaderCard(activeCount),
-
             const SizedBox(height: 22),
-
             Row(
               children: [
                 const Expanded(
@@ -115,9 +114,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 8),
-
             if (reminders.isEmpty)
               _buildEmptyState()
             else
@@ -162,9 +159,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                   );
                 },
               ),
-
             const SizedBox(height: 22),
-
             _buildInfoCard(),
           ],
         ),
@@ -211,9 +206,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
               size: 31,
             ),
           ),
-
           const SizedBox(width: 14),
-
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,7 +231,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
               ],
             ),
           ),
-
           Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 11,
@@ -284,9 +276,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 color: Color(0xFFF0A126),
               ),
             ),
-
             const SizedBox(height: 16),
-
             const Text(
               'No reminders yet',
               style: TextStyle(
@@ -294,9 +284,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-
             const SizedBox(height: 7),
-
             const Text(
               'Create a reminder for glucose checks, insulin, or other important activities.',
               textAlign: TextAlign.center,
@@ -306,9 +294,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 color: Color(0xFF718096),
               ),
             ),
-
             const SizedBox(height: 18),
-
             SizedBox(
               height: 48,
               child: ElevatedButton.icon(
@@ -394,9 +380,7 @@ class _ReminderCard extends StatelessWidget {
                 size: 24,
               ),
             ),
-
             const SizedBox(width: 13),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,9 +395,7 @@ class _ReminderCard extends StatelessWidget {
                           : const Color(0xFF8A97A5),
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Row(
                     children: [
                       Text(
@@ -426,9 +408,7 @@ class _ReminderCard extends StatelessWidget {
                               : const Color(0xFF8A97A5),
                         ),
                       ),
-
                       const SizedBox(width: 7),
-
                       Container(
                         width: 4,
                         height: 4,
@@ -439,9 +419,7 @@ class _ReminderCard extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                       ),
-
                       const SizedBox(width: 7),
-
                       Text(
                         reminder.category,
                         style: const TextStyle(
@@ -454,7 +432,6 @@ class _ReminderCard extends StatelessWidget {
                 ],
               ),
             ),
-
             Switch.adaptive(
               value: reminder.enabled,
               activeColor: reminder.iconColor,
@@ -500,15 +477,12 @@ class _AddReminderDialogState
   final nameController = TextEditingController();
 
   TimeOfDay? selectedTime;
-
   String selectedCategory = 'Blood Glucose';
 
-  final List<String> categories = [
-    'Blood Glucose',
-    'Medication',
-    'Meal',
-    'Activity',
-  ];
+  // Backend reminder types: GLUCOSE_CHECK, MEDICATION, MEAL, APPOINTMENT, OTHER
+  // (see reminderTypeOptions). "Activity" does not exist in the backend.
+  final List<String> categories =
+      reminderTypeOptions.keys.toList();
 
   Future<void> _selectTime() async {
     final picked = await showTimePicker(
@@ -529,8 +503,10 @@ class _AddReminderDialogState
         return const Color(0xFF765BD4);
       case 'Meal':
         return const Color(0xFFF0A126);
-      case 'Activity':
-        return const Color(0xFF35B779);
+      case 'Appointment':
+        return const Color(0xFF168AF7);
+      case 'Other':
+        return const Color(0xFF5F6E7D);
       default:
         return const Color(0xFFE95D76);
     }
@@ -542,8 +518,10 @@ class _AddReminderDialogState
         return const Color(0xFFF0ECFF);
       case 'Meal':
         return const Color(0xFFFFF2E2);
-      case 'Activity':
-        return const Color(0xFFEAF8EE);
+      case 'Appointment':
+        return const Color(0xFFE9F4FF);
+      case 'Other':
+        return const Color(0xFFF1F4F7);
       default:
         return const Color(0xFFFFEEF1);
     }
@@ -555,16 +533,20 @@ class _AddReminderDialogState
         return Icons.medication_rounded;
       case 'Meal':
         return Icons.restaurant_rounded;
-      case 'Activity':
-        return Icons.directions_run_rounded;
+      case 'Appointment':
+        return Icons.event_rounded;
+      case 'Other':
+        return Icons.notifications_rounded;
       default:
         return Icons.water_drop_rounded;
     }
   }
 
   String _formatTime(TimeOfDay time) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
+    final hour =
+        time.hour.toString().padLeft(2, '0');
+    final minute =
+        time.minute.toString().padLeft(2, '0');
 
     return '$hour:$minute';
   }
@@ -629,9 +611,7 @@ class _AddReminderDialogState
                 fontWeight: FontWeight.w700,
               ),
             ),
-
             const SizedBox(height: 7),
-
             TextField(
               controller: nameController,
               decoration: InputDecoration(
@@ -642,19 +622,22 @@ class _AddReminderDialogState
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   borderSide: const BorderSide(
                     color: Color(0xFFE3EAF1),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   borderSide: const BorderSide(
                     color: Color(0xFFE3EAF1),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   borderSide: const BorderSide(
                     color: Color(0xFF168AF7),
                     width: 1.5,
@@ -662,9 +645,7 @@ class _AddReminderDialogState
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
-
             const Text(
               'Category',
               style: TextStyle(
@@ -672,9 +653,7 @@ class _AddReminderDialogState
                 fontWeight: FontWeight.w700,
               ),
             ),
-
             const SizedBox(height: 7),
-
             DropdownButtonFormField<String>(
               value: selectedCategory,
               decoration: InputDecoration(
@@ -685,13 +664,15 @@ class _AddReminderDialogState
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   borderSide: const BorderSide(
                     color: Color(0xFFE3EAF1),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   borderSide: const BorderSide(
                     color: Color(0xFFE3EAF1),
                   ),
@@ -713,9 +694,7 @@ class _AddReminderDialogState
                 });
               },
             ),
-
             const SizedBox(height: 16),
-
             const Text(
               'Time',
               style: TextStyle(
@@ -723,21 +702,22 @@ class _AddReminderDialogState
                 fontWeight: FontWeight.w700,
               ),
             ),
-
             const SizedBox(height: 7),
-
             InkWell(
               onTap: _selectTime,
-              borderRadius: BorderRadius.circular(15),
+              borderRadius:
+                  BorderRadius.circular(15),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
+                padding:
+                    const EdgeInsets.symmetric(
                   horizontal: 15,
                   vertical: 15,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius:
+                      BorderRadius.circular(15),
                   border: Border.all(
                     color: const Color(0xFFE3EAF1),
                   ),
@@ -753,7 +733,9 @@ class _AddReminderDialogState
                       child: Text(
                         selectedTime == null
                             ? 'Select time'
-                            : _formatTime(selectedTime!),
+                            : _formatTime(
+                                selectedTime!,
+                              ),
                         style: TextStyle(
                           fontSize: 14,
                           color: selectedTime == null
