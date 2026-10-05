@@ -36,6 +36,12 @@ The AI service provides:
 - Event aggregation
 - Personalized pattern detection
 - Experimental XGBoost trend prediction
+- Prediction confidence and uncertainty analysis
+- Explainable AI using global feature importance and local SHAP explanations
+- Personalized glucose anomaly detection
+- Personalized baseline learning
+- Patient-history data quality analysis
+- Model-input drift monitoring
 - Patient summary generation
 - Human-readable insights
 - Input validation
@@ -110,6 +116,7 @@ The AI service uses:
 - **Pandas**
 - **scikit-learn**
 - **XGBoost**
+- **SHAP**
 - **joblib**
 - **faster-whisper**
 - **pytest**
@@ -791,7 +798,138 @@ Temporary files used during transcription are removed after processing.
 
 ---
 
-# 29. API Error Handling
+# 29. Personalized Baseline Learning
+
+DiaMate can learn descriptive baselines from an individual patient's historical glucose records.
+
+The baseline module summarizes overall historical glucose behavior, time-of-day behavior, and weekday/weekend behavior. These baselines are derived from the patient's own recorded history.
+
+> Personalized baselines are descriptive historical references. They are not medical target ranges.
+
+---
+
+# 36. Personalized Anomaly Detection
+
+The anomaly detection component evaluates whether the latest glucose observation is statistically unusual relative to the patient's own history.
+
+The current observation is excluded from the historical baseline to avoid data leakage. When enough matching time-of-day history is available, DiaMate uses a contextual baseline. Otherwise, it falls back to the patient's overall historical baseline.
+
+```text
+Latest Glucose Reading
+        |
+        v
+Identify Time Context
+        |
+        v
+Contextual Baseline if sufficient
+        |
+        v
+Z-Score Analysis
+        |
+        v
+Descriptive Anomaly Result
+```
+
+An anomaly indicates statistical unusualness relative to the selected historical baseline. It does not diagnose hypoglycemia, hyperglycemia, clinical deterioration, or medical risk.
+
+---
+
+# 37. Data Quality Analysis
+
+DiaMate includes a data-quality layer for checking whether patient-history data is suitable for downstream analysis.
+
+Checks include:
+
+- Missing values
+- Duplicate records
+- Invalid timestamps
+- Large gaps between recorded observations
+
+Large-gap thresholds are engineering/data-quality settings rather than clinical thresholds. Strict Pydantic validation at the API boundary may reject malformed records before deeper data-quality analytics are reached.
+
+---
+
+# 38. Prediction Confidence and Uncertainty
+
+DiaMate does not present every machine-learning classification as equally certain.
+
+For predictions that support class probabilities, the service reports the probability distribution across `LOWER`, `STABLE`, and `HIGHER`, together with descriptive confidence and uncertainty.
+
+The current engineering confidence interpretation is:
+
+```text
+LOW       < 0.50
+MODERATE  0.50 to < 0.75
+HIGH      >= 0.75
+```
+
+Confidence is based on the model's maximum class probability. Uncertainty is derived from the ambiguity of the model output.
+
+> These values describe model behavior. They are not calibrated clinical probabilities, medical-risk estimates, or treatment recommendations.
+
+---
+
+# 39. Explainable AI
+
+DiaMate includes explainability at two levels.
+
+## Global Explainability
+
+Global feature importance describes which input features the XGBoost model generally relies on.
+
+## Local Explainability
+
+SHAP is used to describe how individual features contribute to a specific prediction.
+
+```text
+Prediction
+    |
+    +--> Global Feature Importance
+    |
+    +--> Local SHAP Explanation
+```
+
+Global importance answers which features the model generally uses. Local SHAP helps explain which features contributed to one particular prediction.
+
+> Explainability describes model behavior and does not establish medical causation.
+
+---
+
+# 40. Model-Input Drift Monitoring
+
+DiaMate includes model-input drift monitoring.
+
+Drift monitoring compares a historical reference window with a newer current window and checks whether the statistical distribution of model inputs has changed.
+
+The current implementation uses standardized mean shift for each model feature.
+
+```text
+Reference Window ----+
+                     |
+                     v
+              Feature Comparison
+                     |
+                     v
+             Mean Shift Analysis
+                     |
+                     v
+Current Window ------+
+                     |
+                     v
+          DRIFT_DETECTED
+                or
+          NO_DRIFT_DETECTED
+```
+
+The drift report includes per-feature statistics, drifted features, and an overall drift status.
+
+The default mean-shift threshold is an engineering monitoring threshold, not a clinical threshold.
+
+> Model-input drift means that the statistical distribution of data presented to the model has changed relative to the selected reference period. It does not prove clinical deterioration, medical risk, diagnosis, treatment need, or that a prediction is incorrect.
+
+---
+
+# 35. API Error Handling
 
 The AI service uses a standardized error response structure.
 
@@ -815,7 +953,7 @@ Unexpected internal exceptions return generic messages so that unnecessary inter
 
 ---
 
-# 30. API Endpoints
+# 36. API Endpoints
 
 The AI service includes the following main endpoints.
 
@@ -876,9 +1014,35 @@ POST /api/v1/ml/predict-from-history
 
 The history-based endpoint prepares patient history and uses the latest valid feature row for trend classification.
 
+### Model-input drift monitoring
+
+```text
+POST /api/v1/ml/drift
+```
+
+The drift endpoint compares a historical reference period with a newer patient-data period and reports descriptive changes in model-input distributions.
+
 ---
 
 ## Insights
+
+### Personalized baseline
+
+```text
+POST /api/v1/insights/baseline
+```
+
+### Personalized anomaly detection
+
+```text
+POST /api/v1/insights/anomaly
+```
+
+### Data quality analysis
+
+```text
+POST /api/v1/insights/data-quality
+```
 
 ### Patient summary
 
@@ -908,7 +1072,7 @@ The endpoint accepts an audio file, performs Speech-to-Text, and passes the resu
 
 ---
 
-# 31. OpenAPI and Swagger Documentation
+# 37. OpenAPI and Swagger Documentation
 
 FastAPI automatically provides interactive API documentation.
 
@@ -933,7 +1097,7 @@ Swagger UI can be used to inspect endpoints and manually send API requests.
 
 ---
 
-# 32. Running the AI Service Locally
+# 38. Running the AI Service Locally
 
 Navigate to the AI service:
 
@@ -967,7 +1131,7 @@ curl http://127.0.0.1:8000/health
 
 ---
 
-# 33. Running Tests
+# 39. Running Tests
 
 Activate the virtual environment:
 
@@ -1005,12 +1169,18 @@ The test suite covers areas including:
 - Audio validation
 - Speech-to-Text integration logic
 - Error handling
+- Personalized baseline learning
+- Personalized anomaly detection
+- Data-quality analysis
+- Prediction confidence and uncertainty
+- Explainable AI / SHAP
+- Model-input drift detection
 
 External dependencies such as the real Whisper model can be mocked during automated tests where appropriate.
 
 ---
 
-# 34. Testing Strategy
+# 40. Testing Strategy
 
 The project uses several levels of testing.
 
@@ -1069,7 +1239,7 @@ JSON Response
 
 ---
 
-# 35. Docker
+# 41. Docker
 
 The AI service can run inside a Docker container.
 
@@ -1112,7 +1282,7 @@ rather than localhost.
 
 ---
 
-# 36. Environment Configuration
+# 42. Environment Configuration
 
 Environment variables are used to provide configuration without hard-coding environment-specific values into application logic.
 
@@ -1130,7 +1300,7 @@ Secrets should never be committed directly to the repository.
 
 ---
 
-# 37. Continuous Integration
+# 43. Continuous Integration
 
 The AI service uses **GitHub Actions** for Continuous Integration (CI).
 
@@ -1159,7 +1329,7 @@ This helps detect regressions before code changes are integrated.
 
 ---
 
-# 38. Project Structure
+# 44. Project Structure
 
 A simplified structure of the AI service is:
 
@@ -1182,6 +1352,10 @@ ai-service/
 │   ├── insight_service.py
 │   ├── summary_service.py
 │   ├── pattern_service.py
+│   ├── anomaly_service.py
+│   ├── baseline_service.py
+│   ├── data_quality_service.py
+│   ├── drift_service.py
 │   ├── voice_service.py
 │   ├── audio_service.py
 │   ├── speech_to_text_service.py
@@ -1192,7 +1366,10 @@ ai-service/
 │   ├── glucose_analytics.py
 │   ├── trend_analytics.py
 │   ├── correlation_analytics.py
-│   └── feature_engineering.py
+│   ├── feature_engineering.py
+│   ├── anomaly_detection.py
+│   ├── personalized_baseline.py
+│   └── data_quality.py
 │
 ├── data/
 │   ├── backend_adapter.py
@@ -1204,6 +1381,9 @@ ai-service/
 │   ├── training.py
 │   ├── prediction.py
 │   ├── history_prediction.py
+│   ├── explainability.py
+│   ├── uncertainty.py
+│   ├── drift_detection.py
 │   └── models/
 │
 ├── scripts/
@@ -1214,7 +1394,7 @@ ai-service/
 
 ---
 
-# 39. Separation of Responsibilities
+# 45. Separation of Responsibilities
 
 The AI service follows a modular design.
 
@@ -1253,7 +1433,7 @@ This separation makes the system easier to:
 
 ---
 
-# 40. Privacy and Security
+# 46. Privacy and Security
 
 DiaMate handles health-related information, so privacy and security are important design considerations.
 
@@ -1273,7 +1453,7 @@ Production deployment should use HTTPS and appropriate protection for sensitive 
 
 ---
 
-# 41. AI Safety
+# 47. AI Safety
 
 DiaMate AI functionality is intended as a **support tool**.
 
@@ -1290,13 +1470,23 @@ Analytics describe patterns found in recorded data.
 
 Machine-learning predictions are experimental classifications.
 
+Confidence and uncertainty describe model-output ambiguity rather than clinical probability.
+
+SHAP and feature importance explain model behavior rather than medical causation.
+
+Personalized anomalies describe statistical unusualness relative to historical data rather than diagnosis.
+
+Personalized baselines describe historical behavior rather than medical target ranges.
+
+Model-input drift describes changes in feature distributions rather than clinical deterioration.
+
 Food or nutrition estimates, where implemented, should be treated as estimates and confirmed by the user.
 
 The system should not replace qualified healthcare professionals.
 
 ---
 
-# 42. Current ML Limitations
+# 48. Current ML Limitations
 
 The current machine-learning implementation is primarily intended to demonstrate and validate the software architecture and ML pipeline.
 
@@ -1308,10 +1498,15 @@ Important limitations include:
 - Predictions must not be interpreted as medical advice.
 - Real-world deployment would require appropriate real patient datasets and external evaluation.
 - Regulatory and clinical requirements would need to be considered before medical use.
+- Confidence values are not calibrated clinical probabilities.
+- SHAP explanations do not establish medical causation.
+- Statistical anomaly detection does not diagnose hypo/hyperglycemia.
+- Personalized baselines are not medical target ranges.
+- Drift monitoring currently uses a simple standardized mean-shift method intended for engineering monitoring.
 
 ---
 
-# 43. Future Work
+# 49. Future Work
 
 Potential future improvements include:
 
@@ -1320,8 +1515,8 @@ Potential future improvements include:
 - Improved multilingual NLP
 - More extensive Speech-to-Text evaluation
 - Advanced patient-specific analytics
-- Food image recognition integration
-- Nutrition database integration
+- Food image recognition integration with the team's separate Food Vision component
+- Nutrition database integration and user confirmation/editing of food estimates
 - Clinician/caregiver reporting
 - Additional accessibility functionality
 - More advanced natural-language summaries
@@ -1331,7 +1526,7 @@ These extensions should preserve the project's safety principle of providing dec
 
 ---
 
-# 44. Example Complete AI Flow
+# 50. Example Complete AI Flow
 
 A typical text request can follow:
 
@@ -1408,7 +1603,7 @@ Structured Result
 
 ---
 
-# 45. Graduation Project Context
+# 51. Graduation Project Context
 
 DiaMate was developed as a Computer Engineering graduation project.
 
@@ -1421,13 +1616,28 @@ The AI service contributes functionality including:
 - Patient-history analytics
 - Personalized pattern detection
 - Experimental machine-learning trend classification
+- Prediction confidence and uncertainty
+- Global and local explainable AI
+- Personalized baseline and anomaly analysis
+- Data-quality analysis
+- Model-input drift monitoring
 - Structured API integration
 
 The AI functionality is separated from the main Spring Boot application as a FastAPI microservice.
 
 ---
 
-# 46. Summary
+# 52. Current AI Module Status
+
+The core DiaMate AI microservice implementation currently includes the main text, voice, analytics, machine-learning, explainability, uncertainty, safety, and monitoring components described in this README.
+
+The AI module is designed to integrate with the Spring Boot backend and Flutter client through REST APIs. Final end-to-end product integration depends on the corresponding backend and client-side modules being available.
+
+Food Vision is handled as a separate team component and is not claimed here as part of the completed core AI implementation.
+
+---
+
+# 53. Summary
 
 The DiaMate AI service combines:
 
@@ -1447,6 +1657,16 @@ Feature Engineering
 Personalized Pattern Detection
    +
 XGBoost
+   +
+Confidence & Uncertainty
+   +
+Explainable AI / SHAP
+   +
+Personalized Baseline & Anomaly Detection
+   +
+Data Quality Analysis
+   +
+Model-Input Drift Monitoring
    +
 Insight Generation
    +
