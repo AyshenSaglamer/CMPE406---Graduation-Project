@@ -1,68 +1,65 @@
-import 'package:flutter/foundation.dart';
+import '../utils/api_enums.dart';
+import 'log_store.dart';
 
-class GlucoseRecord {
+class GlucoseRecord implements LogRecord {
+  @override
+  final int id;
   final double value;
   final DateTime dateTime;
+
+  /// Display label, e.g. "Fasting" or "After meal".
   final String measurementTime;
 
+  final String? notes;
+
   const GlucoseRecord({
+    required this.id,
     required this.value,
     required this.dateTime,
     required this.measurementTime,
+    this.notes,
   });
-}
 
-class GlucoseStore
-    extends ValueNotifier<List<GlucoseRecord>> {
-  GlucoseStore()
-      : super([
-          GlucoseRecord(
-            value: 105,
-            dateTime: DateTime.now().subtract(
-              const Duration(hours: 2),
-            ),
-            measurementTime: 'Fasting',
-          ),
-        ]);
+  @override
+  DateTime get time => dateTime;
 
-  void addRecord({
-    required double glucoseValue,
-    required String measurementTime,
-    DateTime? dateTime,
-  }) {
-    final newRecord = GlucoseRecord(
-      value: glucoseValue,
-      dateTime: dateTime ?? DateTime.now(),
-      measurementTime: measurementTime,
+  /// Mirrors the backend GlucoseLogResponse:
+  ///   { "id": 1, "glucoseValue": 105,
+  ///     "measurementTime": "2026-10-05T08:30:00Z",
+  ///     "mealContext": "FASTING", "notes": null, ... }
+  factory GlucoseRecord.fromJson(Map<String, dynamic> json) {
+    return GlucoseRecord(
+      id: (json['id'] as num).toInt(),
+      value: (json['glucoseValue'] as num).toDouble(),
+      dateTime: parseApiTime(json['measurementTime']),
+      measurementTime: labelForApiValue(
+        glucoseContextOptions,
+        json['mealContext'] as String?,
+      ),
+      notes: json['notes'] as String?,
     );
-
-    value = [
-      ...value,
-      newRecord,
-    ];
   }
 
-  GlucoseRecord? get latestRecord {
-    if (value.isEmpty) {
-      return null;
-    }
-
-    final records = [...value]
-      ..sort(
-        (a, b) => b.dateTime.compareTo(a.dateTime),
-      );
-
-    return records.first;
-  }
-
-  List<GlucoseRecord> get recentRecords {
-    final records = [...value]
-      ..sort(
-        (a, b) => b.dateTime.compareTo(a.dateTime),
-      );
-
-    return records;
+  /// Body for POST and PUT .../glucose-logs
+  static Map<String, dynamic> requestBody({
+    required int glucoseValue,
+    required DateTime measuredAt,
+    required String mealContextLabel,
+    required String clientUuid,
+    String? notes,
+  }) {
+    return {
+      'glucoseValue': glucoseValue,
+      'measurementTime': measuredAt.toUtc().toIso8601String(),
+      'mealContext': glucoseContextOptions[mealContextLabel],
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      'source': 'MANUAL',
+      'clientUuid': clientUuid,
+    };
   }
 }
 
-final glucoseStore = GlucoseStore();
+final glucoseStore = LogStore<GlucoseRecord>(
+  resource: 'glucose-logs',
+  fromJson: GlucoseRecord.fromJson,
+);

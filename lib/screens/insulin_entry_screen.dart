@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/insulin_store.dart';
+import '../services/api_exception.dart';
+import '../utils/api_enums.dart';
+import '../utils/client_uuid.dart';
+import '../utils/form_helpers.dart';
+import '../widgets/date_time_tile.dart';
+
 class InsulinEntryScreen extends StatefulWidget {
   const InsulinEntryScreen({super.key});
 
@@ -12,52 +19,96 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
 
   String selectedType = 'Rapid-acting';
 
-  final List<String> insulinTypes = [
-    'Rapid-acting',
-    'Short-acting',
-    'Intermediate-acting',
-    'Long-acting',
-  ];
+  final List<String> insulinTypes = insulinTypeOptions.keys.toList();
 
-  void _saveInsulin() {
+  String selectedDelivery = 'Pen';
+
+  final List<String> deliveryOptions = insulinDeliveryOptions.keys.toList();
+
+  DateTime administeredAt = DateTime.now();
+
+  bool isSaving = false;
+
+  // Same id while retrying after a network error, so the dose is not
+  // stored twice. A new one after any change.
+  String clientUuid = newClientUuid();
+
+  void _changed(VoidCallback update) {
+    setState(() {
+      update();
+      clientUuid = newClientUuid();
+    });
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _saveInsulin() async {
+    if (isSaving) {
+      return;
+    }
+
     final value = amountController.text.trim();
-    final amount = double.tryParse(value);
 
     if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter the insulin amount.',
-          ),
-        ),
+      _showMessage('Please enter the insulin amount.');
+      return;
+    }
+
+    final amount = parseUserNumber(value);
+
+    if (amount == null ||
+        amount <= 0 ||
+        amount > insulinMaxUnits ||
+        !hasAtMostDecimals(amount, 2)) {
+      _showMessage(
+        'Please enter a dose between 0 and 300 units '
+        '(at most 2 decimal places).',
       );
       return;
     }
 
-    if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter a valid insulin amount.',
-          ),
-        ),
-      );
+    setState(() {
+      isSaving = true;
+    });
+
+    try {
+      await insulinStore.create({
+        'doseUnits': amount,
+        'insulinType': insulinTypeOptions[selectedType],
+        'deliveryMethod': insulinDeliveryOptions[selectedDelivery],
+        'administeredAt': administeredAt.toUtc().toIso8601String(),
+        'source': 'MANUAL',
+        'clientUuid': clientUuid,
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSaving = false;
+      });
+
+      final fieldError =
+          e.fieldErrors['doseUnits'] ?? e.fieldErrors['administeredAt'];
+
+      _showMessage(fieldError ?? e.message);
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${amountController.text} units of $selectedType insulin saved.',
-        ),
-      ),
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      '${formatNumber(amount)} units of $selectedType insulin saved.',
     );
 
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) {
-        Navigator.pop(context);
-      }
-    });
+    Navigator.pop(context);
   }
 
   @override
@@ -111,6 +162,40 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
 
             _buildTypeSelector(),
 
+            const SizedBox(height: 14),
+
+            const Text(
+              'Delivery Method',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172033),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            _buildDeliverySelector(),
+
+            const SizedBox(height: 24),
+
+            const Text(
+              'Date & Time',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172033),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            DateTimeTile(
+              value: administeredAt,
+              accentColor: const Color(0xFF765BD4),
+              onChanged: (value) => _changed(() => administeredAt = value),
+            ),
+
             const SizedBox(height: 24),
 
             _buildInfoCard(),
@@ -121,16 +206,20 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: _saveInsulin,
-                icon: const Icon(
-                  Icons.check_rounded,
-                ),
-                label: const Text(
-                  'Save Insulin Record',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                onPressed: isSaving ? null : _saveInsulin,
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(
+                  isSaving ? 'Saving...' : 'Save Insulin Record',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF765BD4),
@@ -156,10 +245,7 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF0ECFF),
-            Color(0xFFF8F5FF),
-          ],
+          colors: [Color(0xFFF0ECFF), Color(0xFFF8F5FF)],
         ),
         borderRadius: BorderRadius.circular(25),
       ),
@@ -169,7 +255,7 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -217,27 +303,21 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFE7EDF3),
-        ),
+        border: Border.all(color: const Color(0xFFE7EDF3)),
       ),
       child: Column(
         children: [
           const Text(
             'Enter dose',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF718096),
-            ),
+            style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
           ),
 
           const SizedBox(height: 12),
 
           TextField(
             controller: amountController,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => clientUuid = newClientUuid(),
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 42,
@@ -282,11 +362,7 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
-              onTap: () {
-                setState(() {
-                  selectedType = type;
-                });
-              },
+              onTap: () => _changed(() => selectedType = type),
               borderRadius: BorderRadius.circular(18),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -301,9 +377,7 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
                         : const Color(0xFFE1E8EF),
                     width: isSelected ? 1.5 : 1,
                   ),
-                  color: isSelected
-                      ? const Color(0xFFF6F2FF)
-                      : Colors.white,
+                  color: isSelected ? const Color(0xFFF6F2FF) : Colors.white,
                 ),
                 child: Row(
                   children: [
@@ -369,6 +443,39 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
                 ),
               ),
             ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildDeliverySelector() {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: deliveryOptions.map((option) {
+        final isSelected = selectedDelivery == option;
+
+        return ChoiceChip(
+          label: Text(option),
+          selected: isSelected,
+          onSelected: (_) => _changed(() => selectedDelivery = option),
+          selectedColor: const Color(0xFFEDE7FF),
+          backgroundColor: Colors.white,
+          side: BorderSide(
+            color: isSelected
+                ? const Color(0xFF765BD4)
+                : const Color(0xFFE1E8EF),
+          ),
+          labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: isSelected
+                ? const Color(0xFF4D3E7B)
+                : const Color(0xFF5F6E7D),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
           ),
         );
       }).toList(),

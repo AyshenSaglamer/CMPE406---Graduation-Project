@@ -286,7 +286,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(

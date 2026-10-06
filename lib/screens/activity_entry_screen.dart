@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+
+import '../data/activity_store.dart';
+import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
+import '../utils/client_uuid.dart';
+import '../widgets/date_time_tile.dart';
 
 class ActivityEntryScreen extends StatefulWidget {
   const ActivityEntryScreen({super.key});
@@ -22,58 +27,84 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
     'Other',
   ];
 
-  // Labels stay the same on screen. The backend expects LOW / MODERATE / HIGH,
-  // so send activityIntensityOptions[selectedIntensity].
-  final List<String> intensityOptions =
-      activityIntensityOptions.keys.toList();
+  // Labels stay the same on screen. The backend expects LOW / MODERATE / HIGH.
+  final List<String> intensityOptions = activityIntensityOptions.keys.toList();
 
-  void _saveActivity() {
+  DateTime startedAt = DateTime.now();
+
+  bool isSaving = false;
+
+  // Same id while retrying after a network error, so the record is not
+  // stored twice. A new one after any change.
+  String clientUuid = newClientUuid();
+
+  void _changed(VoidCallback update) {
+    setState(() {
+      update();
+      clientUuid = newClientUuid();
+    });
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _saveActivity() async {
+    if (isSaving) {
+      return;
+    }
+
     final value = durationController.text.trim();
-    final duration = int.tryParse(value);
 
     if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter the activity duration.',
-          ),
-        ),
-      );
+      _showMessage('Please enter the activity duration.');
       return;
     }
 
-    if (duration == null || duration <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter a valid duration.',
-          ),
-        ),
-      );
+    final duration = int.tryParse(value);
+
+    if (duration == null || duration <= 0 || duration > 1440) {
+      _showMessage('Please enter a duration between 1 and 1440 minutes.');
       return;
     }
 
-    // When the activity endpoint is ready, send:
-    // activityType: selectedActivity
-    // durationMinutes: duration
-    // intensity: activityIntensityOptions[selectedIntensity]
+    setState(() {
+      isSaving = true;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$selectedActivity activity for $duration minutes saved.',
-        ),
-      ),
-    );
+    try {
+      await activityStore.create({
+        'activityType': selectedActivity,
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'durationMinutes': duration,
+        'intensity': activityIntensityOptions[selectedIntensity],
+        'clientUuid': clientUuid,
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
 
-    Future.delayed(
-      const Duration(milliseconds: 700),
-      () {
-        if (mounted) {
-          Navigator.pop(context);
-        }
-      },
-    );
+      setState(() {
+        isSaving = false;
+      });
+
+      final fieldError =
+          e.fieldErrors['durationMinutes'] ?? e.fieldErrors['startedAt'];
+
+      _showMessage(fieldError ?? e.message);
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage('$selectedActivity activity for $duration minutes saved.');
+
+    Navigator.pop(context);
   }
 
   @override
@@ -91,12 +122,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          18,
-          8,
-          18,
-          28,
-        ),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -135,6 +161,25 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
             const SizedBox(height: 24),
 
             const Text(
+              'Start Time',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172033),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            DateTimeTile(
+              value: startedAt,
+              accentColor: const Color(0xFF35B779),
+              onChanged: (value) => _changed(() => startedAt = value),
+            ),
+
+            const SizedBox(height: 24),
+
+            const Text(
               'Intensity',
               style: TextStyle(
                 fontSize: 20,
@@ -157,25 +202,27 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: _saveActivity,
-                icon: const Icon(
-                  Icons.check_rounded,
-                ),
-                label: const Text(
-                  'Save Activity Record',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                onPressed: isSaving ? null : _saveActivity,
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(
+                  isSaving ? 'Saving...' : 'Save Activity Record',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFF35B779),
+                  backgroundColor: const Color(0xFF35B779),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(17),
+                    borderRadius: BorderRadius.circular(17),
                   ),
                 ),
               ),
@@ -194,10 +241,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFEAF8EE),
-            Color(0xFFF3FCF6),
-          ],
+          colors: [Color(0xFFEAF8EE), Color(0xFFF3FCF6)],
         ),
         borderRadius: BorderRadius.circular(25),
       ),
@@ -207,8 +251,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color:
-                  Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -222,8 +265,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
 
           const Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Add Activity Record',
@@ -257,19 +299,13 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       spacing: 10,
       runSpacing: 10,
       children: activityTypes.map((activity) {
-        final isSelected =
-            selectedActivity == activity;
+        final isSelected = selectedActivity == activity;
 
         return ChoiceChip(
           label: Text(activity),
           selected: isSelected,
-          onSelected: (_) {
-            setState(() {
-              selectedActivity = activity;
-            });
-          },
-          selectedColor:
-              const Color(0xFFE3F7EB),
+          onSelected: (_) => _changed(() => selectedActivity = activity),
+          selectedColor: const Color(0xFFE3F7EB),
           backgroundColor: Colors.white,
           side: BorderSide(
             color: isSelected
@@ -283,13 +319,9 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
                 ? const Color(0xFF26915D)
                 : const Color(0xFF5F6E7D),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(15),
           ),
         );
       }).toList(),
@@ -299,28 +331,17 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
   Widget _buildDurationInput() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        18,
-        20,
-        18,
-        20,
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFE7EDF3),
-        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE7EDF3)),
       ),
       child: Column(
         children: [
           const Text(
             'How long were you active?',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF718096),
-            ),
+            style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
           ),
 
           const SizedBox(height: 12),
@@ -328,6 +349,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
           TextField(
             controller: durationController,
             keyboardType: TextInputType.number,
+            onChanged: (_) => clientUuid = newClientUuid(),
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 42,
@@ -364,88 +386,60 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
   Widget _buildIntensitySelector() {
     return Row(
       children: intensityOptions.map((intensity) {
-        final isSelected =
-            selectedIntensity == intensity;
+        final isSelected = selectedIntensity == intensity;
 
         final Color selectedColor;
 
         switch (intensity) {
           case 'Light':
-            selectedColor =
-                const Color(0xFF74C69D);
+            selectedColor = const Color(0xFF74C69D);
             break;
 
           case 'Moderate':
-            selectedColor =
-                const Color(0xFF35B779);
+            selectedColor = const Color(0xFF35B779);
             break;
 
           default:
-            selectedColor =
-                const Color(0xFF258A5A);
+            selectedColor = const Color(0xFF258A5A);
         }
 
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(
-              right:
-                  intensity == intensityOptions.last
-                      ? 0
-                      : 10,
+              right: intensity == intensityOptions.last ? 0 : 10,
             ),
             child: Material(
               color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(17),
+              borderRadius: BorderRadius.circular(17),
               child: InkWell(
-                onTap: () {
-                  setState(() {
-                    selectedIntensity =
-                        intensity;
-                  });
-                },
-                borderRadius:
-                    BorderRadius.circular(17),
+                onTap: () => _changed(() => selectedIntensity = intensity),
+                borderRadius: BorderRadius.circular(17),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     vertical: 15,
                     horizontal: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(
-                            0xFFEAF8EE,
-                          )
-                        : Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(17),
+                    color: isSelected ? const Color(0xFFEAF8EE) : Colors.white,
+                    borderRadius: BorderRadius.circular(17),
                     border: Border.all(
                       color: isSelected
                           ? selectedColor
-                          : const Color(
-                              0xFFE1E8EF,
-                            ),
-                      width:
-                          isSelected ? 1.5 : 1,
+                          : const Color(0xFFE1E8EF),
+                      width: isSelected ? 1.5 : 1,
                     ),
                   ),
                   child: Column(
                     children: [
                       Icon(
                         intensity == 'Light'
-                            ? Icons
-                                .directions_walk_rounded
-                            : intensity ==
-                                    'Moderate'
-                                ? Icons
-                                    .directions_run_rounded
-                                : Icons.bolt_rounded,
+                            ? Icons.directions_walk_rounded
+                            : intensity == 'Moderate'
+                            ? Icons.directions_run_rounded
+                            : Icons.bolt_rounded,
                         color: isSelected
                             ? selectedColor
-                            : const Color(
-                                0xFF7D8996,
-                              ),
+                            : const Color(0xFF7D8996),
                         size: 22,
                       ),
 
@@ -456,13 +450,10 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight:
-                              FontWeight.w700,
+                          fontWeight: FontWeight.w700,
                           color: isSelected
                               ? selectedColor
-                              : const Color(
-                                  0xFF5F6E7D,
-                                ),
+                              : const Color(0xFF5F6E7D),
                         ),
                       ),
                     ],
@@ -482,18 +473,12 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFEDF9F2),
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: const Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: Color(0xFF35B779),
-            size: 21,
-          ),
+          Icon(Icons.info_outline_rounded, color: Color(0xFF35B779), size: 21),
 
           SizedBox(width: 10),
 

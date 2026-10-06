@@ -48,7 +48,7 @@ class RoleSelectionScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(26),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -275,7 +275,7 @@ class _RoleCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
+            color: Colors.black.withValues(alpha: 0.035),
             blurRadius: 18,
             offset: const Offset(0, 7),
           ),

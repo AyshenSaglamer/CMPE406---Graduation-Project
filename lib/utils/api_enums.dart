@@ -63,3 +63,19 @@ const Map<String, String> reminderTypeOptions = {
   'Appointment': 'APPOINTMENT',
   'Other': 'OTHER',
 };
+
+/// Backend value -> screen label, e.g. ('FASTING') -> 'Fasting'.
+/// Unknown or missing values fall back to [fallback].
+String labelForApiValue(
+  Map<String, String> options,
+  String? apiValue, {
+  String fallback = 'Other',
+}) {
+  for (final entry in options.entries) {
+    if (entry.value == apiValue) {
+      return entry.key;
+    }
+  }
+
+  return fallback;
+}

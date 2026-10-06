@@ -181,7 +181,7 @@ class _OfflineModeScreenState extends State<OfflineModeScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -286,7 +286,7 @@ class _OfflineModeScreenState extends State<OfflineModeScreen> {
 
             Switch.adaptive(
               value: offline,
-              activeColor: const Color(0xFFF0A126),
+              activeThumbColor: const Color(0xFFF0A126),
               onChanged: _toggleConnection,
             ),
           ],
@@ -309,7 +309,7 @@ class _OfflineModeScreenState extends State<OfflineModeScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(15),
             ),
             child: const Icon(

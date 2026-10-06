@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import '../data/activity_store.dart';
 import '../data/glucose_store.dart';
+import '../data/insulin_store.dart';
+import '../data/meal_store.dart';
 import '../navigation/session_navigation.dart';
+import '../services/api_exception.dart';
+import '../utils/form_helpers.dart';
 import 'activity_entry_screen.dart';
 import 'ai_assistant_screen.dart';
 import 'csv_import_screen.dart';
@@ -11,11 +16,13 @@ import 'meal_entry_screen.dart';
 import 'offline_mode_screen.dart';
 import 'pdf_report_screen.dart';
 import 'reminder_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
+
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
   final List<Widget> pages = const [
@@ -25,6 +32,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ReminderScreen(),
     _MoreTab(),
   ];
+  @override
+  void initState() {
+    super.initState();
+    _loadRecords();
+  }
+
+  /// Loads the last 14 days of glucose, insulin, meal and activity logs.
+  Future<void> _loadRecords() async {
+    try {
+      await Future.wait([
+        glucoseStore.load(),
+        insulinStore.load(),
+        mealStore.load(),
+        activityStore.load(),
+      ]);
+    } on ApiException catch (e) {
+      if (!mounted || e.statusCode == 401) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load your records: ${e.message}')),
+      );
+    }
+  }
+
   void _onNavigationSelected(int index) {
     if (index == 2) {
       _showAddRecordSheet();
@@ -34,6 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       selectedIndex = index;
     });
   }
+
   void _showAddRecordSheet() {
     showModalBottomSheet(
       context: context,
@@ -44,12 +77,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: pages[selectedIndex],
-      ),
+      body: SafeArea(child: pages[selectedIndex]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: _onNavigationSelected,
@@ -88,27 +120,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
 class _HomeTab extends StatelessWidget {
   const _HomeTab();
   void _open(BuildContext context, Widget screen) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => screen,
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
-  String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-  String _formatGlucose(double value) {
-    if (value % 1 == 0) {
-      return value.toInt().toString();
-    }
-    return value.toStringAsFixed(1);
-  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -123,99 +141,114 @@ class _HomeTab extends StatelessWidget {
           // ----------------------------
           // HEALTH METRICS
           // ----------------------------
-          ValueListenableBuilder<List<GlucoseRecord>>(
-            valueListenable: glucoseStore,
-            builder: (context, records, child) {
-              final latest = glucoseStore.latestRecord;
-              final glucoseValue = latest == null
-                  ? '—'
-                  : _formatGlucose(latest.value);
-              return Row(
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              glucoseStore,
+              insulinStore,
+              mealStore,
+              activityStore,
+            ]),
+            builder: (context, child) {
+              final latestGlucose = glucoseStore.latest;
+
+              final insulinToday = insulinStore.today.fold<double>(
+                0,
+                (sum, r) => sum + r.doseUnits,
+              );
+
+              final mealsToday = mealStore.today;
+              final carbsToday = mealsToday.fold<double>(
+                0,
+                (sum, r) => sum + (r.carbsG ?? 0),
+              );
+
+              final activityToday = activityStore.today.fold<double>(
+                0,
+                (sum, r) => sum + (r.durationMinutes ?? 0),
+              );
+
+              return Column(
                 children: [
-                  Expanded(
-                    child: _DashboardMetricCard(
-                      icon: Icons.water_drop_rounded,
-                      iconBackground: const Color(0xFFFFEEF1),
-                      iconColor: const Color(0xFFE95D76),
-                      title: 'Glucose',
-                      value: glucoseValue,
-                      unit: 'mg/dL',
-                      footer: latest == null
-                          ? 'No reading'
-                          : 'Latest reading',
-                      footerColor: const Color(0xFFE95D76),
-                      onTap: () {
-                        _open(
-                          context,
-                          const GlucoseEntryScreen(),
-                        );
-                      },
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          icon: Icons.water_drop_rounded,
+                          iconBackground: const Color(0xFFFFEEF1),
+                          iconColor: const Color(0xFFE95D76),
+                          title: 'Glucose',
+                          value: latestGlucose == null
+                              ? '\u2014'
+                              : formatNumber(latestGlucose.value),
+                          unit: 'mg/dL',
+                          footer: latestGlucose == null
+                              ? 'No reading'
+                              : 'Latest reading',
+                          footerColor: const Color(0xFFE95D76),
+                          onTap: () {
+                            _open(context, const GlucoseEntryScreen());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          icon: Icons.medication_rounded,
+                          iconBackground: const Color(0xFFF0ECFF),
+                          iconColor: const Color(0xFF765BD4),
+                          title: 'Insulin',
+                          value: formatNumber(insulinToday),
+                          unit: 'units',
+                          footer: 'Today',
+                          footerColor: const Color(0xFF765BD4),
+                          onTap: () {
+                            _open(context, const InsulinEntryScreen());
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DashboardMetricCard(
-                      icon: Icons.medication_rounded,
-                      iconBackground: const Color(0xFFF0ECFF),
-                      iconColor: const Color(0xFF765BD4),
-                      title: 'Insulin',
-                      value: '6',
-                      unit: 'units',
-                      footer: 'Today',
-                      footerColor: const Color(0xFF765BD4),
-                      onTap: () {
-                        _open(
-                          context,
-                          const InsulinEntryScreen(),
-                        );
-                      },
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          icon: Icons.restaurant_rounded,
+                          iconBackground: const Color(0xFFFFF2E2),
+                          iconColor: const Color(0xFFF0A126),
+                          title: 'Meals',
+                          value: '${mealsToday.length}',
+                          unit: 'today',
+                          footer: mealsToday.isEmpty
+                              ? 'No meals yet'
+                              : '${formatNumber(carbsToday)} g carbs',
+                          footerColor: const Color(0xFFF0A126),
+                          onTap: () {
+                            _open(context, const MealEntryScreen());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DashboardMetricCard(
+                          icon: Icons.directions_run_rounded,
+                          iconBackground: const Color(0xFFEAF8EE),
+                          iconColor: const Color(0xFF35B779),
+                          title: 'Activity',
+                          value: formatNumber(activityToday),
+                          unit: 'min',
+                          footer: 'Today',
+                          footerColor: const Color(0xFF35B779),
+                          onTap: () {
+                            _open(context, const ActivityEntryScreen());
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               );
             },
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _DashboardMetricCard(
-                  icon: Icons.restaurant_rounded,
-                  iconBackground: const Color(0xFFFFF2E2),
-                  iconColor: const Color(0xFFF0A126),
-                  title: 'Meals',
-                  value: '2',
-                  unit: 'today',
-                  footer: 'On track',
-                  footerColor: const Color(0xFFF0A126),
-                  onTap: () {
-                    _open(
-                      context,
-                      const MealEntryScreen(),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _DashboardMetricCard(
-                  icon: Icons.directions_run_rounded,
-                  iconBackground: const Color(0xFFEAF8EE),
-                  iconColor: const Color(0xFF35B779),
-                  title: 'Activity',
-                  value: '30',
-                  unit: 'min',
-                  footer: 'Good',
-                  footerColor: const Color(0xFF35B779),
-                  onTap: () {
-                    _open(
-                      context,
-                      const ActivityEntryScreen(),
-                    );
-                  },
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 22),
           // ----------------------------
@@ -226,18 +259,12 @@ class _HomeTab extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Quick Actions',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton(
                 onPressed: () {
-                  _open(
-                    context,
-                    const GlucoseChartScreen(),
-                  );
+                  _open(context, const GlucoseChartScreen());
                 },
                 child: const Text('View Chart'),
               ),
@@ -253,10 +280,7 @@ class _HomeTab extends StatelessWidget {
                   background: const Color(0xFFFFEEF1),
                   title: 'Glucose',
                   onTap: () {
-                    _open(
-                      context,
-                      const GlucoseEntryScreen(),
-                    );
+                    _open(context, const GlucoseEntryScreen());
                   },
                 ),
               ),
@@ -268,10 +292,7 @@ class _HomeTab extends StatelessWidget {
                   background: const Color(0xFFFFF2E2),
                   title: 'Meal',
                   onTap: () {
-                    _open(
-                      context,
-                      const MealEntryScreen(),
-                    );
+                    _open(context, const MealEntryScreen());
                   },
                 ),
               ),
@@ -283,10 +304,7 @@ class _HomeTab extends StatelessWidget {
                   background: const Color(0xFFF0ECFF),
                   title: 'Insulin',
                   onTap: () {
-                    _open(
-                      context,
-                      const InsulinEntryScreen(),
-                    );
+                    _open(context, const InsulinEntryScreen());
                   },
                 ),
               ),
@@ -303,59 +321,108 @@ class _HomeTab extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Recent Activity',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
               ),
               TextButton(
                 onPressed: () {
-                  _open(
-                    context,
-                    const GlucoseChartScreen(),
-                  );
+                  _open(context, const GlucoseChartScreen());
                 },
                 child: const Text('View all'),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          ValueListenableBuilder<List<GlucoseRecord>>(
-            valueListenable: glucoseStore,
-            builder: (context, records, child) {
-              final latest = glucoseStore.latestRecord;
-              if (latest == null) {
-                return const SizedBox.shrink();
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              glucoseStore,
+              insulinStore,
+              mealStore,
+              activityStore,
+            ]),
+            builder: (context, child) {
+              final cards = <Widget>[];
+
+              final glucose = glucoseStore.latest;
+              if (glucose != null) {
+                cards.add(
+                  _RecentActivityCard(
+                    icon: Icons.water_drop_rounded,
+                    iconBackground: const Color(0xFFFFEEF1),
+                    iconColor: const Color(0xFFE95D76),
+                    title: 'Blood Glucose',
+                    subtitle:
+                        '${glucose.measurementTime} \u2022 ${formatRelativeDay(glucose.dateTime)}',
+                    value: '${formatNumber(glucose.value)} mg/dL',
+                  ),
+                );
               }
-              return _RecentActivityCard(
-                icon: Icons.water_drop_rounded,
-                iconBackground: const Color(0xFFFFEEF1),
-                iconColor: const Color(0xFFE95D76),
-                title: 'Blood Glucose',
-                subtitle:
-                    '${latest.measurementTime} • ${_formatTime(latest.dateTime)}',
-                value: '${_formatGlucose(latest.value)} mg/dL',
+
+              final insulin = insulinStore.latest;
+              if (insulin != null) {
+                cards.add(
+                  _RecentActivityCard(
+                    icon: Icons.medication_rounded,
+                    iconBackground: const Color(0xFFF0ECFF),
+                    iconColor: const Color(0xFF765BD4),
+                    title: 'Insulin',
+                    subtitle: formatRelativeDay(insulin.administeredAt),
+                    value: '${formatNumber(insulin.doseUnits)} units',
+                  ),
+                );
+              }
+
+              final meal = mealStore.latest;
+              if (meal != null) {
+                cards.add(
+                  _RecentActivityCard(
+                    icon: Icons.restaurant_rounded,
+                    iconBackground: const Color(0xFFFFF2E2),
+                    iconColor: const Color(0xFFF0A126),
+                    title: meal.mealType,
+                    subtitle: formatRelativeDay(meal.eatenAt),
+                    value: meal.carbsG == null
+                        ? '\u2014'
+                        : '${formatNumber(meal.carbsG!)} g',
+                  ),
+                );
+              }
+
+              final activity = activityStore.latest;
+              if (activity != null) {
+                cards.add(
+                  _RecentActivityCard(
+                    icon: Icons.directions_run_rounded,
+                    iconBackground: const Color(0xFFEAF8EE),
+                    iconColor: const Color(0xFF35B779),
+                    title: activity.activityType,
+                    subtitle: formatRelativeDay(activity.startedAt),
+                    value: activity.durationMinutes == null
+                        ? '\u2014'
+                        : '${formatNumber(activity.durationMinutes!)} min',
+                  ),
+                );
+              }
+
+              if (cards.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'No records in the last 14 days yet.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
+                  ),
+                );
+              }
+
+              return Column(
+                children: [
+                  for (var i = 0; i < cards.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    cards[i],
+                  ],
+                ],
               );
             },
-          ),
-          const SizedBox(height: 10),
-          _RecentActivityCard(
-            icon: Icons.medication_rounded,
-            iconBackground: const Color(0xFFF0ECFF),
-            iconColor: const Color(0xFF765BD4),
-            title: 'Insulin',
-            subtitle: 'Today • 12:30',
-            value: '6 units',
-          ),
-          const SizedBox(height: 10),
-          _RecentActivityCard(
-            icon: Icons.directions_run_rounded,
-            iconBackground: const Color(0xFFEAF8EE),
-            iconColor: const Color(0xFF35B779),
-            title: 'Walking',
-            subtitle: 'Yesterday • 18:00',
-            value: '30 min',
           ),
           const SizedBox(height: 22),
           _buildReminderCard(context),
@@ -363,6 +430,7 @@ class _HomeTab extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildHeader() {
     return Row(
       children: [
@@ -386,34 +454,23 @@ class _HomeTab extends StatelessWidget {
             children: [
               Text(
                 'Hello \u{1F44B}',
-                style: TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
               ),
               SizedBox(height: 3),
               Text(
                 'Let’s take care of your health today.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF718096),
-                ),
+                style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
               ),
             ],
           ),
         ),
-        _HeaderIconButton(
-          icon: Icons.search_rounded,
-          onTap: () {},
-        ),
+        _HeaderIconButton(icon: Icons.search_rounded, onTap: () {}),
         const SizedBox(width: 8),
-        _HeaderIconButton(
-          icon: Icons.notifications_none_rounded,
-          onTap: () {},
-        ),
+        _HeaderIconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
       ],
     );
   }
+
   Widget _buildTodayCard(BuildContext context) {
     return Container(
       width: double.infinity,
@@ -422,15 +479,12 @@ class _HomeTab extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFDDFBB9),
-            Color(0xFFF1FCDD),
-          ],
+          colors: [Color(0xFFDDFBB9), Color(0xFFF1FCDD)],
         ),
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 6),
           ),
@@ -457,10 +511,7 @@ class _HomeTab extends StatelessWidget {
                     SizedBox(height: 2),
                     Text(
                       'Tuesday, September 8',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF587151),
-                      ),
+                      style: TextStyle(fontSize: 13, color: Color(0xFF587151)),
                     ),
                   ],
                 ),
@@ -471,7 +522,7 @@ class _HomeTab extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Text(
@@ -507,6 +558,7 @@ class _HomeTab extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildAssistantCard(BuildContext context) {
     return Container(
       width: double.infinity,
@@ -515,10 +567,7 @@ class _HomeTab extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFE9FA),
-            Color(0xFFF6EFFF),
-          ],
+          colors: [Color(0xFFFFE9FA), Color(0xFFF6EFFF)],
         ),
         borderRadius: BorderRadius.circular(24),
       ),
@@ -528,7 +577,7 @@ class _HomeTab extends StatelessWidget {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.75),
+              color: Colors.white.withValues(alpha: 0.75),
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Icon(
@@ -544,18 +593,12 @@ class _HomeTab extends StatelessWidget {
               children: [
                 Text(
                   'Need a little help?',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
                 SizedBox(height: 4),
                 Text(
                   'Talk to your DiaMate Assistant.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF786B84),
-                  ),
+                  style: TextStyle(fontSize: 12, color: Color(0xFF786B84)),
                 ),
               ],
             ),
@@ -564,16 +607,12 @@ class _HomeTab extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const AiAssistantScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
               );
             },
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(88, 42),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               backgroundColor: const Color(0xFF20202B),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
@@ -582,16 +621,14 @@ class _HomeTab extends StatelessWidget {
             ),
             child: const Text(
               'Open',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             ),
           ),
         ],
       ),
     );
   }
+
   Widget _buildReminderCard(BuildContext context) {
     return Card(
       child: Padding(
@@ -617,28 +654,19 @@ class _HomeTab extends StatelessWidget {
                 children: [
                   Text(
                     'Next Reminder',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF718096),
-                    ),
+                    style: TextStyle(fontSize: 12, color: Color(0xFF718096)),
                   ),
                   SizedBox(height: 4),
                   Text(
                     'Evening blood glucose',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
             ),
             const Text(
               '20:00',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -646,6 +674,7 @@ class _HomeTab extends StatelessWidget {
     );
   }
 }
+
 class _DashboardMetricCard extends StatelessWidget {
   final IconData icon;
   final Color iconBackground;
@@ -685,19 +714,12 @@ class _DashboardMetricCard extends StatelessWidget {
                   color: iconBackground,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 21,
-                ),
+                child: Icon(icon, color: iconColor, size: 21),
               ),
               const SizedBox(height: 11),
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF718096),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF718096)),
               ),
               const SizedBox(height: 3),
               Row(
@@ -739,6 +761,7 @@ class _DashboardMetricCard extends StatelessWidget {
     );
   }
 }
+
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -761,10 +784,7 @@ class _QuickActionCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: 15,
-            horizontal: 8,
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 8),
           child: Column(
             children: [
               Container(
@@ -774,11 +794,7 @@ class _QuickActionCard extends StatelessWidget {
                   color: background,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 21,
-                ),
+                child: Icon(icon, color: iconColor, size: 21),
               ),
               const SizedBox(height: 8),
               Text(
@@ -796,6 +812,7 @@ class _QuickActionCard extends StatelessWidget {
     );
   }
 }
+
 class _RecentActivityCard extends StatelessWidget {
   final IconData icon;
   final Color iconBackground;
@@ -825,11 +842,7 @@ class _RecentActivityCard extends StatelessWidget {
                 color: iconBackground,
                 borderRadius: BorderRadius.circular(15),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 21,
-              ),
+              child: Icon(icon, color: iconColor, size: 21),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -856,10 +869,7 @@ class _RecentActivityCard extends StatelessWidget {
             ),
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -867,6 +877,7 @@ class _RecentActivityCard extends StatelessWidget {
     );
   }
 }
+
 class _ReminderMiniRow extends StatelessWidget {
   final String time;
   final String title;
@@ -879,12 +890,9 @@ class _ReminderMiniRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.68),
+        color: Colors.white.withValues(alpha: 0.68),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Row(
@@ -923,13 +931,11 @@ class _ReminderMiniRow extends StatelessWidget {
     );
   }
 }
+
 class _HeaderIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _HeaderIconButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _HeaderIconButton({required this.icon, required this.onTap});
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -941,39 +947,27 @@ class _HeaderIconButton extends StatelessWidget {
         child: SizedBox(
           width: 42,
           height: 42,
-          child: Icon(
-            icon,
-            size: 21,
-            color: const Color(0xFF273142),
-          ),
+          child: Icon(icon, size: 21, color: const Color(0xFF273142)),
         ),
       ),
     );
   }
 }
+
 class _AddRecordSheet extends StatelessWidget {
   const _AddRecordSheet();
-  void _open(
-    BuildContext context,
-    Widget screen,
-  ) {
+  void _open(BuildContext context, Widget screen) {
     Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => screen,
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(28),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         child: Column(
@@ -990,10 +984,7 @@ class _AddRecordSheet extends StatelessWidget {
             const SizedBox(height: 18),
             const Text(
               'Add Health Record',
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 18),
             _BottomSheetRecordTile(
@@ -1003,10 +994,7 @@ class _AddRecordSheet extends StatelessWidget {
               title: 'Blood Glucose',
               subtitle: 'Add a glucose measurement',
               onTap: () {
-                _open(
-                  context,
-                  const GlucoseEntryScreen(),
-                );
+                _open(context, const GlucoseEntryScreen());
               },
             ),
             const SizedBox(height: 10),
@@ -1017,10 +1005,7 @@ class _AddRecordSheet extends StatelessWidget {
               title: 'Insulin',
               subtitle: 'Add an insulin record',
               onTap: () {
-                _open(
-                  context,
-                  const InsulinEntryScreen(),
-                );
+                _open(context, const InsulinEntryScreen());
               },
             ),
             const SizedBox(height: 10),
@@ -1031,10 +1016,7 @@ class _AddRecordSheet extends StatelessWidget {
               title: 'Meal',
               subtitle: 'Add a meal record',
               onTap: () {
-                _open(
-                  context,
-                  const MealEntryScreen(),
-                );
+                _open(context, const MealEntryScreen());
               },
             ),
             const SizedBox(height: 10),
@@ -1045,10 +1027,7 @@ class _AddRecordSheet extends StatelessWidget {
               title: 'Activity',
               subtitle: 'Add physical activity',
               onTap: () {
-                _open(
-                  context,
-                  const ActivityEntryScreen(),
-                );
+                _open(context, const ActivityEntryScreen());
               },
             ),
           ],
@@ -1057,6 +1036,7 @@ class _AddRecordSheet extends StatelessWidget {
     );
   }
 }
+
 class _BottomSheetRecordTile extends StatelessWidget {
   final IconData icon;
   final Color background;
@@ -1091,10 +1071,7 @@ class _BottomSheetRecordTile extends StatelessWidget {
                   color: background,
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                ),
+                child: Icon(icon, color: iconColor),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -1119,10 +1096,7 @@ class _BottomSheetRecordTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF9AA8B7),
-              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9AA8B7)),
             ],
           ),
         ),
@@ -1130,19 +1104,13 @@ class _BottomSheetRecordTile extends StatelessWidget {
     );
   }
 }
+
 class _MoreTab extends StatelessWidget {
   const _MoreTab();
-  void _open(
-    BuildContext context,
-    Widget screen,
-  ) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => screen,
-      ),
-    );
+  void _open(BuildContext context, Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -1150,18 +1118,12 @@ class _MoreTab extends StatelessWidget {
       children: [
         const Text(
           'More',
-          style: TextStyle(
-            fontSize: 27,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
         const Text(
           'Manage your DiaMate tools.',
-          style: TextStyle(
-            fontSize: 13,
-            color: Color(0xFF718096),
-          ),
+          style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
         ),
         const SizedBox(height: 20),
         _MoreTile(
@@ -1169,10 +1131,7 @@ class _MoreTab extends StatelessWidget {
           title: 'Import CSV',
           subtitle: 'Import blood glucose data',
           onTap: () {
-            _open(
-              context,
-              const CsvImportScreen(),
-            );
+            _open(context, const CsvImportScreen());
           },
         ),
         _MoreTile(
@@ -1180,10 +1139,7 @@ class _MoreTab extends StatelessWidget {
           title: 'Offline Mode',
           subtitle: 'Manage locally stored data',
           onTap: () {
-            _open(
-              context,
-              const OfflineModeScreen(),
-            );
+            _open(context, const OfflineModeScreen());
           },
         ),
         _MoreTile(
@@ -1191,10 +1147,7 @@ class _MoreTab extends StatelessWidget {
           title: 'PDF Report',
           subtitle: 'Generate your health report',
           onTap: () {
-            _open(
-              context,
-              const PdfReportScreen(),
-            );
+            _open(context, const PdfReportScreen());
           },
         ),
         _MoreTile(
@@ -1202,10 +1155,7 @@ class _MoreTab extends StatelessWidget {
           title: 'DiaMate Assistant',
           subtitle: 'Get help with your health data',
           onTap: () {
-            _open(
-              context,
-              const AiAssistantScreen(),
-            );
+            _open(context, const AiAssistantScreen());
           },
         ),
         _MoreTile(
@@ -1219,6 +1169,7 @@ class _MoreTab extends StatelessWidget {
       ],
     );
   }
+
   // -----------------------------------------------------------
   // LOGOUT
   // Same dialog as the doctor and caregiver dashboards.
@@ -1230,13 +1181,9 @@ class _MoreTab extends StatelessWidget {
         return AlertDialog(
           title: const Text(
             'Log out?',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800),
           ),
-          content: const Text(
-            'Are you sure you want to log out of DiaMate?',
-          ),
+          content: const Text('Are you sure you want to log out of DiaMate?'),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -1264,6 +1211,7 @@ class _MoreTab extends StatelessWidget {
     );
   }
 }
+
 class _MoreTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -1293,10 +1241,7 @@ class _MoreTile extends StatelessWidget {
                   color: const Color(0xFFEAF5FF),
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF168AF7),
-                ),
+                child: Icon(icon, color: const Color(0xFF168AF7)),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -1321,10 +1266,7 @@ class _MoreTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF9AA8B7),
-              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9AA8B7)),
             ],
           ),
         ),
@@ -1332,6 +1274,7 @@ class _MoreTile extends StatelessWidget {
     );
   }
 }
+
 class _EmptyAddTab extends StatelessWidget {
   const _EmptyAddTab();
   @override
