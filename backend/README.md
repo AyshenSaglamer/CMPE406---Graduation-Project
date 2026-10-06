@@ -71,7 +71,7 @@ Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik i
   mvn spring-boot:run
   ```
 
-Kontrol: `curl http://localhost:8080/api/v1/health` → `"status":"UP"`, `curl http://localhost:8080/actuator/health` → `"db":{"status":"UP"}`.
+Kontrol: `curl http://localhost:8080/api/v1/health` → `"status":"UP"`, `curl http://localhost:8080/actuator/health` → `"status":"UP"` (veritabanına ulaşılamıyorsa `DOWN`).
 
 ### Yapay zekâ servisi (isteğe bağlı)
 
@@ -90,9 +90,9 @@ Postman: `postman/DiaMate.postman_collection.json` dosyasını içe aktarın ve 
 | Metot | Adres | Erişim | Açıklama |
 |---|---|---|---|
 | GET | `/api/v1/health` | herkese açık | Uygulama ayakta mı |
-| GET | `/actuator/health` | herkese açık | Veritabanı bağlantısı dahil sağlık durumu |
-| POST | `/api/v1/auth/register` | herkese açık | `{firstName, lastName, email, password, role, dateOfBirth, gender}` → 201. Rol: `PATIENT`, `CAREGIVER`, `CLINICIAN` (`ADMIN` kayıt olamaz). `dateOfBirth` `yyyy-MM-dd`, **en az 16 yaş**. `gender`: `FEMALE`, `MALE`, `OTHER` |
-| POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, user}` |
+| GET | `/actuator/health` | herkese açık | Veritabanı bağlantısı dahil genel durum; yalnızca `{"status":"UP"}` ya da `DOWN` (bileşen listesi gösterilmez) |
+| POST | `/api/v1/auth/register` | herkese açık | `{firstName, lastName, email, password, role, dateOfBirth, gender}` → 201. Rol: `PATIENT`, `CAREGIVER`, `CLINICIAN` (`ADMIN` kayıt olamaz). `dateOfBirth` `yyyy-MM-dd`, **en az 16 yaş**. `gender`: `FEMALE`, `MALE`, `OTHER`. Ad/soyad ve şifre kuralları için bkz. [Güvenlik](#güvenlik) |
+| POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, user}`. Üst üste 5 hatalı şifre → hesap 15 dakika kilitlenir (**429**) |
 | GET | `/api/v1/users/me` | giriş yapmış herkes | Kendi profili (ad, soyad, e-posta, rol, doğum tarihi, cinsiyet). Kimlik token'dan okunur. |
 | GET | `/api/v1/admin/users` | yalnızca `ADMIN` | Hesap listesi; sağlık verisi, doğum tarihi ve cinsiyet **yok** |
 | GET | `/api/v1/care-team/patients` | `CLINICIAN`, `CAREGIVER` | Kullanıcıya **ACTIVE** ilişkiyle erişim vermiş hastalar ve izinleri |
@@ -113,6 +113,31 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
 - **Veri seviyesi:** Bir hastanın verisine kimin erişebileceğine veritabanındaki `fn_can_access` fonksiyonu karar verir: hastanın kendisi ya da **ACTIVE**, süresi dolmamış ve ilgili izni olan bakım ilişkisi. `ADMIN` sağlık verisine erişemez.
 - **Hata cevapları:** Token yok veya geçersiz → **401**, rol uymuyor → **403**, veri erişimi yok → **404**; hepsi `application/problem+json`.
 
+### Hata cevapları
+
+Her hata aynı biçimde döner (RFC 9457, `Content-Type: application/problem+json`):
+
+```json
+{"type": "about:blank", "title": "Validation failed", "status": 400, "detail": "One or more fields are invalid",
+ "instance": "/api/v1/patients/5/glucose-logs", "errors": {"glucoseValue": "Must be a whole number"}}
+```
+
+| Durum | Ne zaman | Gövde |
+|---|---|---|
+| 400 | Alan kuralı (`@Valid`), yanlış tip, bilinmeyen enum değeri, hatalı tarih, URL'de yanlış tip, metinde kontrol karakteri | `errors: {alan: mesaj}`. Örnek: `"mealContext": "Must be one of: FASTING, BEFORE_MEAL, ..."`, `"dateOfBirth": "Must be a date in yyyy-MM-dd format"`, `"patientId": "Must be a whole number"`, `"notes": "Must not contain control characters"` |
+| 405 | Desteklenmeyen HTTP metodu (herkese açık adreslerde de) | `detail` |
+| 400 | Gövde JSON değil / gövde yok / nesne yerine dizi | `detail`: `Request body is not valid JSON` / `Request body is required` / `Request body must be a JSON object` |
+| 401 | Token yok, geçersiz, süresi dolmuş **ya da hesap pasif veya silinmiş** | `detail`: `Authentication required` / `Invalid or expired access token` |
+| 403 | Rol uygun değil; doğru şifreyle giriş ama hesap pasif | `detail` |
+| 404 | Kayıt yok, erişim yok (ikisi ayırt edilmez), bilinmeyen adres | `detail`: örn. `Patient not found`, `Resource not found` |
+| 409 | E-posta zaten kayıtlı; `clientUuid` silinmiş bir kayda ait | `detail` |
+| 413 | İstek gövdesi 1 MB'tan büyük | `detail`: `Request body must be at most 1 MB` |
+| 429 | Hesap kilitli (çok fazla hatalı giriş) | `detail` + `Retry-After: <saniye>` başlığı |
+| 500 | Beklenmeyen hata | `detail`: `An unexpected error occurred`. Ayrıntı yalnızca sunucu log'una yazılır |
+| 502 / 503 | Yapay zekâ servisi hata döndü / ulaşılamıyor | `detail` |
+
+Tam sayı alanlarına ondalık değer (`"glucoseValue": 120.7`) gönderilirse **400** döner; değer sessizce `120`'ye kesilmez.
+
 ### Sağlık kayıtları (glukoz, insülin, öğün, aktivite)
 
 | Kayıt | Zaman alanı | Doktor/bakıcının görmesi için izin |
@@ -128,13 +153,28 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
 - **`clientUuid` (isteğe bağlı):** Uygulama her kayıt için bir UUID üretir. Aynı UUID ikinci kez gelirse yeni kayıt açılmaz, mevcut kayıt **200** ile döner. UUID silinmiş bir kayda aitse **409** döner.
 - **`source`:** `MANUAL` (varsayılan) ya da `AI_ASSISTANT`. Aktivite tablosu `AI_ASSISTANT` kabul etmediği için aktivite kayıtları her zaman `MANUAL` olarak kaydedilir.
 - **Doğrulama:** Sınırlar veritabanındaki CHECK kurallarıyla aynı. Örneğin glukoz 10–600 mg/dL, insülin 0'dan büyük ve en fazla 300 ünite (en fazla 2 ondalık). Hatalı alanlar **400** + `errors: {alan: mesaj}` döner.
-- **Uyarı:** Yeni glukoz değeri hastanın eşiklerinin dışındaysa (`fn_glucose_alert_type`) `alerts` tablosuna kayıt eklenir: `URGENT_LOW`/`URGENT_HIGH` → `CRITICAL`, `LOW`/`HIGH` → `WARNING`. Kaydı düzenlemek ya da silmek uyarıyı değiştirmez.
+- **Uyarı:** Yeni glukoz değeri hastanın eşiklerinin dışındaysa (`fn_glucose_alert_type`) `alerts` tablosuna kayıt eklenir: `URGENT_LOW`/`URGENT_HIGH` → `CRITICAL`, `LOW`/`HIGH` → `WARNING`. Ölçüm silinirse ya da değeri düzeltilirse o ölçümün **açık** (`OPEN`) uyarısı `DISMISSED` olur; düzeltilen değer yeniden kontrol edilir (hâlâ eşik dışındaysa yeni uyarı açılır). Böylece yanlış girilmiş bir değer bakım ekibine sahte bir uyarı olarak kalmaz. `ACKNOWLEDGED`/`RESOLVED` uyarılara dokunulmaz.
 
 ### Yapay zekâ asistanı (`/ai/parse`)
 
 Akış Flutter → backend → FastAPI şeklindedir. Backend, `{text}` alanını servisin `/api/v1/nlp/parse-multiple` endpoint'ine iletir ve şu cevabı döner: `{status, resultCount, results: [{intent, status, value, unit, activity, message}]}`. `intent` alanı `LOG_GLUCOSE`, `LOG_INSULIN`, `LOG_MEAL` ya da `LOG_ACTIVITY` olabilir.
 
 Backend bu sonucu **kaydetmez**. Uygulama sonucu hastaya gösterir; hasta onaylarsa kayıt endpoint'leri `"source": "AI_ASSISTANT"` ile çağrılır. Servis çalışmıyorsa cevap **503**, servis hata döndürürse **502** olur.
+
+### Güvenlik
+
+- **Giriş kilidi:** Aynı hesaba üst üste **5** hatalı şifre girilirse hesap **15 dakika** kilitlenir. Kilitliyken doğru şifre de kabul edilmez; cevap **429** + `Retry-After` olur. Başarılı giriş sayacı sıfırlar. Kilit yalnızca yeni girişleri durdurur; daha önce alınmış bir token süresi dolana kadar çalışmaya devam eder. Hatalı denemeler veritabanında tek bir `UPDATE ... + 1` ile sayıldığı için paralel denemeler birbirinin sayısını ezemez.
+- **Pasif hesap ve rol değişikliği:** Token'ın imzası, süresi ve `iss` alanı doğruysa her istekte hesabın hâlâ aktif olup olmadığı ve rolünün token'daki rolle aynı olup olmadığı da kontrol edilir (tek sorgu). Hesap pasife alınır, silinir ya da rolü değişirse, eski token'lar süreleri dolmadan **hemen 401** almaya başlar.
+- **Herkese açık adreslerde token yok sayılır:** `/auth/register`, `/auth/login` ve `/health` adreslerinde `Authorization` başlığı okunmaz. Böylece uygulama, giriş ekranında süresi dolmuş eski token'ı göndermeye devam etse de giriş yapılabilir.
+- **Metin:** JSON'daki tüm metin alanlarında kontrol karakterleri (örn. NUL) reddedilir (**400**). Satır sonu ve tab serbesttir. NUL karakteri PostgreSQL'e yazılamıyordu.
+- **İstek boyutu:** 1 MB'tan büyük gövde okunmadan **413** ile reddedilir. Bu kontrol filtre zincirinin en başında, Spring Security'den önce çalışır; `Content-Length` olmayan isteklerde baytlar okunurken sayılır.
+- **Denetim kaydı (`audit_logs`):** `LOGIN`, `LOGIN_FAILED` (sebebiyle: `UNKNOWN_EMAIL`, `WRONG_PASSWORD`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED`), `ACCOUNT_LOCKED` ve `VIEW_PATIENT_DATA` olayları yazılır. `VIEW_PATIENT_DATA`, bir hastanın verisini **başka biri** okuduğunda (doktor, bakıcı ya da reddedilen bir deneme) hangi veri türünün okunduğu (`entity_type`) ve sonucuyla (`success`) birlikte kaydedilir. Her kayıtta IP adresi ve User-Agent bulunur. Nginx arkasında gerçek istemci IP'si `X-Forwarded-For` başlığından alınır (`server.forward-headers-strategy: native`). Tomcat bu başlığa yalnızca iç ağdaki bir proxy'den gelirse güvenir, internetten gelen sahte bir başlık dikkate alınmaz. Şifre, token ve sağlık verisi **asla** yazılmaz. Bilinmeyen bir e-postayla yapılan denemede yazılan e-posta da saklanmaz, çünkü kullanıcılar bazen şifrelerini e-posta alanına yazar.
+- **Kayıt kuralları:**
+  - **Ad ve soyad:** Her dilden harf; aralarında boşluk, kesme işareti (`'` ve `’`), tire ve nokta olabilir (`Ayşe Nur`, `O'Brien`, `Jean-Luc`). Rakam, sembol ve emoji kabul edilmez.
+  - **Şifre:** En az 8 karakter ve en fazla 72 byte (BCrypt sınırı). Yaygın şifreler listesinde (`src/main/resources/security/common-passwords.txt`) bulunan şifreler ve e-posta adresinin kendisi reddedilir. Bu kurallar NIST SP 800-63B'yi izler; "büyük harf + rakam + sembol" zorunluluğu yoktur.
+- **Başlıklar:** Spring Security varsayılanları açık: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`.
+- **Doğum tarihi:** En az 16 yaş ve en fazla 120 yıl önce (daha eskisi yazım hatası sayılır; 400 + `errors.dateOfBirth`).
+- **Kapsam dışı (sonraki işler):** Refresh token, IP bazlı hız sınırı (Nginx), 2FA, e-posta doğrulama, doktor hesaplarının doğrulanması (şu an herkes CLINICIAN olarak kayıt olabilir; paylaşım akışı olmadığı için bir hastaya erişemez).
 
 ## Paket yapısı
 

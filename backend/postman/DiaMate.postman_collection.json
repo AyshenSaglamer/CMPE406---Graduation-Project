@@ -84,6 +84,38 @@
     {
       "key": "mealLogId",
       "value": ""
+    },
+    {
+      "key": "day5Email",
+      "value": ""
+    },
+    {
+      "key": "day5Token",
+      "value": ""
+    },
+    {
+      "key": "day5PatientId",
+      "value": ""
+    },
+    {
+      "key": "day6Email",
+      "value": ""
+    },
+    {
+      "key": "day6Token",
+      "value": ""
+    },
+    {
+      "key": "day6PatientId",
+      "value": ""
+    },
+    {
+      "key": "day6TypoId",
+      "value": ""
+    },
+    {
+      "key": "day6LowId",
+      "value": ""
     }
   ],
   "item": [
@@ -124,7 +156,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Database is UP', () => pm.expect(pm.response.json().components.db.status).to.eql('UP'));"
+                  "pm.test('UP (the database is part of this status: DOWN if it is unreachable)', () => pm.expect(pm.response.json().status).to.eql('UP'));"
                 ]
               }
             }
@@ -1173,7 +1205,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Day4\",\n  \"lastName\": \"Patient\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"{{day4Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"Patient\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"{{day4Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
             }
           },
           "event": [
@@ -2180,6 +2212,1298 @@
                   "if (pm.response.code === 200) {",
                   "  pm.test('Two entries', () => pm.expect(pm.response.json().resultCount).to.eql(2));",
                   "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Validation & security (Day 5)",
+      "description": "Error response format, input rules, request size limit and login lockout. Run after 'RBAC (Day 3)' (uses its tokens). The lockout tests lock only the patient registered in this folder (15 minutes), never a demo account.",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Lock\",\n  \"lastName\": \"Test\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('day5Email', 'day5.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: digits in the name -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"R2D2\",\n  \"lastName\": \"Test\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"r2d2.{{$timestamp}}@diamate.test\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.firstName', () => pm.expect(pm.response.json().errors.firstName).to.eql(\"First name may only contain letters, spaces, apostrophes, hyphens and dots\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: common password -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Common\",\n  \"lastName\": \"Password\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"common.{{$timestamp}}@diamate.test\",\n  \"password\": \"Password123\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.password', () => pm.expect(pm.response.json().errors.password).to.eql(\"This password is too common. Choose a less predictable one\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: password = email -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Same\",\n  \"lastName\": \"Email\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"same.email@diamate.test\",\n  \"password\": \"same.email@diamate.test\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.password', () => pm.expect(pm.response.json().errors.password).to.eql(\"Password must not be the same as your email\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: impossible date -> 400 with the format",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Bad\",\n  \"lastName\": \"Date\",\n  \"dateOfBirth\": \"2000-13-45\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"bad.date@diamate.test\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.dateOfBirth', () => pm.expect(pm.response.json().errors.dateOfBirth).to.eql(\"Must be a date in yyyy-MM-dd format\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login: body is not JSON -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": "
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Request body is not valid JSON\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('day5Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('day5PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose without a body -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Request body is required\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose: unknown mealContext -> 400 with the allowed values",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"mealContext\": \"LUNCH\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.mealContext', () => pm.expect(pm.response.json().errors.mealContext).to.eql(\"Must be one of: FASTING, BEFORE_MEAL, AFTER_MEAL, BEDTIME, EXERCISE, OTHER\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose: 120.7 for a whole number -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120.7,\n  \"measurementTime\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.glucoseValue', () => pm.expect(pm.response.json().errors.glucoseValue).to.eql(\"Must be a whole number\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose ?from=yesterday -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day5PatientId}}/glucose-logs?from=yesterday",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.from', () => pm.expect(pm.response.json().errors.from).to.eql(\"Must be an ISO-8601 date-time, e.g. 2026-10-05T08:30:00Z\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /patients/abc/glucose-logs -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/abc/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.patientId', () => pm.expect(pm.response.json().errors.patientId).to.eql(\"Must be a whole number\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET unknown address -> 404 without internals",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/nope",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Resource not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose with a 1.1 MB body -> 413",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"notes\": \"{{bigNotes}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('bigNotes', 'a'.repeat(1100 * 1024));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 413', () => pm.response.to.have.status(413));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Request body must be at most 1 MB\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password 1/5 -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"Wrong-Password-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Invalid email or password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password 2/5 -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"Wrong-Password-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Invalid email or password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password 3/5 -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"Wrong-Password-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Invalid email or password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password 4/5 -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"Wrong-Password-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Invalid email or password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login wrong password 5/5 -> 429, account locked",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"Wrong-Password-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 429', () => pm.response.to.have.status(429));",
+                  "pm.test('detail', () => pm.expect(pm.response.json().detail).to.eql(\"Too many failed login attempts. Try again in 15 minutes.\"));",
+                  "pm.test('Retry-After: 900 seconds', () => pm.expect(pm.response.headers.get('Retry-After')).to.eql('900'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with the RIGHT password while locked -> 429",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day5Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 429', () => pm.response.to.have.status(429));",
+                  "pm.test('Still locked', () => pm.expect(pm.response.json().detail).to.include('Try again in'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token issued before the lock still works -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "dr.endo reads patient01's glucose -> 200 (written to audit_logs)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs?size=1",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "dr.diabetes tries patient01 (PENDING) -> 404 (refused attempt also audited)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs?size=1",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bug fixes (Day 6)",
+      "description": "Regression tests for the Day 6 fixes. Writes only to a patient registered in this folder.",
+      "item": [
+        {
+          "name": "Register while the app still sends an OLD token -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer old.expired.token"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Bug\",\n  \"lastName\": \"Fix\",\n  \"dateOfBirth\": \"1990-03-10\",\n  \"gender\": \"MALE\",\n  \"email\": \"{{day6Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('day6Email', 'day6.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());",
+                  "pm.collectionVariables.set('twoHoursAgo', new Date(Date.now() - 7200 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login while the app still sends an OLD token -> 200",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer old.expired.token"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day6Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('day6Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('day6PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong HTTP method on login -> 405 (was 401)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/auth/login",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 405', () => pm.response.to.have.status(405));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register with birth date 1850 -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Old\",\n  \"lastName\": \"Timer\",\n  \"dateOfBirth\": \"1850-01-01\",\n  \"gender\": \"MALE\",\n  \"email\": \"old.{{$timestamp}}@diamate.test\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.dateOfBirth', () => pm.expect(pm.response.json().errors.dateOfBirth).to.eql(\"Date of birth must not be more than 120 years ago\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with a NUL character in the email -> 400 (was 500)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"a\\u0000b@diamate.test\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.email', () => pm.expect(pm.response.json().errors.email).to.eql(\"Must not contain control characters\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose with a NUL character in notes -> 400 (was a wrong 409)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 130,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"notes\": \"abc\\u0000def\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.notes', () => pm.expect(pm.response.json().errors.notes).to.eql(\"Must not contain control characters\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose with multi-line notes -> 201 (line breaks are fine)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 130,\n  \"measurementTime\": \"{{twoHoursAgo}}\",\n  \"notes\": \"line 1\\nline 2\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Line break kept', () => pm.expect(pm.response.json().notes).to.eql('line 1\\nline 2'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview: no open alerts",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('openAlerts = 0', () => pm.expect(pm.response.json().openAlerts).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 48 (typo for 148) -> 201, creates an alert",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 48,\n  \"measurementTime\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('day6TypoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview: 1 open alert",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('openAlerts = 1', () => pm.expect(pm.response.json().openAlerts).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT the reading to 148 -> 200",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs/{{day6TypoId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 148,\n  \"measurementTime\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview: corrected value -> alert dismissed, 0 open",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('openAlerts = 0', () => pm.expect(pm.response.json().openAlerts).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 50 -> 201, creates an alert",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 50,\n  \"measurementTime\": \"{{twoHoursAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('day6LowId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview: 1 open alert again",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('openAlerts = 1', () => pm.expect(pm.response.json().openAlerts).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE that reading -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/glucose-logs/{{day6LowId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview: deleted reading -> alert dismissed, 0 open",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day6PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('openAlerts = 0', () => pm.expect(pm.response.json().openAlerts).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health shows only the status",
+          "request": {
+            "method": "GET",
+            "url": "{{serverUrl}}/actuator/health",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status UP, no component list', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('UP');",
+                  "  pm.expect(pm.response.json().components).to.be.undefined;",
+                  "});"
                 ]
               }
             }

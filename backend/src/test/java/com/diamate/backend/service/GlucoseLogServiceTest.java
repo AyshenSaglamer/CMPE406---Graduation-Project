@@ -6,10 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -64,11 +66,14 @@ class GlucoseLogServiceTest {
     @Mock
     private GlucoseAlertService alertService;
 
+    @Mock
+    private AuditService auditService;
+
     private GlucoseLogService service;
 
     @BeforeEach
     void setUp() {
-        service = new GlucoseLogService(repository, new HealthDataAccess(patientAccessRepository), alertService,
+        service = new GlucoseLogService(repository, new HealthDataAccess(patientAccessRepository, auditService), alertService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -123,13 +128,22 @@ class GlucoseLogServiceTest {
     void clientUuidOfADeletedLogIsAConflict() {
         UUID clientUuid = UUID.randomUUID();
         when(repository.findByPatientIdAndClientUuid(PATIENT, clientUuid)).thenReturn(Optional.empty());
-        when(repository.saveAndFlush(any(GlucoseLog.class)))
-                .thenThrow(new DataIntegrityViolationException("ux_glucose_logs_client"));
+        when(repository.saveAndFlush(any(GlucoseLog.class))).thenThrow(new DataIntegrityViolationException("duplicate key", new SQLException("duplicate key value violates unique constraint", "23505")));
 
         assertThatThrownBy(() -> service.create(PATIENT, PATIENT,
                 new GlucoseLogRequest(120, EARLIER, null, null, null, clientUuid)))
                 .isInstanceOf(ResourceConflictException.class);
         verifyNoInteractions(alertService);
+    }
+
+    @Test
+    void otherDatabaseErrorsAreNotReportedAsAClientUuidConflict() {
+        when(repository.saveAndFlush(any(GlucoseLog.class))).thenThrow(new DataIntegrityViolationException("check violation", new SQLException("new row violates check constraint", "23514")));
+
+        assertThatThrownBy(() -> service.create(PATIENT, PATIENT,
+                new GlucoseLogRequest(120, EARLIER, null, null, null, null)))
+                .isInstanceOf(DataIntegrityViolationException.class) // a bug: 500 + server log, not a misleading 409
+                .isNotInstanceOf(ResourceConflictException.class);
     }
 
     @Test
@@ -161,6 +175,8 @@ class GlucoseLogServiceTest {
         assertThatThrownBy(() -> service.get(CLINICIAN, PATIENT, 100L))
                 .isInstanceOf(ResourceNotFoundException.class);
         verifyNoInteractions(repository);
+        // Refused attempts are audited too.
+        verify(auditService, times(2)).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.GLUCOSE_LOGS, false);
     }
 
     @Test
@@ -178,6 +194,7 @@ class GlucoseLogServiceTest {
         verify(repository).findInRange(eq(PATIENT), from.capture(), to.capture(), any(Pageable.class));
         assertThat(to.getValue()).isEqualTo(NOW.plus(LogRules.FUTURE_TOLERANCE));
         assertThat(from.getValue()).isEqualTo(to.getValue().minus(LogRules.DEFAULT_RANGE));
+        verify(auditService).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.GLUCOSE_LOGS, true);
     }
 
     @Test
@@ -188,6 +205,7 @@ class GlucoseLogServiceTest {
         assertThatThrownBy(() -> service.get(PATIENT, PATIENT, 999L))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Glucose log not found");
+        verifyNoInteractions(auditService); // a patient reading their own data is not audited
     }
 
     // ---------- update / delete ----------
@@ -204,7 +222,20 @@ class GlucoseLogServiceTest {
         assertThat(updated.glucoseValue()).isEqualTo(135);
         assertThat(updated.mealContext()).isEqualTo(MealContext.AFTER_MEAL);
         assertThat(updated.source()).isEqualTo(GlucoseSource.MANUAL);
-        verifyNoInteractions(alertService); // edits do not create alerts
+        // The value changed: the old alert no longer applies and the new value is checked.
+        verify(alertService).dismissOpenAlerts(existing);
+        verify(alertService).checkReading(existing);
+    }
+
+    @Test
+    void editingOnlyTheNotesLeavesTheAlertsAlone() {
+        GlucoseLog existing = log(100L, PATIENT, 48);
+        when(repository.findByIdAndPatientId(100L, PATIENT)).thenReturn(Optional.of(existing));
+        when(repository.saveAndFlush(existing)).thenReturn(existing);
+
+        service.update(PATIENT, PATIENT, 100L, new GlucoseLogRequest(48, EARLIER, null, "felt dizzy", null, null));
+
+        verifyNoInteractions(alertService);
     }
 
     @Test
@@ -216,6 +247,7 @@ class GlucoseLogServiceTest {
 
         assertThat(existing.getDeletedAt()).isEqualTo(NOW);
         verify(repository, never()).delete(any());
+        verify(alertService).dismissOpenAlerts(existing); // no open alert for a reading that no longer exists
     }
 
     @Test

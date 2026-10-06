@@ -25,4 +25,5 @@ public class AdminController {
     public List<AdminUserResponse> users() {
         return userService.listUsers();
     }
+    
 }

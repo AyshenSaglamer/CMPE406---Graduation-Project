@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import com.diamate.backend.entity.Alert;
 import com.diamate.backend.entity.AlertSeverity;
+import com.diamate.backend.entity.AlertStatus;
 import com.diamate.backend.entity.AlertType;
 import com.diamate.backend.entity.GlucoseLog;
 import com.diamate.backend.repository.AlertRepository;
@@ -24,15 +25,21 @@ public class GlucoseAlertService {
         this.alertRepository = alertRepository;
     }
 
-    /**
-     * Called for new readings only. Editing or deleting a reading later does not change its alert:
-     * the alert records what was known when the value was entered.
-     */
+    /** Called for a new reading, and again when the value of a reading is corrected (after dismissOpenAlerts). */
     public Optional<Alert> checkReading(GlucoseLog log) {
         return alertRepository.classifyGlucose(log.getPatientId(), log.getGlucoseValue())
                 .map(AlertType::valueOf)
                 .map(type -> alertRepository.save(new Alert(log.getPatientId(), type, severityOf(type), log.getId(),
                         log.getGlucoseValue(), messageOf(type, log.getGlucoseValue()))));
+    }
+
+    /**
+     * The reading was deleted or its value corrected: an alert that nobody has handled yet (OPEN) would otherwise
+     * keep warning the care team about a value that does not exist. It becomes DISMISSED (kept as history).
+     * ACKNOWLEDGED / RESOLVED alerts are not touched: someone already acted on them.
+     */
+    public void dismissOpenAlerts(GlucoseLog log) {
+        alertRepository.changeStatusOfReadingAlerts(log.getId(), AlertStatus.OPEN, AlertStatus.DISMISSED);
     }
 
     static AlertSeverity severityOf(AlertType type) {

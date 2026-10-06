@@ -14,7 +14,6 @@ import com.diamate.backend.entity.MealLog;
 import com.diamate.backend.entity.MealSource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.MealLogRepository;
-import com.diamate.backend.repository.PatientAccessRepository;
 
 /** Meal logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "meals". */
 @Service
@@ -49,18 +48,19 @@ public class MealLogService {
         return CreateResult.created(MealLogResponse.from(LogRules.saveNew(repository, log)));
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional: the access check may write an audit row in its own transaction (see HealthDataAccess);
+    // the repository query has its own read-only transaction.
     public PageResponse<MealLogResponse> list(long viewerId, long patientId, Instant from, Instant to, int page,
             int size) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_MEALS);
+        access.checkCanRead(viewerId, patientId, PatientDataType.MEAL_LOGS);
         LogRules.Window window = LogRules.window(from, to, page, size, clock);
         return PageResponse.from(repository.findInRange(patientId, window.from(), window.to(), window.pageable()),
                 MealLogResponse::from);
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional, like list().
     public MealLogResponse get(long viewerId, long patientId, long logId) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_MEALS);
+        access.checkCanRead(viewerId, patientId, PatientDataType.MEAL_LOGS);
         return MealLogResponse.from(find(patientId, logId));
     }
 

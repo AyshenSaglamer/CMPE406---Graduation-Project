@@ -14,7 +14,6 @@ import com.diamate.backend.entity.ActivityLog;
 import com.diamate.backend.entity.ActivitySource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.ActivityLogRepository;
-import com.diamate.backend.repository.PatientAccessRepository;
 
 /** Activity logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "activity". */
 @Service
@@ -50,18 +49,19 @@ public class ActivityLogService {
         return CreateResult.created(ActivityLogResponse.from(LogRules.saveNew(repository, log)));
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional: the access check may write an audit row in its own transaction (see HealthDataAccess);
+    // the repository query has its own read-only transaction.
     public PageResponse<ActivityLogResponse> list(long viewerId, long patientId, Instant from, Instant to, int page,
             int size) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_ACTIVITY);
+        access.checkCanRead(viewerId, patientId, PatientDataType.ACTIVITY_LOGS);
         LogRules.Window window = LogRules.window(from, to, page, size, clock);
         return PageResponse.from(repository.findInRange(patientId, window.from(), window.to(), window.pageable()),
                 ActivityLogResponse::from);
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional, like list().
     public ActivityLogResponse get(long viewerId, long patientId, long logId) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_ACTIVITY);
+        access.checkCanRead(viewerId, patientId, PatientDataType.ACTIVITY_LOGS);
         return ActivityLogResponse.from(find(patientId, logId));
     }
 

@@ -77,6 +77,13 @@ class GlucoseAlertServiceTest {
     }
 
     @Test
+    void dismissingChangesOnlyTheOpenAlertsOfThatReading() {
+        service.dismissOpenAlerts(reading(100L, 48));
+
+        verify(alertRepository).changeStatusOfReadingAlerts(100L, AlertStatus.OPEN, AlertStatus.DISMISSED);
+    }
+
+    @Test
     void severityOfEveryGlucoseType() {
         assertThat(GlucoseAlertService.severityOf(AlertType.URGENT_LOW)).isEqualTo(AlertSeverity.CRITICAL);
         assertThat(GlucoseAlertService.severityOf(AlertType.LOW)).isEqualTo(AlertSeverity.WARNING);

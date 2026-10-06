@@ -14,21 +14,21 @@ import com.diamate.backend.repository.PatientAccessRepository;
 public class PatientService {
 
     private final PatientAccessRepository patientAccessRepository;
+    private final HealthDataAccess access;
 
-    public PatientService(PatientAccessRepository patientAccessRepository) {
+    public PatientService(PatientAccessRepository patientAccessRepository, HealthDataAccess access) {
         this.patientAccessRepository = patientAccessRepository;
+        this.access = access;
     }
 
     /**
      * Object-level authorization: the role check alone is not enough, because any clinician could otherwise
      * read any patient by changing the id in the URL. "No access" and "no such patient" both return 404,
      * so the response does not reveal which patient ids exist.
+     * Not @Transactional: the access check may write an audit row in its own transaction (see HealthDataAccess).
      */
-    @Transactional(readOnly = true)
     public PatientOverviewResponse getOverview(long viewerId, long patientId) {
-        if (!patientAccessRepository.canAccess(viewerId, patientId, PatientAccessRepository.PERMISSION_GLUCOSE)) {
-            throw new ResourceNotFoundException("Patient not found");
-        }
+        access.checkCanRead(viewerId, patientId, PatientDataType.OVERVIEW);
         return patientAccessRepository.findOverview(patientId)
                 .map(PatientOverviewResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found"));

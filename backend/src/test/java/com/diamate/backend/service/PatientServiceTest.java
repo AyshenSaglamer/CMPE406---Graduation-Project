@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,11 +35,14 @@ class PatientServiceTest {
     @Mock
     private PatientAccessRepository repository;
 
+    @Mock
+    private AuditService auditService;
+
     private PatientService service;
 
     @BeforeEach
     void setUp() {
-        service = new PatientService(repository);
+        service = new PatientService(repository, new HealthDataAccess(repository, auditService));
     }
 
     @Test
@@ -51,6 +55,7 @@ class PatientServiceTest {
 
         assertThat(overview.patientId()).isEqualTo(PATIENT);
         assertThat(overview.lastGlucoseMgdl()).isEqualTo(96);
+        verify(auditService).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.OVERVIEW, true);
     }
 
     @Test
@@ -61,6 +66,7 @@ class PatientServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Patient not found");
         verify(repository, never()).findOverview(anyLong());
+        verify(auditService).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.OVERVIEW, false);
     }
 
     @Test
@@ -71,6 +77,7 @@ class PatientServiceTest {
         assertThatThrownBy(() -> service.getOverview(PATIENT, PATIENT))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Patient not found");
+        verifyNoInteractions(auditService); // own data: not audited
     }
 
     @Test

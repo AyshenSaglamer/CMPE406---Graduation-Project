@@ -1,6 +1,7 @@
 package com.diamate.backend.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
@@ -21,12 +22,16 @@ import com.diamate.backend.entity.PatientProfile;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AccountDisabledException;
+import com.diamate.backend.exception.AccountLockedException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
+import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
 import com.diamate.backend.repository.PatientProfileRepository;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.JwtService;
+import com.diamate.backend.security.PasswordPolicy;
+import com.diamate.backend.service.AuditService.LoginFailure;
 
 @Service
 public class AuthService {
@@ -36,10 +41,19 @@ public class AuthService {
     // Younger users not by self-registration.
     static final int MIN_SELF_REGISTRATION_AGE = 16;
 
+    // A birth date further back than this is a typing mistake (e.g. 1850 instead of 1985).
+    static final int MAX_AGE_YEARS = 120;
+
+    // Brute-force protection: after this many wrong passwords in a row the account is locked for LOCK_DURATION.
+    static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
+    static final Duration LOCK_DURATION = Duration.ofMinutes(15);
+
     private final UserRepository userRepository;
     private final PatientProfileRepository patientProfileRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicy passwordPolicy;
     private final JwtService jwtService;
+    private final AuditService auditService;
     private final Clock clock;
 
     // Checked against when the email is unknown, so that a login for an unknown email
@@ -48,11 +62,14 @@ public class AuthService {
 
     // Constructor
     public AuthService(UserRepository userRepository, PatientProfileRepository patientProfileRepository,
-            PasswordEncoder passwordEncoder, JwtService jwtService, Clock clock) {
+            PasswordEncoder passwordEncoder, PasswordPolicy passwordPolicy, JwtService jwtService,
+            AuditService auditService, Clock clock) {
         this.userRepository = userRepository;
         this.patientProfileRepository = patientProfileRepository;
         this.passwordEncoder = passwordEncoder;
+        this.passwordPolicy = passwordPolicy;
         this.jwtService = jwtService;
+        this.auditService = auditService;
         this.clock = clock;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
@@ -65,6 +82,12 @@ public class AuthService {
         if (ageOn(request.dateOfBirth(), LocalDate.now(clock)) < MIN_SELF_REGISTRATION_AGE) {
             throw new RegistrationNotAllowedException("You must be at least " + MIN_SELF_REGISTRATION_AGE + " years old to register");
         }
+        if (request.dateOfBirth().isBefore(LocalDate.now(clock).minusYears(MAX_AGE_YEARS))) {
+            throw new InvalidFieldException("dateOfBirth",
+                    "Date of birth must not be more than " + MAX_AGE_YEARS + " years ago");
+        }
+        // 72-byte limit, common passwords, password = email (400 with an error on the "password" field)
+        passwordPolicy.check(request.password(), request.email());
 
         String email = normalizeEmail(request.email());
         if (userRepository.existsByEmail(email)) {
@@ -81,7 +104,11 @@ public class AuthService {
         	 */
             saved = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
-            throw new EmailAlreadyRegisteredException();
+            // Only a duplicate email is a 409; any other database error is a bug and must not be reported as one.
+            if (DatabaseErrors.isUniqueViolation(e)) {
+                throw new EmailAlreadyRegisteredException();
+            }
+            throw e;
         }
 
         /**
@@ -95,25 +122,48 @@ public class AuthService {
         return UserResponse.from(saved);
     }
 
-    @Transactional
+    /**
+     * noRollbackFor: these exceptions are the normal answer to a bad login. What was written before them
+     * (the failed-login counter, the lock, the audit rows) must be committed, not rolled back.
+     */
+    @Transactional(noRollbackFor = { InvalidCredentialsException.class, AccountLockedException.class,
+            AccountDisabledException.class })
     public AuthResponse login(LoginRequest request) {
+        Instant now = clock.instant();
         Optional<User> found = userRepository.findByEmail(normalizeEmail(request.email()));
         if (found.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
+            auditService.loginFailed(null, LoginFailure.UNKNOWN_EMAIL);
             throw new InvalidCredentialsException();
         }
 
         User user = found.get();
+        // While locked, the password is not even checked: a correct guess during the lock must not get in.
+        if (user.isLockedAt(now)) {
+            auditService.loginFailed(user.getId(), LoginFailure.ACCOUNT_LOCKED);
+            throw new AccountLockedException(Duration.between(now, user.getLockedUntil()));
+        }
+
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            auditService.loginFailed(user.getId(), LoginFailure.WRONG_PASSWORD);
+            userRepository.incrementFailedLoginAttempts(user.getId());
+            if (userRepository.findFailedLoginAttempts(user.getId()) >= MAX_FAILED_LOGIN_ATTEMPTS) {
+                Instant lockedUntil = now.plus(LOCK_DURATION);
+                userRepository.lockAccount(user.getId(), lockedUntil);
+                auditService.accountLocked(user.getId(), lockedUntil);
+                throw new AccountLockedException(LOCK_DURATION);
+            }
             throw new InvalidCredentialsException();
         }
         // Checked only after the password, so the account state is not revealed to someone without the password.
         if (!user.isActive()) {
+            auditService.loginFailed(user.getId(), LoginFailure.ACCOUNT_DISABLED);
             throw new AccountDisabledException();
         }
 
-        // The entity is managed inside the transaction: this change is written with an UPDATE on commit.
-        user.setLastLoginAt(Instant.now());
+        // The entity is managed inside the transaction: these changes are written with an UPDATE on commit.
+        user.recordSuccessfulLogin(now);
+        auditService.loginSucceeded(user.getId());
 
         String token = jwtService.generateToken(user);
         return new AuthResponse(token, TOKEN_TYPE, jwtService.getExpirationSeconds(), UserResponse.from(user));

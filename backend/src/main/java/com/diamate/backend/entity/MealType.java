@@ -7,4 +7,5 @@ public enum MealType {
     DINNER,
     SNACK,
     OTHER
+    
 }

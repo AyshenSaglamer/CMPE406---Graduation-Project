@@ -69,14 +69,18 @@ final class LogRules {
 
     /**
      * Inserts at once (flush) so a unique-index clash becomes a 409 here instead of a 500 at commit. The only
-     * expected clash is a clientUuid that belongs to a deleted log (deleted logs are hidden from the lookup
-     * done before the insert, but the unique index still contains them) or a parallel duplicate request.
+     * unique index a new log can clash with is (patient_id, client_uuid): a clientUuid that belongs to a deleted log
+     * (deleted logs are hidden from the lookup done before the insert, but the index still contains them) or a
+     * parallel duplicate request. Any other database error is not a conflict and is thrown on (500, logged).
      */
     static <T> T saveNew(JpaRepository<T, Long> repository, T log) {
         try {
             return repository.saveAndFlush(log);
         } catch (DataIntegrityViolationException e) {
-            throw new ResourceConflictException("A log with this clientUuid already exists (it may have been deleted)");
+            if (DatabaseErrors.isUniqueViolation(e)) {
+                throw new ResourceConflictException("A log with this clientUuid already exists (it may have been deleted)");
+            }
+            throw e;
         }
     }
 }

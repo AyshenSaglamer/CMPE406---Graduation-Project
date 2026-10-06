@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.entity.GlucoseLog;
 
@@ -16,7 +17,9 @@ import com.diamate.backend.entity.GlucoseLog;
 public interface GlucoseLogRepository extends JpaRepository<GlucoseLog, Long> {
 
     // patient_id + time range: uses the index ix_glucose_logs_patient_time. "id desc" keeps the order stable
-    // between pages when two readings have the same time.
+    // between pages when two readings have the same time. One read-only transaction for the page query and the
+    // count query (the service's read methods have none, see HealthDataAccess).
+    @Transactional(readOnly = true)
     @Query("""
             select g from GlucoseLog g
             where g.patientId = :patientId and g.measurementTime >= :from and g.measurementTime < :to

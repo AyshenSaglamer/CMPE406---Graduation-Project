@@ -25,4 +25,5 @@ public class UserController {
     public ProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
         return userService.getProfile(CurrentUser.id(jwt));
     }
+    
 }

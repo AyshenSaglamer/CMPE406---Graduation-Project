@@ -22,6 +22,11 @@ spring:
     baseline-version: 1
     baseline-description: Database SQL package (Database/sql)
 
+  jackson:
+    deserialization:
+      # 120.7 sent for a whole-number field (e.g. glucoseValue) is a 400 error instead of being silently cut to 120.
+      accept-float-as-int: false
+
   jpa:
     hibernate:
       # Hibernate only checks that entities match existing tables; it never changes the schema.
@@ -32,6 +37,12 @@ spring:
       hibernate:
         # Read/write timestamps in UTC regardless of the server's local time zone (DB columns are timestamptz).
         jdbc.time_zone: UTC
+
+server:
+  # Behind Nginx (team docker-compose) the client's IP arrives in X-Forwarded-For. Tomcat uses that header only when
+  # the request comes from an internal-network proxy (10.x, 172.16-31.x, 192.168.x, 127.x), so a client on the
+  # internet cannot fake its IP with it. Without this, every audit log row would show Nginx's IP.
+  forward-headers-strategy: native
 
 diamate:
   jwt:
@@ -52,5 +63,6 @@ management:
         include: health
   endpoint:
     health:
-      # Show component status (e.g. db: UP) but not details such as the database version.
-      show-components: always
+      # Public answer is only {"status":"UP"} (or DOWN, e.g. when the database is unreachable).
+      # The component list (db, disk space, ssl, ...) is internal information.
+      show-components: never

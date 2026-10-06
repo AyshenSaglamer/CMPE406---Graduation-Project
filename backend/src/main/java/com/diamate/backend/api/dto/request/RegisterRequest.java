@@ -1,16 +1,15 @@
 package com.diamate.backend.api.dto.request;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 
 import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
 
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 //record: classes that only hold data, for concise code
@@ -18,10 +17,12 @@ public record RegisterRequest(
 
         @NotBlank(message = "First name is required") // It cannot be empty.
         @Size(max = 50, message = "First name must be at most 50 characters") // Maximum 50 characters
+        @Pattern(regexp = NAME_PATTERN, message = "First name may only contain letters, spaces, apostrophes, hyphens and dots")
         String firstName,
 
         @NotBlank(message = "Last name is required")
         @Size(max = 50, message = "Last name must be at most 50 characters")
+        @Pattern(regexp = NAME_PATTERN, message = "Last name may only contain letters, spaces, apostrophes, hyphens and dots")
         String lastName,
 
         @NotNull(message = "Date of birth is required")
@@ -38,24 +39,17 @@ public record RegisterRequest(
 
         @NotBlank(message = "Password is required")
         @Size(min = 8, message = "Password must be at least 8 characters")
-        String password,
+        String password, // more rules (72-byte limit, common passwords, not the email) in PasswordPolicy
 
         @NotNull(message = "Role is required") // PATIENT, CLINICIAN, CAREGIVER, ADMIN
         Role role) {
 
-	
     /**
-     * BCrypt only uses the first 72 bytes of a password and Spring Security rejects longer ones.
-     * Counted in UTF-8 bytes, not characters: "ş" is 2 bytes.
+     * Letters of any language, with spaces, apostrophes (' and the ’ that phone keyboards type), hyphens and dots
+     * between them: "Ayşe Nur", "O'Brien", "Jean-Luc", "J. R.". No digits, symbols or emoji.
+     * \p{M} allows accents typed as a separate combining mark. Blank is let through here so that only
+     * @NotBlank reports it (one message per mistake).
      */
-    @AssertTrue(message = "Password must be at most 72 bytes")
-    public boolean isPasswordWithinBcryptLimit() {
-    	
-    	/**
-    	 * If the password is empty, this rule should return `true` and leave the task to "@NotBlank".
-    	 * This way, the user won't see two messages for the same error.
-    	 */
-        return password == null || password.getBytes(StandardCharsets.UTF_8).length <= 72;
-    }
-    
+    static final String NAME_PATTERN = "^\\s*(\\p{L}[\\p{L}\\p{M} .'\u2019-]*)?$";
+
 }

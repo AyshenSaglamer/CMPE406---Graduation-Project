@@ -18,7 +18,6 @@ import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.InsulinLogRepository;
 import com.diamate.backend.repository.MealLogRepository;
-import com.diamate.backend.repository.PatientAccessRepository;
 
 /** Insulin logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "medications". */
 @Service
@@ -57,18 +56,19 @@ public class InsulinLogService {
         return CreateResult.created(InsulinLogResponse.from(LogRules.saveNew(repository, log)));
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional: the access check may write an audit row in its own transaction (see HealthDataAccess);
+    // the repository query has its own read-only transaction.
     public PageResponse<InsulinLogResponse> list(long viewerId, long patientId, Instant from, Instant to, int page,
             int size) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_MEDICATIONS);
+        access.checkCanRead(viewerId, patientId, PatientDataType.INSULIN_LOGS);
         LogRules.Window window = LogRules.window(from, to, page, size, clock);
         return PageResponse.from(repository.findInRange(patientId, window.from(), window.to(), window.pageable()),
                 InsulinLogResponse::from);
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional, like list().
     public InsulinLogResponse get(long viewerId, long patientId, long logId) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_MEDICATIONS);
+        access.checkCanRead(viewerId, patientId, PatientDataType.INSULIN_LOGS);
         return InsulinLogResponse.from(find(patientId, logId));
     }
 

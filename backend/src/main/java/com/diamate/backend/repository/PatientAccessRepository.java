@@ -20,13 +20,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class PatientAccessRepository {
 
-    /** Permission names understood by fn_can_access (one per care_relationships.can_view_* flag). */
-    public static final String PERMISSION_GLUCOSE = "glucose";
-    public static final String PERMISSION_MEALS = "meals";
-    // There is no separate insulin flag: insulin doses are shared under "medications".
-    public static final String PERMISSION_MEDICATIONS = "medications";
-    public static final String PERMISSION_ACTIVITY = "activity";
-
     private final NamedParameterJdbcTemplate jdbc;
 
     public PatientAccessRepository(NamedParameterJdbcTemplate jdbc) {
@@ -35,7 +28,8 @@ public class PatientAccessRepository {
 
     /**
      * True if the viewer is the patient, or has an ACTIVE, not expired care relationship with the patient
-     * that grants this permission. ADMIN has no implicit access (by design).
+     * that grants this permission (glucose, meals, medications, activity, ...; see PatientDataType).
+     * ADMIN has no implicit access (by design).
      */
     public boolean canAccess(long viewerId, long patientId, String permission) {
         Boolean allowed = jdbc.queryForObject(

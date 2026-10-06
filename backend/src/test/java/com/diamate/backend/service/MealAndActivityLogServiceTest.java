@@ -52,12 +52,15 @@ class MealAndActivityLogServiceTest {
     @Mock
     private PatientAccessRepository patientAccessRepository;
 
+    @Mock
+    private AuditService auditService;
+
     private MealLogService mealService;
     private ActivityLogService activityService;
 
     @BeforeEach
     void setUp() {
-        HealthDataAccess access = new HealthDataAccess(patientAccessRepository);
+        HealthDataAccess access = new HealthDataAccess(patientAccessRepository, auditService);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         mealService = new MealLogService(mealRepository, access, clock);
         activityService = new ActivityLogService(activityRepository, access, clock);

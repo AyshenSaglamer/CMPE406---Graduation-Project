@@ -9,11 +9,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.entity.InsulinLog;
 
 public interface InsulinLogRepository extends JpaRepository<InsulinLog, Long> {
 
+    @Transactional(readOnly = true) // page query + count query in one transaction
     @Query("""
             select i from InsulinLog i
             where i.patientId = :patientId and i.administeredAt >= :from and i.administeredAt < :to

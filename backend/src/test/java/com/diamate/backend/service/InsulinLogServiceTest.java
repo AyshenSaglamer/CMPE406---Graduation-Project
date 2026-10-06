@@ -49,11 +49,14 @@ class InsulinLogServiceTest {
     @Mock
     private PatientAccessRepository patientAccessRepository;
 
+    @Mock
+    private AuditService auditService;
+
     private InsulinLogService service;
 
     @BeforeEach
     void setUp() {
-        service = new InsulinLogService(repository, mealLogRepository, new HealthDataAccess(patientAccessRepository),
+        service = new InsulinLogService(repository, mealLogRepository, new HealthDataAccess(patientAccessRepository, auditService),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

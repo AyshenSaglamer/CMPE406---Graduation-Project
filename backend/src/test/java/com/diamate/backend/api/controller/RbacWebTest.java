@@ -2,6 +2,7 @@ package com.diamate.backend.api.controller;
 
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -14,7 +15,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -40,6 +43,8 @@ import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.ResourceNotFoundException;
+import com.diamate.backend.repository.UserRepository;
+import com.diamate.backend.security.ActiveAccountValidator;
 import com.diamate.backend.security.JwtProperties;
 import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
@@ -56,7 +61,7 @@ import com.diamate.backend.service.UserService;
         controllers = { UserController.class, AdminController.class, CareTeamController.class, PatientController.class },
         // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
         properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
-@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class, ActiveAccountValidator.class })
 class RbacWebTest {
 
     private static final long PATIENT_ID = 5;
@@ -78,6 +83,15 @@ class RbacWebTest {
 
     @MockitoBean
     private PatientService patientService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    // Every test account exists, is active and still has the role written in its token.
+    @BeforeEach
+    void everyAccountIsActive() {
+        when(userRepository.findActiveUserRole(anyLong())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
+    }
 
     // ---------- 401: no or bad token ----------
 
@@ -117,6 +131,30 @@ class RbacWebTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
         verifyNoInteractions(userService);
+        verify(userRepository, never()).findActiveUserRole(anyLong()); // the database is only asked for otherwise valid tokens
+    }
+
+    @Test
+    void tokenOfADisabledAccountIs401() throws Exception {
+        // The token itself is valid (signature, expiry), but the account was disabled after it was issued.
+        when(userRepository.findActiveUserRole(PATIENT_ID)).thenReturn(Optional.empty());
+
+        as(get("/api/v1/users/me"), PATIENT_ID, Role.PATIENT)
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void tokenWithAnOutdatedRoleIs401() throws Exception {
+        // The token says CLINICIAN, but the role was changed to CAREGIVER after the token was issued.
+        when(userRepository.findActiveUserRole(CLINICIAN_ID)).thenReturn(Optional.of(Role.CAREGIVER));
+
+        as(get("/api/v1/care-team/patients"), CLINICIAN_ID, Role.CLINICIAN)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(patientService);
     }
 
     // ---------- /users/me: any role, own profile ----------

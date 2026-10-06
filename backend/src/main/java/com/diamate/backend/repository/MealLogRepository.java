@@ -9,11 +9,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.entity.MealLog;
 
 public interface MealLogRepository extends JpaRepository<MealLog, Long> {
 
+    @Transactional(readOnly = true) // page query + count query in one transaction
     @Query("""
             select m from MealLog m
             where m.patientId = :patientId and m.eatenAt >= :from and m.eatenAt < :to

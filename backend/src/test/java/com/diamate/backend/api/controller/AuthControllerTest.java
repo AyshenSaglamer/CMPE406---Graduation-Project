@@ -3,11 +3,15 @@ package com.diamate.backend.api.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,9 +24,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
 import com.diamate.backend.entity.Role;
+import com.diamate.backend.exception.AccountLockedException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.repository.UserRepository;
+import com.diamate.backend.security.ActiveAccountValidator;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AuthService;
@@ -35,7 +42,7 @@ import com.diamate.backend.service.AuthService;
         controllers = { AuthController.class, HealthController.class },
         // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
         properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
-@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class, ActiveAccountValidator.class })
 class AuthControllerTest {
 
     @Autowired
@@ -43,6 +50,10 @@ class AuthControllerTest {
 
     @MockitoBean
     private AuthService authService;
+
+    // Needed by the token check (ActiveAccountValidator); these tests send no tokens.
+    @MockitoBean
+    private UserRepository userRepository;
 
     @Test
     void registerReturns201WithUserAndNoPasswordFields() throws Exception {
@@ -184,6 +195,118 @@ class AuthControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.detail").value("Invalid email or password"))
                 .andExpect(jsonPath("$.errors").doesNotExist());
+    }
+
+    @Test
+    void lockedAccountIs429WithRetryAfter() throws Exception {
+        when(authService.login(any())).thenThrow(new AccountLockedException(Duration.ofMinutes(15)));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"patient01@diamate.example","password":"WrongPass1"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "900"))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Too many failed login attempts. Try again in 15 minutes."));
+    }
+
+    @Test
+    void namesWithDigitsOrSymbolsAreRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"R2D2","lastName":"<b>Test</b>","email":"x@example.com","password":"Kara-Deniz-42",
+                                 "role":"PATIENT","dateOfBirth":"2000-01-15","gender":"OTHER"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.firstName")
+                        .value("First name may only contain letters, spaces, apostrophes, hyphens and dots"))
+                .andExpect(jsonPath("$.errors.lastName")
+                        .value("Last name may only contain letters, spaces, apostrophes, hyphens and dots"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void namesInAnyLanguageWithApostrophesHyphensAndDotsAreAccepted() throws Exception {
+        when(authService.register(any())).thenReturn(
+                new UserResponse(43L, "Ayşe Nur", "O’Brien-Yılmaz", "ayse@example.com", Role.PATIENT));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"Ayşe Nur","lastName":"O’Brien-Yılmaz","email":"ayse@example.com",
+                                 "password":"Kara-Deniz-42","role":"PATIENT","dateOfBirth":"2000-01-15","gender":"FEMALE"}
+                                """))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"J. R.","lastName":"D'Angelo","email":"jr@example.com",
+                                 "password":"Kara-Deniz-42","role":"PATIENT","dateOfBirth":"2000-01-15","gender":"MALE"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void invalidDateIs400WithTheExpectedFormat() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"X","lastName":"Y","email":"x@example.com","password":"Kara-Deniz-42",
+                                 "role":"PATIENT","dateOfBirth":"2000-13-45","gender":"OTHER"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.dateOfBirth").value("Must be a date in yyyy-MM-dd format"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void anOldTokenSentToLoginOrRegisterIsIgnored() throws Exception {
+        // A mobile app may still send its expired token on the login screen; that must not turn the login into a 401.
+        when(authService.login(any())).thenReturn(new AuthResponse("new-token", "Bearer", 3600,
+                new UserResponse(5L, "Demo Patient", "01", "patient01@diamate.example", Role.PATIENT)));
+        when(authService.register(any())).thenReturn(
+                new UserResponse(44L, "Melih", "Test", "new@example.com", Role.PATIENT));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("Authorization", "Bearer old.expired.token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"patient01@diamate.example","password":"RightPass1"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("new-token"));
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .header("Authorization", "Bearer old.expired.token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"Melih","lastName":"Test","email":"new@example.com","password":"Kara-Deniz-42",
+                                 "role":"PATIENT","dateOfBirth":"2000-01-15","gender":"MALE"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void wrongHttpMethodOnAPublicEndpointIs405Not401() throws Exception {
+        mockMvc.perform(delete("/api/v1/auth/login"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void controlCharactersInTextAreRejected() throws Exception {
+        // The JSON escape for character code 0 (NUL): PostgreSQL cannot store it (it used to cause a 500 here).
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"a\\u0000b@example.com\",\"password\":\"RightPass1\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.email").value("Must not contain control characters"));
+        verifyNoInteractions(authService);
     }
 
     @Test

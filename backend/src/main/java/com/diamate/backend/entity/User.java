@@ -3,6 +3,7 @@ package com.diamate.backend.entity;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
@@ -19,9 +20,13 @@ import jakarta.persistence.Table;
  * Maps the users table (see Database/sql/06_app_schema.sql and db/migration).
  * Not mapped: the two-factor columns (nothing uses them yet) and full_name, which the database
  * generates from first_name and last_name.
+ *
+ * @DynamicUpdate: an UPDATE writes only the changed columns. A login (last_login_at, failed-login counter) then
+ * never writes back old values of other columns, e.g. an is_active = false set at the same moment.
  */
 @Entity
 @Table(name = "users")
+@DynamicUpdate
 public class User {
 
     @Id
@@ -157,8 +162,16 @@ public class User {
         return lastLoginAt;
     }
 
-    public void setLastLoginAt(Instant lastLoginAt) {
-        this.lastLoginAt = lastLoginAt;
+    /** True while a lock caused by too many failed logins is still in force. */
+    public boolean isLockedAt(Instant now) {
+        return lockedUntil != null && lockedUntil.isAfter(now);
+    }
+
+    /** A successful login clears the failed-login counter and an expired lock. */
+    public void recordSuccessfulLogin(Instant now) {
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+        this.lastLoginAt = now;
     }
 
     public Instant getCreatedAt() {

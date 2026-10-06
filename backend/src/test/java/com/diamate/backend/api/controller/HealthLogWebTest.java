@@ -1,5 +1,7 @@
 package com.diamate.backend.api.controller;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -19,8 +21,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -55,6 +59,8 @@ import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AiServiceException;
 import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceNotFoundException;
+import com.diamate.backend.repository.UserRepository;
+import com.diamate.backend.security.ActiveAccountValidator;
 import com.diamate.backend.security.JwtProperties;
 import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
@@ -75,7 +81,7 @@ import com.diamate.backend.service.MealLogService;
                 ActivityLogController.class, AiController.class },
         // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
         properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
-@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class, ActiveAccountValidator.class })
 class HealthLogWebTest {
 
     private static final long PATIENT_ID = 5;
@@ -110,6 +116,15 @@ class HealthLogWebTest {
 
     @MockitoBean
     private AiService aiService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    // Every test account exists, is active and still has the role written in its token.
+    @BeforeEach
+    void everyAccountIsActive() {
+        when(userRepository.findActiveUserRole(anyLong())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
+    }
 
     // ---------- authentication and roles ----------
 
@@ -200,11 +215,107 @@ class HealthLogWebTest {
     }
 
     @Test
-    void unknownEnumValueIs400() throws Exception {
+    void unknownEnumValueIs400WithTheAllowedValues() throws Exception {
         as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content("""
                 {"glucoseValue":125,"measurementTime":"2026-10-05T08:30:00Z","mealContext":"LUNCH"}"""), PATIENT_ID)
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation failed"))
+                .andExpect(jsonPath("$.errors.mealContext")
+                        .value("Must be one of: FASTING, BEFORE_MEAL, AFTER_MEAL, BEDTIME, EXERCISE, OTHER"));
         verifyNoInteractions(glucoseLogService);
+    }
+
+    @Test
+    void valuesOfTheWrongTypeAre400WithTheFieldName() throws Exception {
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"glucoseValue\":\"abc\",\"measurementTime\":\"2026-10-05T08:30:00Z\"}"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.glucoseValue").value("Must be a whole number"));
+        // A decimal for a whole-number field is refused, not silently cut (120.7 would otherwise become 120).
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"glucoseValue\":120.7,\"measurementTime\":\"2026-10-05T08:30:00Z\"}"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.glucoseValue").value("Must be a whole number"));
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"glucoseValue\":120,\"measurementTime\":\"yesterday\"}"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.measurementTime")
+                        .value("Must be an ISO-8601 date-time, e.g. 2026-10-05T08:30:00Z"));
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"glucoseValue\":120,\"measurementTime\":\"2026-10-05T08:30:00Z\",\"clientUuid\":\"xyz\"}"),
+                PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.clientUuid").value("Must be a UUID"));
+        as(post("/api/v1/patients/{patientId}/insulin-logs", PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"doseUnits\":\"four\",\"administeredAt\":\"2026-10-05T08:30:00Z\"}"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.doseUnits").value("Must be a number"));
+        verifyNoInteractions(glucoseLogService, insulinLogService);
+    }
+
+    @Test
+    void controlCharactersAreRejectedButLineBreaksAreAllowed() throws Exception {
+        // The NUL character (code 0) cannot be stored by PostgreSQL; it used to come back as a wrong 409.
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"glucoseValue\":130,\"measurementTime\":\"2026-10-05T08:30:00Z\",\"notes\":\"abc\\u0000def\"}"),
+                PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.notes").value("Must not contain control characters"));
+        verifyNoInteractions(glucoseLogService);
+
+        when(glucoseLogService.create(eq(PATIENT_ID), eq(PATIENT_ID), any(GlucoseLogRequest.class)))
+                .thenReturn(CreateResult.created(glucose(101L, false)));
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"glucoseValue\":130,\"measurementTime\":\"2026-10-05T08:30:00Z\",\"notes\":\"line 1\\nline 2\\tok\"}"),
+                PATIENT_ID)
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void bodyThatIsNotJsonOrMissingIs400WithAClearMessage() throws Exception {
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content("{\"glucoseValue\":"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Request body is not valid JSON"));
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Request body is required"));
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content("[1, 2]"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Request body must be a JSON object"));
+        verifyNoInteractions(glucoseLogService);
+    }
+
+    @Test
+    void bodyOver1MbIs413AndIsNotRead() throws Exception {
+        String notes = "a".repeat(1024 * 1024);
+        as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"glucoseValue\":120,\"measurementTime\":\"2026-10-05T08:30:00Z\",\"notes\":\"" + notes + "\"}"),
+                PATIENT_ID)
+                .andExpect(status().isContentTooLarge())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Request body must be at most 1 MB"));
+        verifyNoInteractions(glucoseLogService);
+    }
+
+    @Test
+    void unexpectedErrorIs500WithoutInternalDetails() throws Exception {
+        when(glucoseLogService.get(PATIENT_ID, PATIENT_ID, 100L))
+                .thenThrow(new IllegalStateException("column glucose_logs.secret_column does not exist"));
+
+        as(get(GLUCOSE_URL + "/{logId}", PATIENT_ID, 100), PATIENT_ID)
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("An unexpected error occurred"))
+                .andExpect(content().string(not(containsString("secret_column"))));
+    }
+
+    @Test
+    void unknownAddressIs404WithoutInternalDetails() throws Exception {
+        as(get("/api/v1/nope"), PATIENT_ID)
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Resource not found"));
     }
 
     @Test
@@ -235,8 +346,17 @@ class HealthLogWebTest {
     }
 
     @Test
-    void badTimeParameterIs400() throws Exception {
-        as(get(GLUCOSE_URL + "?from=yesterday", PATIENT_ID), PATIENT_ID).andExpect(status().isBadRequest());
+    void badPathOrQueryParameterIs400WithTheParameterName() throws Exception {
+        as(get(GLUCOSE_URL, PATIENT_ID).param("from", "yesterday"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation failed"))
+                .andExpect(jsonPath("$.errors.from").value("Must be an ISO-8601 date-time, e.g. 2026-10-05T08:30:00Z"));
+        as(get(GLUCOSE_URL, PATIENT_ID).param("page", "abc"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.page").value("Must be a whole number"));
+        as(get("/api/v1/patients/abc/glucose-logs"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.patientId").value("Must be a whole number"));
         verifyNoInteractions(glucoseLogService);
     }
 

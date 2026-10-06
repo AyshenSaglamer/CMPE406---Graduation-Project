@@ -9,11 +9,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.entity.ActivityLog;
 
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
 
+    @Transactional(readOnly = true) // page query + count query in one transaction
     @Query("""
             select a from ActivityLog a
             where a.patientId = :patientId and a.startedAt >= :from and a.startedAt < :to

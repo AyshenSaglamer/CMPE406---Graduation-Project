@@ -14,7 +14,6 @@ import com.diamate.backend.entity.GlucoseLog;
 import com.diamate.backend.entity.GlucoseSource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.GlucoseLogRepository;
-import com.diamate.backend.repository.PatientAccessRepository;
 
 /**
  * Glucose logs of one patient. The same pattern is used for insulin, meal and activity logs:
@@ -58,18 +57,19 @@ public class GlucoseLogService {
         return CreateResult.created(GlucoseLogResponse.from(saved));
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional: the access check may write an audit row in its own transaction (see HealthDataAccess);
+    // the repository query has its own read-only transaction.
     public PageResponse<GlucoseLogResponse> list(long viewerId, long patientId, Instant from, Instant to, int page,
             int size) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_GLUCOSE);
+        access.checkCanRead(viewerId, patientId, PatientDataType.GLUCOSE_LOGS);
         LogRules.Window window = LogRules.window(from, to, page, size, clock);
         return PageResponse.from(repository.findInRange(patientId, window.from(), window.to(), window.pageable()),
                 GlucoseLogResponse::from);
     }
 
-    @Transactional(readOnly = true)
+    // Not @Transactional, like list().
     public GlucoseLogResponse get(long viewerId, long patientId, long logId) {
-        access.checkCanRead(viewerId, patientId, PatientAccessRepository.PERMISSION_GLUCOSE);
+        access.checkCanRead(viewerId, patientId, PatientDataType.GLUCOSE_LOGS);
         return GlucoseLogResponse.from(find(patientId, logId));
     }
 
@@ -78,15 +78,24 @@ public class GlucoseLogService {
         access.checkCanWrite(viewerId, patientId);
         GlucoseLog log = find(patientId, logId);
         LogRules.requireNotInFuture(request.measurementTime(), "measurementTime", clock);
+        int previousValue = log.getGlucoseValue();
         apply(log, request);
         // Flush now so the new updated_at (set by a database trigger) is read back into the response.
-        return GlucoseLogResponse.from(repository.saveAndFlush(log));
+        GlucoseLog saved = repository.saveAndFlush(log);
+        // A corrected value (e.g. 48 typed instead of 148): the old alert no longer applies, the new value is checked.
+        if (saved.getGlucoseValue() != previousValue) {
+            alertService.dismissOpenAlerts(saved);
+            alertService.checkReading(saved);
+        }
+        return GlucoseLogResponse.from(saved);
     }
 
     @Transactional
     public void delete(long viewerId, long patientId, long logId) {
         access.checkCanWrite(viewerId, patientId);
-        find(patientId, logId).markDeleted(clock.instant()); // soft delete: an UPDATE on commit, the row stays
+        GlucoseLog log = find(patientId, logId);
+        log.markDeleted(clock.instant()); // soft delete: an UPDATE on commit, the row stays
+        alertService.dismissOpenAlerts(log);
     }
 
     private GlucoseLog find(long patientId, long logId) {
