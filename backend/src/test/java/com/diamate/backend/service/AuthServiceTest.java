@@ -29,13 +29,16 @@ import com.diamate.backend.api.dto.request.LoginRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.DiabetesType;
 import com.diamate.backend.entity.Gender;
+import com.diamate.backend.entity.PatientProfile;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AccountDisabledException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.repository.PatientProfileRepository;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.JwtService;
 
@@ -56,6 +59,9 @@ class AuthServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private PatientProfileRepository patientProfileRepository;
+
+    @Mock
     private JwtService jwtService;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
@@ -65,7 +71,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         Clock fixedClock = Clock.fixed(TODAY.atStartOfDay(ZoneId.of("UTC")).toInstant(), ZoneId.of("UTC"));
-        authService = new AuthService(userRepository, passwordEncoder, jwtService, fixedClock);
+        authService = new AuthService(userRepository, patientProfileRepository, passwordEncoder, jwtService, fixedClock);
     }
 
     // ---------- register ----------
@@ -89,6 +95,31 @@ class AuthServiceTest {
         assertThat(passwordEncoder.matches("Secret123", saved.getValue().getPasswordHash())).isTrue();
         assertThat(saved.getValue().isActive()).isTrue();
         assertThat(response).isEqualTo(new UserResponse(42L, "Melih", "Kocabıyık", "melih@example.com", Role.PATIENT));
+    }
+
+    @Test
+    void registeringAPatientAlsoCreatesTheirPatientProfile() {
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 42L));
+
+        authService.register(register("Ayşe", "Yılmaz", "ayse@example.com", Role.PATIENT, ADULT_BIRTH_DATE));
+
+        // Without this row the patient could not save any glucose / insulin / meal / activity log.
+        ArgumentCaptor<PatientProfile> profile = ArgumentCaptor.forClass(PatientProfile.class);
+        verify(patientProfileRepository).save(profile.capture());
+        assertThat(profile.getValue().getUserId()).isEqualTo(42L);
+        assertThat(profile.getValue().getDiabetesType()).isEqualTo(DiabetesType.OTHER);
+    }
+
+    @Test
+    void registeringOtherRolesCreatesNoPatientProfile() {
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 43L));
+
+        authService.register(register("Dr", "Test", "dr@example.com", Role.CLINICIAN, ADULT_BIRTH_DATE));
+        authService.register(register("Care", "Giver", "care@example.com", Role.CAREGIVER, ADULT_BIRTH_DATE));
+
+        verifyNoInteractions(patientProfileRepository);
     }
 
     @Test
@@ -153,6 +184,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.register(
                 register("X", "Y", "race@example.com", Role.CLINICIAN, ADULT_BIRTH_DATE)))
                 .isInstanceOf(EmailAlreadyRegisteredException.class);
+        verifyNoInteractions(patientProfileRepository);
     }
 
     // ---------- login ----------
@@ -216,7 +248,7 @@ class AuthServiceTest {
 
     private static RegisterRequest register(String firstName, String lastName, String email, Role role,
             LocalDate dateOfBirth) {
-        return new RegisterRequest(firstName, lastName, email, "Secret123", role, dateOfBirth, Gender.MALE);
+        return new RegisterRequest(firstName, lastName, dateOfBirth, Gender.MALE, email, "Secret123", role);
     }
 
     private User patient(boolean active) {

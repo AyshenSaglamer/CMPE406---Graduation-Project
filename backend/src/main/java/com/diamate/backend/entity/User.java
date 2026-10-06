@@ -28,16 +28,6 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 150)
-    private String email;
-
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Role role;
-
     @Column(name = "first_name", nullable = false, length = 50)
     private String firstName;
 
@@ -50,15 +40,19 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
     private Gender gender;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role;
+    
+    @Column(nullable = false, length = 150)
+    private String email;
+
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
 
     @Column(length = 30)
     private String phone;
-
-    @Column(name = "is_active", nullable = false)
-    private boolean active = true;
-
-    @Column(name = "is_demo", nullable = false)
-    private boolean demo = false;
 
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = false;
@@ -71,6 +65,12 @@ public class User {
 
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+    
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
+
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo = false;
 
     // Filled by the database (DEFAULT now()); Hibernate reads the value back after insert.
     @Generated(event = EventType.INSERT)

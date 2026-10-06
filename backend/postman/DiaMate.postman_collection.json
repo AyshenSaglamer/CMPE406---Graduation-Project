@@ -32,6 +32,58 @@
     {
       "key": "accessToken",
       "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@diamate.example"
+    },
+    {
+      "key": "endoEmail",
+      "value": "dr.endo@diamate.example"
+    },
+    {
+      "key": "diabetesEmail",
+      "value": "dr.diabetes@diamate.example"
+    },
+    {
+      "key": "caregiverEmail",
+      "value": "caregiver@diamate.example"
+    },
+    {
+      "key": "day4Email",
+      "value": ""
+    },
+    {
+      "key": "day4Token",
+      "value": ""
+    },
+    {
+      "key": "day4PatientId",
+      "value": ""
+    },
+    {
+      "key": "day4ClientUuid",
+      "value": ""
+    },
+    {
+      "key": "oneHourAgo",
+      "value": ""
+    },
+    {
+      "key": "twoHoursAgo",
+      "value": ""
+    },
+    {
+      "key": "tomorrow",
+      "value": ""
+    },
+    {
+      "key": "glucoseLogId",
+      "value": ""
+    },
+    {
+      "key": "mealLogId",
+      "value": ""
     }
   ],
   "item": [
@@ -413,6 +465,1721 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RBAC (Day 3)",
+      "item": [
+        {
+          "name": "Login ADMIN",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login CLINICIAN dr.endo",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{endoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('endoToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login CLINICIAN dr.diabetes",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{diabetesEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('diabetesToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login CAREGIVER",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{caregiverEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('caregiverToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login PATIENT patient01",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{demoEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('patient01Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('patient01Id', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /users/me as patient01 -> own profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient01Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Own id from the token', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('patient01Id'))));",
+                  "pm.test('Has date of birth and gender', () => { const b = pm.response.json(); pm.expect(b).to.have.property('dateOfBirth'); pm.expect(b).to.have.property('gender'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /users/me without token -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Problem detail body', () => pm.expect(pm.response.json().detail).to.eql('Authentication required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users as PATIENT -> 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient01Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Problem detail body', () => pm.expect(pm.response.json().status).to.eql(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users as CLINICIAN -> 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/users as ADMIN -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Lists accounts', () => pm.expect(pm.response.json().length).to.be.above(10));",
+                  "pm.test('No birth date / gender / password in admin view', () => pm.response.json().forEach(u => pm.expect(u).to.not.have.any.keys('dateOfBirth', 'gender', 'passwordHash')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /care-team/patients as PATIENT -> 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient01Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /care-team/patients as ADMIN -> 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /care-team/patients as dr.endo -> 01,02,03,06,07",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "list.forEach(p => pm.collectionVariables.set('patient' + p.lastName + 'Id', p.patientId));",
+                  "pm.test('Exactly the ACTIVE patients', () => pm.expect(list.map(p => p.lastName).sort()).to.eql(['01','02','03','06','07']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /care-team/patients as dr.diabetes -> 04,05,08 (not PENDING 01, not REVOKED 06)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "list.forEach(p => pm.collectionVariables.set('patient' + p.lastName + 'Id', p.patientId));",
+                  "pm.test('Exactly the ACTIVE patients', () => pm.expect(list.map(p => p.lastName).sort()).to.eql(['04','05','08']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /care-team/patients as CAREGIVER -> includes 07",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{caregiverToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test('Patient 07 is on the list', () => pm.expect(list.map(p => p.lastName)).to.include('07'));",
+                  "pm.test('Caregiver may not see reports of 07', () => pm.expect(list.find(p => p.lastName === '07').canViewReports).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 01 as dr.endo (ACTIVE) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has glucose summary', () => { const b = pm.response.json(); pm.expect(b).to.have.property('lastGlucoseMgdl'); pm.expect(b).to.have.property('openAlerts'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 04 as dr.endo (no relationship) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient04Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Same message as a missing patient (no information leak)', () => pm.expect(pm.response.json().detail).to.eql('Patient not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 01 as dr.diabetes (PENDING) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Same message as a missing patient (no information leak)', () => pm.expect(pm.response.json().detail).to.eql('Patient not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 06 as dr.diabetes (REVOKED) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient06Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Same message as a missing patient (no information leak)', () => pm.expect(pm.response.json().detail).to.eql('Patient not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 07 as CAREGIVER (ACTIVE) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient07Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{caregiverToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 01 as ADMIN (no health data access) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Same message as a missing patient (no information leak)', () => pm.expect(pm.response.json().detail).to.eql('Patient not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 02 as patient01 (someone else) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient02Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient01Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Same message as a missing patient (no information leak)', () => pm.expect(pm.response.json().detail).to.eql('Patient not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview 01 as patient01 (self) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{patient01Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health logs (Day 4)",
+      "description": "Glucose / insulin / meal / activity logs and the AI parse bridge. Run after 'RBAC (Day 3)' (uses its tokens). Writes only to a patient registered in this folder, so the demo patients' data is not changed.",
+      "item": [
+        {
+          "name": "Register new PATIENT (profile is created automatically)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Day4\",\n  \"lastName\": \"Patient\",\n  \"dateOfBirth\": \"1995-04-20\",\n  \"gender\": \"FEMALE\",\n  \"email\": \"{{day4Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unique email per run, and the times used by this folder (ISO-8601 UTC).",
+                  "pm.collectionVariables.set('day4Email', 'day4.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());",
+                  "pm.collectionVariables.set('twoHoursAgo', new Date(Date.now() - 7200 * 1000).toISOString());",
+                  "pm.collectionVariables.set('tomorrow', new Date(Date.now() + 24 * 3600 * 1000).toISOString());",
+                  "pm.collectionVariables.set('day4ClientUuid', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{day4Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('day4Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('day4PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview of new patient: no alerts yet",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Profile exists, diabetes type OTHER, no open alerts', () => {",
+                  "  pm.expect(pm.response.json().diabetesType).to.eql('OTHER');",
+                  "  pm.expect(pm.response.json().openAlerts).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose -> 201 + Location",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 125,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"mealContext\": \"FASTING\",\n  \"notes\": \"before breakfast\",\n  \"clientUuid\": \"{{day4ClientUuid}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const log = pm.response.json();",
+                  "pm.collectionVariables.set('glucoseLogId', log.id);",
+                  "pm.test('Location points to the new log', () => pm.expect(pm.response.headers.get('Location')).to.include('/glucose-logs/' + log.id));",
+                  "pm.test('Saved as MANUAL', () => pm.expect(log.source).to.eql('MANUAL'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose again with the same clientUuid -> 200, same log",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 125,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"clientUuid\": \"{{day4ClientUuid}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No duplicate: same id', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('glucoseLogId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 48 (urgent low) from AI assistant -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 48,\n  \"measurementTime\": \"{{twoHoursAgo}}\",\n  \"source\": \"AI_ASSISTANT\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Source kept', () => pm.expect(pm.response.json().source).to.eql('AI_ASSISTANT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview of new patient: urgent low created 1 open alert",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/overview",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('One open alert (48 mg/dL), 125 is in range', () => pm.expect(pm.response.json().openAlerts).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose with invalid fields -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 5,\n  \"mealContext\": \"FASTING\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const errors = pm.response.json().errors;",
+                  "pm.test('An error per field', () => {",
+                  "  pm.expect(errors.glucoseValue).to.eql('Glucose value must be at least 10 mg/dL');",
+                  "  pm.expect(errors.measurementTime).to.eql('Measurement time is required');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose in the future -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120,\n  \"measurementTime\": \"{{tomorrow}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('measurementTime error', () => pm.expect(pm.response.json().errors.measurementTime).to.eql('Time must not be in the future'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose list (own) -> 2 logs, newest first",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test('Two logs, newest first', () => {",
+                  "  pm.expect(page.totalElements).to.eql(2);",
+                  "  pm.expect(page.items.map(l => l.glucoseValue)).to.eql([125, 48]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose list size=500 -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs?size=500",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('size error', () => pm.expect(pm.response.json().errors.size).to.eql('Size must be between 1 and 200'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT glucose -> 200 (value corrected)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs/{{glucoseLogId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 130,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"mealContext\": \"BEFORE_MEAL\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Updated', () => {",
+                  "  pm.expect(pm.response.json().glucoseValue).to.eql(130);",
+                  "  pm.expect(pm.response.json().mealContext).to.eql('BEFORE_MEAL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST meal -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/meal-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mealType\": \"BREAKFAST\",\n  \"eatenAt\": \"{{oneHourAgo}}\",\n  \"description\": \"oatmeal with banana\",\n  \"carbsG\": 45.5,\n  \"caloriesKcal\": 320\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('mealLogId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST insulin linked to the meal -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/insulin-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 4.5,\n  \"insulinType\": \"RAPID\",\n  \"deliveryMethod\": \"PEN\",\n  \"productName\": \"NovoRapid\",\n  \"administeredAt\": \"{{oneHourAgo}}\",\n  \"mealLogId\": {{mealLogId}}\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Linked to the meal', () => pm.expect(pm.response.json().mealLogId).to.eql(pm.collectionVariables.get('mealLogId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST insulin linked to someone else's / unknown meal -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/insulin-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 2,\n  \"administeredAt\": \"{{oneHourAgo}}\",\n  \"mealLogId\": 1\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('mealLogId error', () => pm.expect(pm.response.json().errors.mealLogId).to.eql('Meal log not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST activity -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/activity-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityType\": \"walking\",\n  \"startedAt\": \"{{twoHoursAgo}}\",\n  \"durationMinutes\": 30,\n  \"steps\": 3500,\n  \"intensity\": \"MODERATE\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Saved as MANUAL', () => pm.expect(pm.response.json().source).to.eql('MANUAL'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose into patient01's logs as new patient -> 404",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120,\n  \"measurementTime\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose as CLINICIAN dr.endo -> 403",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 120,\n  \"measurementTime\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose 01 as dr.endo (ACTIVE) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs?size=5",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('At most 5 per page', () => pm.expect(pm.response.json().items.length).to.be.at.most(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET insulin 01 as dr.endo (medications permission) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/insulin-logs?size=5",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose 01 as dr.diabetes (PENDING) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose 01 as ADMIN -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET glucose 08 as CAREGIVER (glucose shared) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient08Id}}/glucose-logs?size=5",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{caregiverToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET meals 08 as CAREGIVER (meals NOT shared) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient08Id}}/meal-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{caregiverToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE glucose -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs/{{glucoseLogId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET deleted glucose -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs/{{glucoseLogId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose with the deleted log's clientUuid -> 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{day4PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 125,\n  \"measurementTime\": \"{{oneHourAgo}}\",\n  \"clientUuid\": \"{{day4ClientUuid}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AI parse as CAREGIVER -> 403",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/ai/parse",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"My glucose is 130\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{caregiverToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AI parse as patient -> 200 (FastAPI running) or 503 (not running)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/ai/parse",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"My glucose is 130 and I took 6 units of insulin\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{day4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with entries, or 503 when the AI service is not running', () => pm.expect(pm.response.code).to.be.oneOf([200, 503]));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('Two entries', () => pm.expect(pm.response.json().resultCount).to.eql(2));",
+                  "}"
                 ]
               }
             }

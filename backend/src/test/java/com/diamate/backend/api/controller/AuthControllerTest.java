@@ -23,6 +23,7 @@ import com.diamate.backend.entity.Role;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AuthService;
 
@@ -34,7 +35,7 @@ import com.diamate.backend.service.AuthService;
         controllers = { AuthController.class, HealthController.class },
         // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
         properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
-@Import(SecurityConfig.class)
+@Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class })
 class AuthControllerTest {
 
     @Autowired

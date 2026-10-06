@@ -30,12 +30,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         for (FieldError error : ex.getBindingResult().getFieldErrors()) {
             errors.putIfAbsent(error.getField(), error.getDefaultMessage()); // first message per field is enough
         }
-        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "One or more fields are invalid");
-        body.setTitle("Validation failed");
-        body.setProperty("errors", errors);
-        return handleExceptionInternal(ex, body, headers, HttpStatus.BAD_REQUEST, request);
+        return handleExceptionInternal(ex, validationProblem(errors), headers, HttpStatus.BAD_REQUEST, request);
     }
 
+    /** Rules checked in the service (e.g. a time in the future): same 400 shape as @Valid failures. */
+    @ExceptionHandler(InvalidFieldException.class)
+    public ProblemDetail handleInvalidField(InvalidFieldException ex) {
+        return validationProblem(Map.of(ex.getField(), ex.getMessage()));
+    }
+
+    
     @ExceptionHandler(EmailAlreadyRegisteredException.class)
     public ProblemDetail handleEmailAlreadyRegistered(EmailAlreadyRegisteredException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
@@ -54,6 +58,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(RegistrationNotAllowedException.class)
     public ProblemDetail handleRegistrationNotAllowed(RegistrationNotAllowedException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ProblemDetail handleResourceNotFound(ResourceNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(ResourceConflictException.class)
+    public ProblemDetail handleResourceConflict(ResourceConflictException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(AiServiceException.class)
+    public ProblemDetail handleAiService(AiServiceException ex) {
+        return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+    }
+
+    private static ProblemDetail validationProblem(Map<String, String> errors) {
+        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "One or more fields are invalid");
+        body.setTitle("Validation failed");
+        body.setProperty("errors", errors);
+        return body;
     }
     
 }

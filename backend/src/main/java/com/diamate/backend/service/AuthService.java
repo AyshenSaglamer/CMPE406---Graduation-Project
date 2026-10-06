@@ -16,12 +16,15 @@ import com.diamate.backend.api.dto.request.LoginRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.DiabetesType;
+import com.diamate.backend.entity.PatientProfile;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AccountDisabledException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.repository.PatientProfileRepository;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.JwtService;
 
@@ -30,10 +33,11 @@ public class AuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
 
-    // Younger users will be added later by a parent/guardian (family account), not by self-registration.
+    // Younger users not by self-registration.
     static final int MIN_SELF_REGISTRATION_AGE = 16;
 
     private final UserRepository userRepository;
+    private final PatientProfileRepository patientProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final Clock clock;
@@ -43,9 +47,10 @@ public class AuthService {
     private final String dummyPasswordHash;
 
     // Constructor
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
-            Clock clock) {
+    public AuthService(UserRepository userRepository, PatientProfileRepository patientProfileRepository,
+            PasswordEncoder passwordEncoder, JwtService jwtService, Clock clock) {
         this.userRepository = userRepository;
+        this.patientProfileRepository = patientProfileRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.clock = clock;
@@ -58,8 +63,7 @@ public class AuthService {
             throw new RegistrationNotAllowedException("ADMIN accounts cannot be self-registered");
         }
         if (ageOn(request.dateOfBirth(), LocalDate.now(clock)) < MIN_SELF_REGISTRATION_AGE) {
-            throw new RegistrationNotAllowedException(
-                    "You must be at least " + MIN_SELF_REGISTRATION_AGE + " years old to register");
+            throw new RegistrationNotAllowedException("You must be at least " + MIN_SELF_REGISTRATION_AGE + " years old to register");
         }
 
         String email = normalizeEmail(request.email());
@@ -69,13 +73,26 @@ public class AuthService {
 
         User user = new User(email, passwordEncoder.encode(request.password()), request.role(),
                 request.firstName().trim(), request.lastName().trim(), request.dateOfBirth(), request.gender());
+        User saved;
         try {
-            // Flush now so a duplicate that slipped past the check above (two requests at the same moment)
-            // hits the unique index here and becomes a 409 instead of a 500.
-            return UserResponse.from(userRepository.saveAndFlush(user));
+        	/**
+        	 * It writes the user to the database and commits immediately. A standard save could have been deferred (postponed until the end of the transaction).
+        	 * hits the unique index here and becomes a 409 instead of a 500.
+        	 */
+            saved = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
             throw new EmailAlreadyRegisteredException();
         }
+
+        /**
+         * Every patient log table points to patient_profiles, so a patient without this row could not save any data.
+         * diabetes_type is required by the database but not asked at registration: OTHER until the patient sets it.
+         * Same transaction as the user: if this fails, the user is not saved either.
+         */
+        if (saved.getRole() == Role.PATIENT) {
+            patientProfileRepository.save(new PatientProfile(saved.getId(), DiabetesType.OTHER));
+        }
+        return UserResponse.from(saved);
     }
 
     @Transactional
@@ -102,12 +119,19 @@ public class AuthService {
         return new AuthResponse(token, TOKEN_TYPE, jwtService.getExpirationSeconds(), UserResponse.from(user));
     }
 
-    // Completed years: someone born on 2010-05-20 turns 16 on 2026-05-20, not a day earlier.
+    /**
+     * We don't simply calculate (current year - birth year) that would be incorrect.
+     * Someone born in 2010 is still 15 in January 2026 (with a birthday in May).
+     */
     private static int ageOn(LocalDate dateOfBirth, LocalDate today) {
         return Period.between(dateOfBirth, today).getYears();
     }
-
-    // Locale.ROOT: with a Turkish locale, "I".toLowerCase() would give a dotless "ı".
+    
+    /**
+     * trim(): removes leading and trailing whitespace.
+     * toLowerCase(Locale.ROOT): converts everything to lowercase.
+     * Locale.ROOT: with a Turkish locale, "I".toLowerCase() would give a dotless "ı".
+     */
     private static String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }

@@ -1,5 +1,6 @@
 package com.diamate.backend.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,5 +18,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("select count(u) > 0 from User u where lower(u.email) = lower(:email)")
     boolean existsByEmail(@Param("email") String email);
+
+    // Derived query: Spring Data builds "select u from User u order by u.id asc" from the method name.
+    List<User> findAllByOrderByIdAsc();
     
 }

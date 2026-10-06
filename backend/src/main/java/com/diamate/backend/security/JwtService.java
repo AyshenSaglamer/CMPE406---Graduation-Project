@@ -17,6 +17,9 @@ import com.diamate.backend.entity.User;
 @Service
 public class JwtService {
 
+    /** Name of the token claim that carries the user's role (read back in SecurityConfig). */
+    public static final String ROLE_CLAIM = "role";
+
     private final JwtEncoder jwtEncoder;
     private final JwtProperties properties;
 
@@ -33,7 +36,7 @@ public class JwtService {
                 .subject(user.getId().toString())
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.expiration()))
-                .claim("role", user.getRole().name())
+                .claim(ROLE_CLAIM, user.getRole().name())
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

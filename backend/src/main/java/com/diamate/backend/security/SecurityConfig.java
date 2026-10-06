@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -21,16 +21,20 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
+@EnableMethodSecurity // enables @PreAuthorize("hasRole(...)") on controller/service methods
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
     private static final int MIN_SECRET_BYTES = 32; // HS256 needs a key of at least 256 bits
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemDetailSecurityHandler problemHandler)
+            throws Exception {
         http
                 // Mobile clients send a Bearer token, not cookies, so CSRF protection does not apply.
                 .csrf(AbstractHttpConfigurer::disable)
@@ -43,8 +47,29 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 // Validate "Authorization: Bearer <jwt>" on every other request.
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .authenticationEntryPoint(problemHandler)
+                        .accessDeniedHandler(problemHandler))
+                // 401 / 403 as problem+json (also for requests without any token)
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(problemHandler)
+                        .accessDeniedHandler(problemHandler));
         return http.build();
+    }
+
+    /**
+     * Turns a validated token into the logged-in user: the "role" claim (e.g. "PATIENT") becomes the authority
+     * ROLE_PATIENT (what hasRole('PATIENT') checks), and the "sub" claim (the user id) becomes the principal name.
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
+        authorities.setAuthoritiesClaimName(JwtService.ROLE_CLAIM);
+        authorities.setAuthorityPrefix("ROLE_");
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(authorities);
+        return converter;
     }
 
     @Bean

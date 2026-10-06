@@ -10,7 +10,7 @@ spring:
 
   datasource:
     # jdbc:postgresql://<host>:<port>/<database>
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5434}/${POSTGRES_DB:diamate}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5434}/${POSTGRES_DB:diamate}?sslmode=${POSTGRES_SSLMODE:prefer}
     # No defaults for credentials: if they are missing, startup fails loudly.
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
@@ -39,6 +39,11 @@ diamate:
     secret: ${JWT_SECRET}
     expiration: ${JWT_EXPIRATION:1h}
     issuer: diamate-backend
+  # The team's FastAPI AI service (ai-service). The app never calls it directly; the backend does.
+  ai:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    connect-timeout: 2s
+    read-timeout: 10s
 
 management:
   endpoints:
