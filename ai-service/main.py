@@ -1,5 +1,15 @@
 import os
+from data.event_aggregation import (
+    aggregate_events_for_ml,
+)
 
+from data.spring_backend_adapter import (
+    convert_backend_logs_to_events,
+)
+
+from models.integration_schemas import (
+    BackendHistoryRequest,
+)
 from fastapi import (
     FastAPI,
     File,
@@ -114,6 +124,14 @@ OPENAPI_TAGS = [
             "voice-based health logging."
         ),
     },
+{
+    "name": "Integration",
+    "description": (
+        "Integration endpoints used to convert "
+        "Spring Boot health-log data into the "
+        "internal DiaMate AI representation."
+    ),
+},
 ]
 
 
@@ -699,3 +717,140 @@ async def parse_voice(
 
     finally:
         await audio.close()
+# ============================================================
+# BACKEND INTEGRATION
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/aggregate-history",
+    tags=["Integration"],
+    summary="Convert backend health logs into AI history",
+    description=(
+        "Accepts glucose, meal, and activity logs using "
+        "the DiaMate Spring Boot backend DTO structure "
+        "and converts them into glucose-centered records "
+        "used by the AI and analytics pipeline."
+    ),
+)
+def aggregate_backend_history(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    return {
+        "patient_id": (
+            records[0]["patient_id"]
+            if records
+            else None
+        ),
+        "input_counts": {
+            "glucose_logs": len(glucose_logs),
+            "meal_logs": len(meal_logs),
+            "activity_logs": len(
+                activity_logs
+            ),
+        },
+        "generated_records": len(records),
+        "records": records,
+    }
+# ============================================================
+# BACKEND INTEGRATION - PATIENT SUMMARY
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/patient-summary",
+    tags=["Integration"],
+    summary="Build an AI summary from backend health logs",
+    description=(
+        "Accepts DiaMate Spring Boot glucose, meal, and "
+        "activity logs, converts them into the internal "
+        "AI history representation, and generates a "
+        "descriptive patient summary with analytics, "
+        "patterns, insights, and experimental machine-"
+        "learning output when sufficient data is available."
+    ),
+)
+def build_backend_patient_summary(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    if not records:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "At least two glucose readings are "
+                "required to generate aggregated "
+                "patient-history records."
+            ),
+        )
+
+    try:
+        return build_patient_summary(
+            records=records,
+            range_low=request.rangeLow,
+            range_high=request.rangeHigh,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Backend patient summary "
+                "generation failed."
+            ),
+        )
