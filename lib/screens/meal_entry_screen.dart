@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/meal_store.dart';
+import '../services/api_exception.dart';
+import '../utils/api_enums.dart';
+import '../utils/client_uuid.dart';
+import '../utils/form_helpers.dart';
+import '../widgets/date_time_tile.dart';
+
 class MealEntryScreen extends StatefulWidget {
   const MealEntryScreen({super.key});
 
@@ -13,56 +20,97 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
 
   String selectedMealType = 'Breakfast';
 
-  final List<String> mealTypes = [
-    'Breakfast',
-    'Lunch',
-    'Dinner',
-    'Snack',
-  ];
+  final List<String> mealTypes = mealTypeOptions.keys.toList();
 
-  void _saveMeal() {
+  DateTime eatenAt = DateTime.now();
+
+  bool isSaving = false;
+
+  // Same id while retrying after a network error, so the record is not
+  // stored twice. A new one after any change.
+  String clientUuid = newClientUuid();
+
+  void _changed(VoidCallback update) {
+    setState(() {
+      update();
+      clientUuid = newClientUuid();
+    });
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _saveMeal() async {
+    if (isSaving) {
+      return;
+    }
+
     final description = mealDescriptionController.text.trim();
     final carbsText = carbsController.text.trim();
 
     if (description.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please describe your meal.',
-          ),
-        ),
-      );
+      _showMessage('Please describe your meal.');
       return;
     }
 
-    if (carbsText.isNotEmpty) {
-      final carbs = double.tryParse(carbsText);
+    double? carbs;
 
-      if (carbs == null || carbs < 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Please enter a valid carbohydrate amount.',
-            ),
-          ),
+    if (carbsText.isNotEmpty) {
+      carbs = parseUserNumber(carbsText);
+
+      if (carbs == null ||
+          carbs < 0 ||
+          carbs > 1000 ||
+          !hasAtMostDecimals(carbs, 1)) {
+        _showMessage(
+          'Please enter carbohydrates between 0 and 1000 g '
+          '(at most 1 decimal place).',
         );
         return;
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Meal record saved successfully.',
-        ),
-      ),
-    );
-
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) {
-        Navigator.pop(context);
-      }
+    setState(() {
+      isSaving = true;
     });
+
+    try {
+      await mealStore.create({
+        'mealType': mealTypeOptions[selectedMealType],
+        'eatenAt': eatenAt.toUtc().toIso8601String(),
+        'description': description,
+        'carbsG': ?carbs,
+        'source': 'MANUAL',
+        'clientUuid': clientUuid,
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSaving = false;
+      });
+
+      final fieldError =
+          e.fieldErrors['description'] ??
+          e.fieldErrors['carbsG'] ??
+          e.fieldErrors['eatenAt'];
+
+      _showMessage(fieldError ?? e.message);
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage('Meal record saved successfully.');
+
+    Navigator.pop(context);
   }
 
   @override
@@ -105,6 +153,25 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             const SizedBox(height: 24),
 
             const Text(
+              'Date & Time',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172033),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            DateTimeTile(
+              value: eatenAt,
+              accentColor: const Color(0xFFF0A126),
+              onChanged: (value) => _changed(() => eatenAt = value),
+            ),
+
+            const SizedBox(height: 24),
+
+            const Text(
               'What did you eat?',
               style: TextStyle(
                 fontSize: 20,
@@ -142,16 +209,20 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: _saveMeal,
-                icon: const Icon(
-                  Icons.check_rounded,
-                ),
-                label: const Text(
-                  'Save Meal Record',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                onPressed: isSaving ? null : _saveMeal,
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(
+                  isSaving ? 'Saving...' : 'Save Meal Record',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF0A126),
@@ -177,10 +248,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFF2E2),
-            Color(0xFFFFF8ED),
-          ],
+          colors: [Color(0xFFFFF2E2), Color(0xFFFFF8ED)],
         ),
         borderRadius: BorderRadius.circular(25),
       ),
@@ -190,7 +258,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -241,11 +309,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
         return ChoiceChip(
           label: Text(type),
           selected: isSelected,
-          onSelected: (_) {
-            setState(() {
-              selectedMealType = type;
-            });
-          },
+          onSelected: (_) => _changed(() => selectedMealType = type),
           selectedColor: const Color(0xFFFFEED8),
           backgroundColor: Colors.white,
           side: BorderSide(
@@ -260,10 +324,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
                 ? const Color(0xFFCA821B)
                 : const Color(0xFF5F6E7D),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
           ),
@@ -277,54 +338,35 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFFE7EDF3),
-        ),
+        border: Border.all(color: const Color(0xFFE7EDF3)),
       ),
       child: TextField(
         controller: mealDescriptionController,
         maxLines: 5,
+        maxLength: 1000,
+        onChanged: (_) => clientUuid = newClientUuid(),
         textCapitalization: TextCapitalization.sentences,
         decoration: InputDecoration(
           hintText: 'For example: Grilled chicken, salad and yogurt',
-          hintStyle: const TextStyle(
-            fontSize: 13,
-            color: Color(0xFFA0ACB8),
-          ),
+          hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFA0ACB8)),
           prefixIcon: const Padding(
-            padding: EdgeInsets.only(
-              left: 14,
-              bottom: 72,
-            ),
-            child: Icon(
-              Icons.edit_note_rounded,
-              color: Color(0xFFF0A126),
-            ),
+            padding: EdgeInsets.only(left: 14, bottom: 72),
+            child: Icon(Icons.edit_note_rounded, color: Color(0xFFF0A126)),
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.fromLTRB(
-            14,
-            16,
-            14,
-            16,
-          ),
+          contentPadding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(22),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(22),
-            borderSide: const BorderSide(
-              color: Color(0xFFE3EAF1),
-            ),
+            borderSide: const BorderSide(color: Color(0xFFE3EAF1)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(22),
-            borderSide: const BorderSide(
-              color: Color(0xFFF0A126),
-              width: 1.5,
-            ),
+            borderSide: const BorderSide(color: Color(0xFFF0A126), width: 1.5),
           ),
         ),
       ),
@@ -337,9 +379,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFFE7EDF3),
-        ),
+        border: Border.all(color: const Color(0xFFE7EDF3)),
       ),
       child: Row(
         children: [
@@ -350,10 +390,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
               color: const Color(0xFFFFF2E2),
               borderRadius: BorderRadius.circular(15),
             ),
-            child: const Icon(
-              Icons.grain_rounded,
-              color: Color(0xFFF0A126),
-            ),
+            child: const Icon(Icons.grain_rounded, color: Color(0xFFF0A126)),
           ),
 
           const SizedBox(width: 13),
@@ -364,18 +401,12 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
               children: [
                 const Text(
                   'Carbohydrate Amount',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Optional',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade500,
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                 ),
               ],
             ),
@@ -385,14 +416,12 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             width: 105,
             child: TextField(
               controller: carbsController,
+              onChanged: (_) => clientUuid = newClientUuid(),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               decoration: InputDecoration(
                 hintText: '0',
                 suffixText: 'g',
@@ -408,9 +437,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFE3EAF1),
-                  ),
+                  borderSide: const BorderSide(color: Color(0xFFE3EAF1)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -438,11 +465,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: Color(0xFFF0A126),
-            size: 21,
-          ),
+          Icon(Icons.info_outline_rounded, color: Color(0xFFF0A126), size: 21),
           SizedBox(width: 10),
           Expanded(
             child: Text(

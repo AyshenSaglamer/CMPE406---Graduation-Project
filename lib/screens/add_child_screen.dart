@@ -109,7 +109,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: const Icon(
@@ -255,7 +255,7 @@ class _AddChildScreenState extends State<AddChildScreen> {
             const SizedBox(height: 7),
 
             DropdownButtonFormField<String>(
-              value: diabetesType,
+              initialValue: diabetesType,
               decoration: InputDecoration(
                 prefixIcon: const Icon(
                   Icons.medical_information_outlined,

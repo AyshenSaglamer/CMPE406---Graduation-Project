@@ -122,7 +122,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: reminders.length,
-                separatorBuilder: (_, __) {
+                separatorBuilder: (_, _) {
                   return const SizedBox(height: 10);
                 },
                 itemBuilder: (context, index) {
@@ -197,7 +197,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -237,7 +237,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
               vertical: 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
@@ -434,7 +434,7 @@ class _ReminderCard extends StatelessWidget {
             ),
             Switch.adaptive(
               value: reminder.enabled,
-              activeColor: reminder.iconColor,
+              activeThumbColor: reminder.iconColor,
               onChanged: onChanged,
             ),
           ],
@@ -655,7 +655,7 @@ class _AddReminderDialogState
             ),
             const SizedBox(height: 7),
             DropdownButtonFormField<String>(
-              value: selectedCategory,
+              initialValue: selectedCategory,
               decoration: InputDecoration(
                 prefixIcon: Icon(
                   categoryIcon,

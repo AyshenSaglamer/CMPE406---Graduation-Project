@@ -154,7 +154,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.82),
+                color: Colors.white.withValues(alpha: 0.82),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: const Icon(
@@ -198,7 +198,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.78),
+                color: Colors.white.withValues(alpha: 0.78),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
