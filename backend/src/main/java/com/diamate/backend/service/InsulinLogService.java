@@ -43,11 +43,9 @@ public class InsulinLogService {
         access.checkCanWrite(viewerId, patientId);
         checkRules(patientId, request);
 
-        if (request.clientUuid() != null) {
-            Optional<InsulinLog> existing = repository.findByPatientIdAndClientUuid(patientId, request.clientUuid());
-            if (existing.isPresent()) {
-                return CreateResult.existing(InsulinLogResponse.from(existing.get()));
-            }
+        Optional<InsulinLog> existing = LogRules.existing(repository, patientId, request.clientUuid());
+        if (existing.isPresent()) {
+            return CreateResult.existing(InsulinLogResponse.from(existing.get()));
         }
 
         InsulinLog log = new InsulinLog(patientId, request.clientUuid(),
@@ -93,7 +91,7 @@ public class InsulinLogService {
     }
 
     private void checkRules(long patientId, InsulinLogRequest request) {
-        LogRules.requireNotInFuture(request.administeredAt(), "administeredAt", clock);
+        LogRules.requireLogTime(request.administeredAt(), "administeredAt", clock);
         // A dose can only be linked to the same patient's (not deleted) meal.
         if (request.mealLogId() != null && !mealLogRepository.existsByIdAndPatientId(request.mealLogId(), patientId)) {
             throw new InvalidFieldException("mealLogId", "Meal log not found");

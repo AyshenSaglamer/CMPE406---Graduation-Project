@@ -58,7 +58,7 @@ class AuthControllerTest {
     @Test
     void registerReturns201WithUserAndNoPasswordFields() throws Exception {
         when(authService.register(any())).thenReturn(
-                new UserResponse(42L, "Melih", "Test", "melih.test@diamate.test", Role.CAREGIVER));
+                new UserResponse(42L, "Melih", "Test", Role.CAREGIVER, "melih.test@diamate.test"));
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -168,7 +168,7 @@ class AuthControllerTest {
     @Test
     void loginReturns200WithBearerToken() throws Exception {
         when(authService.login(any())).thenReturn(new AuthResponse("test-token", "Bearer", 3600,
-                new UserResponse(5L, "Demo Patient", "01", "patient01@diamate.example", Role.PATIENT)));
+                new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, "patient01@diamate.example")));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -232,7 +232,7 @@ class AuthControllerTest {
     @Test
     void namesInAnyLanguageWithApostrophesHyphensAndDotsAreAccepted() throws Exception {
         when(authService.register(any())).thenReturn(
-                new UserResponse(43L, "Ayşe Nur", "O’Brien-Yılmaz", "ayse@example.com", Role.PATIENT));
+                new UserResponse(43L, "Ayşe Nur", "O’Brien-Yılmaz", Role.PATIENT, "ayse@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -268,9 +268,9 @@ class AuthControllerTest {
     void anOldTokenSentToLoginOrRegisterIsIgnored() throws Exception {
         // A mobile app may still send its expired token on the login screen; that must not turn the login into a 401.
         when(authService.login(any())).thenReturn(new AuthResponse("new-token", "Bearer", 3600,
-                new UserResponse(5L, "Demo Patient", "01", "patient01@diamate.example", Role.PATIENT)));
+                new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, "patient01@diamate.example")));
         when(authService.register(any())).thenReturn(
-                new UserResponse(44L, "Melih", "Test", "new@example.com", Role.PATIENT));
+                new UserResponse(44L, "Melih", "Test", Role.PATIENT, "new@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .header("Authorization", "Bearer old.expired.token")

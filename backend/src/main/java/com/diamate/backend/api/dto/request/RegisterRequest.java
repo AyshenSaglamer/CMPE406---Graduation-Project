@@ -32,6 +32,9 @@ public record RegisterRequest(
         @NotNull(message = "Gender is required") // FEMALE, MALE or OTHER
         Gender gender,
         
+        @NotNull(message = "Role is required") // PATIENT, CLINICIAN, CAREGIVER, ADMIN
+        Role role,
+        
         @NotBlank(message = "Email is required")
         @Email(message = "Email format is invalid") // Must be a valid email format.
         @Size(max = 150, message = "Email must be at most 150 characters")
@@ -39,10 +42,7 @@ public record RegisterRequest(
 
         @NotBlank(message = "Password is required")
         @Size(min = 8, message = "Password must be at least 8 characters")
-        String password, // more rules (72-byte limit, common passwords, not the email) in PasswordPolicy
-
-        @NotNull(message = "Role is required") // PATIENT, CLINICIAN, CAREGIVER, ADMIN
-        Role role) {
+        String password) { // more rules (72-byte limit, common passwords, not the email) in PasswordPolicy
 
     /**
      * Letters of any language, with spaces, apostrophes (' and the ’ that phone keyboards type), hyphens and dots

@@ -34,17 +34,15 @@ public class ActivityLogService {
     @Transactional
     public CreateResult<ActivityLogResponse> create(long viewerId, long patientId, ActivityLogRequest request) {
         access.checkCanWrite(viewerId, patientId);
-        LogRules.requireNotInFuture(request.startedAt(), "startedAt", clock);
+        LogRules.requireLogTime(request.startedAt(), "startedAt", clock);
 
-        if (request.clientUuid() != null) {
-            Optional<ActivityLog> existing = repository.findByPatientIdAndClientUuid(patientId, request.clientUuid());
-            if (existing.isPresent()) {
-                return CreateResult.existing(ActivityLogResponse.from(existing.get()));
-            }
+        Optional<ActivityLog> existing = LogRules.existing(repository, patientId, request.clientUuid());
+        if (existing.isPresent()) {
+            return CreateResult.existing(ActivityLogResponse.from(existing.get()));
         }
 
-        // Always MANUAL: activity_logs has no AI_ASSISTANT source (see ActivityLogRequest).
-        ActivityLog log = new ActivityLog(patientId, request.clientUuid(), ActivitySource.MANUAL);
+        ActivityLog log = new ActivityLog(patientId, request.clientUuid(),
+                LogRules.source(request.source(), ActivitySource.class));
         apply(log, request);
         return CreateResult.created(ActivityLogResponse.from(LogRules.saveNew(repository, log)));
     }
@@ -69,7 +67,7 @@ public class ActivityLogService {
     public ActivityLogResponse update(long viewerId, long patientId, long logId, ActivityLogRequest request) {
         access.checkCanWrite(viewerId, patientId);
         ActivityLog log = find(patientId, logId);
-        LogRules.requireNotInFuture(request.startedAt(), "startedAt", clock);
+        LogRules.requireLogTime(request.startedAt(), "startedAt", clock);
         apply(log, request);
         return ActivityLogResponse.from(repository.saveAndFlush(log));
     }

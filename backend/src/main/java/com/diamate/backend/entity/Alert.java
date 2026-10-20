@@ -16,8 +16,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * Maps alerts. The backend creates glucose alerts (LOW / HIGH and the urgent ones) when a reading is saved.
- * Not mapped yet: acknowledgement and follow-up columns (no endpoint uses them).
+ * Maps alerts. The backend creates glucose alerts (LOW / HIGH and the urgent ones) when a reading is saved;
+ * the patient or the care team acknowledges / resolves them (AlertService).
+ * Not mapped yet: reminder_event_id and the follow-up columns (no endpoint uses them).
  */
 @Entity
 @Table(name = "alerts")
@@ -55,6 +56,20 @@ public class Alert {
     @Generated(event = EventType.INSERT)
     @Column(name = "triggered_at", nullable = false)
     private Instant triggeredAt;
+
+    // Who handled the alert first (acknowledged it, or resolved it directly) and when.
+    @Column(name = "acknowledged_by")
+    private Long acknowledgedBy;
+
+    @Column(name = "acknowledged_at")
+    private Instant acknowledgedAt;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    // Who resolved it (V7). Like the other handling columns, written only by AlertRepository's conditional updates.
+    @Column(name = "resolved_by")
+    private Long resolvedBy;
 
     protected Alert() {
         // required by JPA
@@ -105,4 +120,24 @@ public class Alert {
     public Instant getTriggeredAt() {
         return triggeredAt;
     }
+
+    public Long getAcknowledgedBy() {
+        return acknowledgedBy;
+    }
+
+    public Instant getAcknowledgedAt() {
+        return acknowledgedAt;
+    }
+
+    public Instant getResolvedAt() {
+        return resolvedAt;
+    }
+
+    public Long getResolvedBy() {
+        return resolvedBy;
+    }
+
+    // No setters for the status: changes go through AlertRepository's single conditional UPDATEs (acknowledgeIfOpen,
+    // resolveIfNotClosed), so two people handling the same alert at once, or the backend dismissing it meanwhile,
+    // cannot overwrite each other.
 }

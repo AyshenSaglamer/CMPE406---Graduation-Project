@@ -1,5 +1,6 @@
 package com.diamate.backend.security;
 
+import java.time.Clock;
 import java.time.Instant;
 
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -11,25 +12,25 @@ import org.springframework.stereotype.Service;
 
 import com.diamate.backend.entity.User;
 
-/**
- * Issues access tokens. Validation is done by Spring Security's resource server (see SecurityConfig).
- */
+// Issues access tokens. Validation is done by Spring Security's resource server (see SecurityConfig).
 @Service
 public class JwtService {
 
-    /** Name of the token claim that carries the user's role (read back in SecurityConfig). */
+    // Name of the token claim that carries the user's role (read back in SecurityConfig).
     public static final String ROLE_CLAIM = "role";
 
     private final JwtEncoder jwtEncoder;
     private final JwtProperties properties;
+    private final Clock clock; // TimeConfig; a fixed clock in tests, so "iat" and "exp" can be checked exactly
 
-    public JwtService(JwtEncoder jwtEncoder, JwtProperties properties) {
+    public JwtService(JwtEncoder jwtEncoder, JwtProperties properties, Clock clock) {
         this.jwtEncoder = jwtEncoder;
         this.properties = properties;
+        this.clock = clock;
     }
 
     public String generateToken(User user) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         // The token payload is only base64-encoded, not encrypted: keep it to the id and role, no personal data.
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
@@ -45,5 +46,5 @@ public class JwtService {
     public long getExpirationSeconds() {
         return properties.expiration().toSeconds();
     }
-    
+
 }

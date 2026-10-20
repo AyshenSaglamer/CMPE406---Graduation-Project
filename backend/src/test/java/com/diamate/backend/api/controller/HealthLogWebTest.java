@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -495,10 +496,9 @@ class HealthLogWebTest {
     }
 
     private String tokenFor(long userId, Role role) {
-        User user = new User("u" + userId + "@example.com", "hash", role, "First", "Last",
-                LocalDate.of(2000, 1, 15), Gender.OTHER);
+        User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER,  role, "u" + userId + "@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", userId);
-        return new JwtService(jwtEncoder, jwtProperties).generateToken(user);
+        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
     }
 
     private static Role roleOf(long id) {

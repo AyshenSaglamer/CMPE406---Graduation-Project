@@ -116,6 +116,158 @@
     {
       "key": "day6LowId",
       "value": ""
+    },
+    {
+      "key": "w2d2Email",
+      "value": ""
+    },
+    {
+      "key": "w2d2EmailUpper",
+      "value": ""
+    },
+    {
+      "key": "w2d2Token",
+      "value": ""
+    },
+    {
+      "key": "w2d2UserId",
+      "value": ""
+    },
+    {
+      "key": "w2d2Tampered",
+      "value": ""
+    },
+    {
+      "key": "w2d3Email",
+      "value": ""
+    },
+    {
+      "key": "w2d3Token",
+      "value": ""
+    },
+    {
+      "key": "w2d3PatientId",
+      "value": ""
+    },
+    {
+      "key": "w2d3Uuid",
+      "value": ""
+    },
+    {
+      "key": "thirtyMinutesAgo",
+      "value": ""
+    },
+    {
+      "key": "w2d3InsulinId",
+      "value": ""
+    },
+    {
+      "key": "w2d3MealId",
+      "value": ""
+    },
+    {
+      "key": "w2d3LinkedDoseId",
+      "value": ""
+    },
+    {
+      "key": "w2d3ActivityId",
+      "value": ""
+    },
+    {
+      "key": "w2d3LowId",
+      "value": ""
+    },
+    {
+      "key": "w2d3AlertId",
+      "value": ""
+    },
+    {
+      "key": "w2d3AcknowledgedAt",
+      "value": ""
+    },
+    {
+      "key": "w2d3TypoId",
+      "value": ""
+    },
+    {
+      "key": "w2d3TypoAlertId",
+      "value": ""
+    },
+    {
+      "key": "w2d4Email",
+      "value": ""
+    },
+    {
+      "key": "w2d4Token",
+      "value": ""
+    },
+    {
+      "key": "w2d4PatientId",
+      "value": ""
+    },
+    {
+      "key": "w2d4Parsed",
+      "value": ""
+    },
+    {
+      "key": "w2d4Body",
+      "value": ""
+    },
+    {
+      "key": "w2d4GlucoseId",
+      "value": ""
+    },
+    {
+      "key": "w2d4LowId",
+      "value": ""
+    },
+    {
+      "key": "w2d4AtomicUuid",
+      "value": ""
+    },
+    {
+      "key": "w2d2DoctorId",
+      "value": ""
+    },
+    {
+      "key": "w2d5Email",
+      "value": ""
+    },
+    {
+      "key": "w2d5Token",
+      "value": ""
+    },
+    {
+      "key": "w2d5PatientId",
+      "value": ""
+    },
+    {
+      "key": "w2d5LowId",
+      "value": ""
+    },
+    {
+      "key": "w2d5AlertId",
+      "value": ""
+    },
+    {
+      "key": "w2d6Email",
+      "value": ""
+    },
+    {
+      "key": "w2d6Token",
+      "value": ""
+    },
+    {
+      "key": "w2d6PatientId",
+      "value": ""
+    },
+    {
+      "key": "w2d6Uuid",
+      "value": ""
+    },
+    {
+      "key": "w2d6LogId",
+      "value": ""
     }
   ],
   "item": [
@@ -3504,6 +3656,3605 @@
                   "  pm.expect(pm.response.json().status).to.eql('UP');",
                   "  pm.expect(pm.response.json().components).to.be.undefined;",
                   "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth flow (Week 2 Day 2)",
+      "description": "Registration, login and session restore exactly as the Flutter app does them, plus the ways a token must NOT be accepted. Registers its own doctor account.",
+      "item": [
+        {
+          "name": "Register a doctor as the app sends it (role CLINICIAN) -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Ayse Nur\",\n  \"lastName\": \"O'Brien\",\n  \"email\": \"{{w2d2Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CLINICIAN\",\n  \"dateOfBirth\": \"1985-04-12\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d2Email', 'w2d2.doctor.' + Date.now() + '@diamate.test');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Exactly the fields the app reads (AppUser), no password', () => {",
+                  "  const u = pm.response.json();",
+                  "  pm.expect(u).to.have.all.keys('id', 'firstName', 'lastName', 'email', 'role');",
+                  "  pm.expect(u.role).to.eql('CLINICIAN');",
+                  "});",
+                  "pm.collectionVariables.set('w2d2DoctorId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register with role DOCTOR -> 400 (the API name is CLINICIAN)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Ayse Nur\",\n  \"lastName\": \"O'Brien\",\n  \"email\": \"w2d2.doctor-role.{{$timestamp}}@diamate.test\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"DOCTOR\",\n  \"dateOfBirth\": \"1985-04-12\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.role lists the allowed values', () => pm.expect(pm.response.json().errors.role).to.include('CLINICIAN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register the same email in UPPER case -> 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Ayse Nur\",\n  \"lastName\": \"O'Brien\",\n  \"email\": \"{{w2d2EmailUpper}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"CLINICIAN\",\n  \"dateOfBirth\": \"1985-04-12\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d2EmailUpper', pm.collectionVariables.get('w2d2Email').toUpperCase());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Problem detail message', () => pm.expect(pm.response.json().detail).to.eql('Email is already registered'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor logs in before approval -> 403 (Week 2 Day 5)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{w2d2Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Since Week 2 Day 5 a self-registered doctor waits for an ADMIN's approval.",
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Says it is waiting for approval', () => pm.expect(pm.response.json().detail).to.eql('This doctor account is waiting for approval by an administrator'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN approves the doctor -> 200 (Week 2 Day 5)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/users/{{w2d2DoctorId}}/status",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Active now', () => pm.expect(pm.response.json().active).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with spaces and UPPER case email -> 200 (saves the doctor's token)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"  {{w2d2EmailUpper}} \",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Bearer token with its lifetime in seconds', () => {",
+                  "  pm.expect(b.tokenType).to.eql('Bearer');",
+                  "  pm.expect(b.expiresIn).to.be.above(0);",
+                  "});",
+                  "pm.test('user.role is CLINICIAN (the app maps it to doctor)', () => pm.expect(b.user.role).to.eql('CLINICIAN'));",
+                  "pm.collectionVariables.set('w2d2Token', b.accessToken);",
+                  "pm.collectionVariables.set('w2d2UserId', b.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Session restore: GET /users/me with the saved token -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has every field the app needs to rebuild the session', () => {",
+                  "  const u = pm.response.json();",
+                  "  pm.expect(u).to.include.all.keys('id', 'firstName', 'lastName', 'email', 'role');",
+                  "  pm.expect(u.id).to.eql(Number(pm.collectionVariables.get('w2d2UserId')));",
+                  "  pm.expect(u.role).to.eql('CLINICIAN');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token in the URL (?access_token=) -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me?access_token={{w2d2Token}}",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Only the Authorization header is read: a token in the URL would end up in server and proxy logs.",
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Authentication required', () => pm.expect(pm.response.json().detail).to.eql('Authentication required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Basic auth header instead of Bearer -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Basic dXNlcjpwYXNzd29yZA=="
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token with a changed payload -> 401",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d2Tampered}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Change one character of the payload (e.g. to try another user id or role); the signature no longer matches.",
+                  "const [header, payload, signature] = pm.collectionVariables.get('w2d2Token').split('.');",
+                  "const last = payload.slice(-2, -1) === 'A' ? 'B' : 'A';",
+                  "pm.collectionVariables.set('w2d2Tampered', header + '.' + payload.slice(0, -2) + last + payload.slice(-1) + '.' + signature);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Invalid or expired access token', () => pm.expect(pm.response.json().detail).to.eql('Invalid or expired access token'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "New doctor's patient list -> 200, empty (no care relationship yet)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/patients",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('No patients until one shares their data', () => pm.expect(pm.response.json()).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health logs & alerts (Week 2 Day 3)",
+      "description": "Read, update and delete for insulin, meal and activity logs; a deleted meal no longer links to its insulin doses; alert list, acknowledge and resolve (PATCH, the API the Flutter alert screen uses). Registers its own patient. Uses the tokens of the RBAC folder for dr.endo, dr.diabetes and ADMIN, so run the collection from the top.",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Deniz\",\n  \"lastName\": \"Kaya\",\n  \"email\": \"{{w2d3Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\",\n  \"dateOfBirth\": \"1992-03-04\",\n  \"gender\": \"OTHER\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d3Email', 'w2d3.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());",
+                  "pm.collectionVariables.set('thirtyMinutesAgo', new Date(Date.now() - 1800 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{w2d3Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('w2d3Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('w2d3PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST insulin (app body) -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 4.5,\n  \"insulinType\": \"RAPID\",\n  \"deliveryMethod\": \"PEN\",\n  \"administeredAt\": \"{{oneHourAgo}}\",\n  \"source\": \"MANUAL\",\n  \"clientUuid\": \"{{w2d3Uuid}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d3Uuid', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d3InsulinId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET that insulin log -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3InsulinId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('RAPID by PEN', () => { const b = pm.response.json(); pm.expect(b.insulinType).to.eql('RAPID'); pm.expect(b.deliveryMethod).to.eql('PEN'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT insulin -> 200 (dose corrected)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3InsulinId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 5.25,\n  \"insulinType\": \"RAPID\",\n  \"deliveryMethod\": \"PEN\",\n  \"administeredAt\": \"{{oneHourAgo}}\",\n  \"source\": \"AI_ASSISTANT\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('New dose, source unchanged', () => { const b = pm.response.json(); pm.expect(b.doseUnits).to.eql(5.25); pm.expect(b.source).to.eql('MANUAL'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT insulin as CLINICIAN dr.endo -> 403",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3InsulinId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 1,\n  \"administeredAt\": \"{{oneHourAgo}}\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE insulin -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3InsulinId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET deleted insulin -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3InsulinId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Insulin log not found', () => pm.expect(pm.response.json().detail).to.eql('Insulin log not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST meal (app body) -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/meal-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mealType\": \"LUNCH\",\n  \"eatenAt\": \"{{oneHourAgo}}\",\n  \"description\": \"lentil soup\",\n  \"carbsG\": 45,\n  \"source\": \"MANUAL\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d3MealId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT meal -> 200 (carbs corrected)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/meal-logs/{{w2d3MealId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mealType\": \"LUNCH\",\n  \"eatenAt\": \"{{oneHourAgo}}\",\n  \"description\": \"lentil soup and bread\",\n  \"carbsG\": 62.5\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('carbsG 62.5', () => pm.expect(pm.response.json().carbsG).to.eql(62.5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET that meal -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/meal-logs/{{w2d3MealId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('The corrected values', () => { const b = pm.response.json(); pm.expect(b.carbsG).to.eql(62.5); pm.expect(b.description).to.eql('lentil soup and bread'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET meal list -> 200, contains it",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/meal-logs?page=0&size=200",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Listed', () => pm.expect(pm.response.json().items.map(i => i.id)).to.include(Number(pm.collectionVariables.get('w2d3MealId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST insulin linked to the meal -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doseUnits\": 6,\n  \"administeredAt\": \"{{oneHourAgo}}\",\n  \"mealLogId\": {{w2d3MealId}}\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Linked', () => pm.expect(pm.response.json().mealLogId).to.eql(Number(pm.collectionVariables.get('w2d3MealId'))));",
+                  "pm.collectionVariables.set('w2d3LinkedDoseId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE the meal -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/meal-logs/{{w2d3MealId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET the linked dose -> 200, mealLogId null (B-12)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/insulin-logs/{{w2d3LinkedDoseId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A deleted meal no longer links to its doses; before the fix the dose kept the id and could not be saved again.",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('mealLogId is null', () => pm.expect(pm.response.json().mealLogId).to.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST activity (app body) -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/activity-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityType\": \"Walking\",\n  \"startedAt\": \"{{oneHourAgo}}\",\n  \"durationMinutes\": 30,\n  \"intensity\": \"MODERATE\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d3ActivityId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT activity -> 200 (still MANUAL)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/activity-logs/{{w2d3ActivityId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityType\": \"Walking\",\n  \"startedAt\": \"{{oneHourAgo}}\",\n  \"durationMinutes\": 45,\n  \"intensity\": \"HIGH\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('45 minutes, HIGH, MANUAL', () => { const b = pm.response.json(); pm.expect(b.durationMinutes).to.eql(45); pm.expect(b.intensity).to.eql('HIGH'); pm.expect(b.source).to.eql('MANUAL'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET that activity -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/activity-logs/{{w2d3ActivityId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Walking, 45 minutes', () => { const b = pm.response.json(); pm.expect(b.activityType).to.eql('Walking'); pm.expect(b.durationMinutes).to.eql(45); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE activity -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/activity-logs/{{w2d3ActivityId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET activity list -> 200, the deleted one is gone",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/activity-logs?page=0&size=200",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Not listed', () => pm.expect(pm.response.json().items.map(i => i.id)).to.not.include(Number(pm.collectionVariables.get('w2d3ActivityId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 48 (urgent low) -> 201, creates an alert",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 48,\n  \"measurementTime\": \"{{thirtyMinutesAgo}}\",\n  \"mealContext\": \"OTHER\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d3LowId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET open alerts -> 200, URGENT_LOW / CRITICAL",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts?status=OPEN",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const alert = pm.response.json().items.find(a => a.glucoseLogId === Number(pm.collectionVariables.get('w2d3LowId')));",
+                  "pm.test('The reading has an open alert', () => {",
+                  "  pm.expect(alert).to.not.be.undefined;",
+                  "  pm.expect(alert.alertType).to.eql('URGENT_LOW');",
+                  "  pm.expect(alert.severity).to.eql('CRITICAL');",
+                  "});",
+                  "pm.collectionVariables.set('w2d3AlertId', alert.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge the alert as the patient (PATCH ACKNOWLEDGED) -> 200",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACKNOWLEDGED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('ACKNOWLEDGED by the patient', () => {",
+                  "  pm.expect(b.status).to.eql('ACKNOWLEDGED');",
+                  "  pm.expect(b.acknowledgedBy).to.eql(Number(pm.collectionVariables.get('w2d3PatientId')));",
+                  "});",
+                  "pm.collectionVariables.set('w2d3AcknowledgedAt', b.acknowledgedAt);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge again -> 200, unchanged",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACKNOWLEDGED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Same time: the first acknowledgement is kept', () => pm.expect(pm.response.json().acknowledgedAt).to.eql(pm.collectionVariables.get('w2d3AcknowledgedAt')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve the alert -> 200 RESOLVED",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('RESOLVED, first handler kept', () => { const b = pm.response.json(); pm.expect(b.status).to.eql('RESOLVED'); pm.expect(b.resolvedAt).to.not.be.null; pm.expect(b.acknowledgedAt).to.eql(pm.collectionVariables.get('w2d3AcknowledgedAt')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge a resolved alert -> 409",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACKNOWLEDGED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Already resolved', () => pm.expect(pm.response.json().detail).to.eql('Alert is already resolved'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH status OPEN -> 400 (only ACKNOWLEDGED / RESOLVED)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OPEN\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.status', () => pm.expect(pm.response.json().errors.status).to.eql('Status must be ACKNOWLEDGED or RESOLVED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET alerts ?status=CLOSED -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts?status=CLOSED",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.status lists the allowed values', () => pm.expect(pm.response.json().errors.status).to.include('ACKNOWLEDGED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 50 (typo) -> 201, creates an alert",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"glucoseValue\": 50,\n  \"measurementTime\": \"{{thirtyMinutesAgo}}\",\n  \"mealContext\": \"OTHER\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d3TypoId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET open alerts -> the typo's alert",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts?status=OPEN",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const alert = pm.response.json().items.find(a => a.glucoseLogId === Number(pm.collectionVariables.get('w2d3TypoId')));",
+                  "pm.test('Found', () => pm.expect(alert).to.not.be.undefined);",
+                  "pm.collectionVariables.set('w2d3TypoAlertId', alert.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE the typo reading -> 204 (its open alert is dismissed)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/glucose-logs/{{w2d3TypoId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge the dismissed alert -> 409",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3TypoAlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACKNOWLEDGED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d3Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Says why', () => pm.expect(pm.response.json().detail).to.eql('Alert is already dismissed'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge as ADMIN -> 404 (no health data access)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d3PatientId}}/alerts/{{w2d3AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACKNOWLEDGED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET patient01's alerts as dr.endo (ACTIVE, alerts shared) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/alerts",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET patient01's alerts as dr.diabetes (PENDING) -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/alerts",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{diabetesToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AI workflow (Week 2 Day 4)",
+      "description": "Dia's two steps: /ai/parse shows what was understood (nothing saved), /patients/{id}/ai-entries saves what the patient confirmed as AI_ASSISTANT logs. Works with or without the FastAPI service (the parse request accepts 503 and the next request then uses hand-written entries). Uses dr.endo's token and patient01's id from the RBAC folder, so run the collection from the top.",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Dia\",\n  \"lastName\": \"Tester\",\n  \"email\": \"{{w2d4Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\",\n  \"dateOfBirth\": \"1990-06-15\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d4Email', 'w2d4.' + Date.now() + '@diamate.test');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{w2d4Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('w2d4Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('w2d4PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AI parse: glucose, insulin and a walk -> 200 (AI running) or 503",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/ai/parse",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"My glucose is 125 and I took 6 units of insulin and walked for 30 minutes\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 when the AI service runs, 503 when it does not', () => pm.expect(pm.response.code).to.be.oneOf([200, 503]));",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.test('Three entries understood', () => pm.expect(b.resultCount).to.eql(3));",
+                  "  // What the app shows the patient; after the confirmation these go to /ai-entries unchanged.",
+                  "  pm.collectionVariables.set('w2d4Parsed', JSON.stringify(b.results.filter(r => r.status === 'SUCCESS')",
+                  "    .map(r => ({ intent: r.intent, value: r.value, unit: r.unit, activity: r.activity }))));",
+                  "} else {",
+                  "  pm.collectionVariables.set('w2d4Parsed', '');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save the confirmed entries -> 201, all AI_ASSISTANT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{w2d4Body}}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The parse answer when the AI service ran; otherwise the same three entries written by hand.",
+                  "const parsed = pm.collectionVariables.get('w2d4Parsed');",
+                  "const entries = parsed ? JSON.parse(parsed) : [",
+                  "  { intent: 'LOG_GLUCOSE', value: 125.0, unit: 'mg/dL' },",
+                  "  { intent: 'LOG_INSULIN', value: 6.0, unit: 'units' },",
+                  "  { intent: 'LOG_ACTIVITY', value: 30.0, unit: 'minutes', activity: 'walked' }];",
+                  "entries.forEach(e => e.clientUuid = pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.collectionVariables.set('w2d4Body', JSON.stringify({ entries }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('Three logs saved', () => pm.expect(b.savedCount).to.eql(3));",
+                  "pm.test('Every log is AI_ASSISTANT', () => b.saved.forEach(s => pm.expect(s.log.source).to.eql('AI_ASSISTANT')));",
+                  "pm.test('125.0 became the whole number 125', () => pm.expect(b.saved[0].log.glucoseValue).to.eql(125));",
+                  "pm.test('The walk is an AI_ASSISTANT activity of 30 minutes', () => {",
+                  "  const walk = b.saved.find(s => s.intent === 'LOG_ACTIVITY').log;",
+                  "  pm.expect(walk.durationMinutes).to.eql(30);",
+                  "});",
+                  "pm.collectionVariables.set('w2d4GlucoseId', b.saved[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send the same entries again -> 200, nothing new",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{w2d4Body}}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('created is false for every entry', () => pm.response.json().saved.forEach(s => pm.expect(s.created).to.be.false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET the glucose log -> source AI_ASSISTANT",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/glucose-logs/{{w2d4GlucoseId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('From Dia', () => pm.expect(pm.response.json().source).to.eql('AI_ASSISTANT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activity 1.5 hours and 5 km -> 90 minutes, and a note",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_ACTIVITY\", \"value\": 1.5, \"unit\": \"hours\", \"activity\": \"walked\"},\n    {\"intent\": \"LOG_ACTIVITY\", \"value\": 5.0, \"unit\": \"km\", \"activity\": \"ran\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const logs = pm.response.json().saved.map(s => s.log);",
+                  "pm.test('1.5 hours = 90 minutes', () => pm.expect(logs[0].durationMinutes).to.eql(90));",
+                  "pm.test('A distance has no guessed duration, it is kept in the notes', () => {",
+                  "  pm.expect(logs[1].durationMinutes).to.be.null;",
+                  "  pm.expect(logs[1].notes).to.eql('5 km');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Meal of 45 grams -> carbsG 45, meal type OTHER",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_MEAL\", \"value\": 45.0, \"unit\": \"grams\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const meal = pm.response.json().saved[0].log;",
+                  "pm.test('carbsG 45, OTHER', () => { pm.expect(meal.carbsG).to.eql(45); pm.expect(meal.mealType).to.eql('OTHER'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Glucose 48 from Dia -> 201 and an open alert",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 48.0, \"unit\": \"mg/dL\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d4LowId', pm.response.json().saved[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET open alerts -> the reading from Dia has one",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/alerts?status=OPEN",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Alert for the reading', () => pm.expect(pm.response.json().items.map(a => a.glucoseLogId)).to.include(Number(pm.collectionVariables.get('w2d4LowId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Glucose 125.5 -> 400 on entries[0].value",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 125.5, \"unit\": \"mg/dL\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Whole mg/dL', () => pm.expect(pm.response.json().errors['entries[0].value']).to.eql('Glucose must be a whole number of mg/dL'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Second entry invalid (400 units) -> 400 on entries[1].value",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 77, \"clientUuid\": \"{{w2d4AtomicUuid}}\"},\n    {\"intent\": \"LOG_INSULIN\", \"value\": 400, \"unit\": \"units\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d4AtomicUuid', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('The insulin entry is named', () => pm.expect(pm.response.json().errors['entries[1].value']).to.eql('Dose must be at most 300 units'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The valid first entry was not saved either -> sending it alone gives 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 77, \"clientUuid\": \"{{w2d4AtomicUuid}}\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// created = true proves the glucose entry of the failed request had been rolled back.",
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Created now, not before', () => pm.expect(pm.response.json().saved[0].created).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activity without a usable unit -> 400 on entries[0].unit",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_ACTIVITY\", \"value\": 30, \"unit\": \"unspecified\", \"activity\": \"walked\"}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Lists the units', () => pm.expect(pm.response.json().errors['entries[0].unit']).to.include('minutes'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown intent -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"UNKNOWN\", \"value\": 1}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('entries[0].intent', () => pm.expect(pm.response.json().errors['entries[0].intent']).to.include('LOG_GLUCOSE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "As CLINICIAN dr.endo -> 403",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 120}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Into patient01's logs as the new patient -> 404",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{patient01Id}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entries\": [\n    {\"intent\": \"LOG_GLUCOSE\", \"value\": 120}\n  ]\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST activity with source AI_ASSISTANT -> 201 (V6)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d4PatientId}}/activity-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityType\": \"cycling\",\n  \"startedAt\": \"{{oneHourAgo}}\",\n  \"durationMinutes\": 20,\n  \"source\": \"AI_ASSISTANT\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d4Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Source kept', () => pm.expect(pm.response.json().source).to.eql('AI_ASSISTANT'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Security (Week 2 Day 5)",
+      "description": "Week 2 Day 5: unusual request bodies (huge numbers, a field sent twice, server-side fields, unknown sources), page and id edge cases, ADMIN account status, alert resolvedBy and the care team's alert list. Registers its own patient; uses adminToken and endoToken of the RBAC folder, so run the collection from the top.",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Gul\",\n  \"lastName\": \"Aydin\",\n  \"email\": \"{{w2d5Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\",\n  \"dateOfBirth\": \"1988-08-08\",\n  \"gender\": \"FEMALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d5Email', 'w2d5.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{w2d5Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('w2d5Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('w2d5PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "S-1: ai-entries value 1e999999999 -> 400 at once",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entries\":[{\"intent\":\"LOG_ACTIVITY\",\"value\":1e999999999,\"unit\":\"km\",\"activity\":\"ran\"}]}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 11 characters, but a billion digits as plain text: refused before any conversion.",
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Fast', () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                  "pm.test('On the value', () => pm.expect(pm.response.json().errors).to.have.property('entries[0].value'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ai-entries 1001 km -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entries\":[{\"intent\":\"LOG_ACTIVITY\",\"value\":1001,\"unit\":\"km\",\"activity\":\"ran\"}]}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Limit', () => pm.expect(pm.response.json().errors['entries[0].value']).to.eql('Must be at most 1000 km'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same field twice -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":120,\"glucoseValue\":600,\"measurementTime\":\"{{oneHourAgo}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Named', () => pm.expect(pm.response.json().errors.glucoseValue).to.eql('Must appear only once'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "source CGM -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":125,\"measurementTime\":\"{{oneHourAgo}}\",\"source\":\"CGM\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Allowed values', () => pm.expect(pm.response.json().errors.source).to.include('AI_ASSISTANT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Server-side fields in the body are ignored -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":131,\"measurementTime\":\"{{oneHourAgo}}\",\"id\":1,\"patientId\":8,\"enteredBy\":2,\"deletedAt\":\"{{oneHourAgo}}\",\"createdAt\":\"2020-01-01T00:00:00Z\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('Own patient id, MANUAL, new id', () => {",
+                  "  pm.expect(b.patientId).to.eql(Number(pm.collectionVariables.get('w2d5PatientId')));",
+                  "  pm.expect(b.source).to.eql('MANUAL');",
+                  "  pm.expect(b.id).to.not.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "S-2: page 2147483647 -> 400 (was a 500)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs?page=2147483647&size=200",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('On page', () => pm.expect(pm.response.json().errors).to.have.property('page'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Negative patient id -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/-1/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "from in year 9999 -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs?from=9999-12-31T00:00:00Z",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SQL-like text and emoji in notes -> 201, stored as written",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":140,\"measurementTime\":\"{{oneHourAgo}}\",\"notes\":\"'; DROP TABLE users; -- \\ud83d\\ude00\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Same text back', () => pm.expect(pm.response.json().notes).to.eql(\"'; DROP TABLE users; -- \\ud83d\\ude00\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN deactivates the patient -> 200",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/users/{{w2d5PatientId}}/status",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Inactive', () => pm.expect(pm.response.json().active).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The patient's token -> 401 at once",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN activates the patient again -> 200",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/users/{{w2d5PatientId}}/status",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The same token works again -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A patient calling the admin endpoint -> 403",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/users/{{w2d5PatientId}}/status",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status body without 'active' -> 400",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/users/{{w2d5PatientId}}/status",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.active', () => pm.expect(pm.response.json().errors.active).to.eql('Active is required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST glucose 48 -> 201 (creates an alert)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":48,\"measurementTime\":\"{{oneHourAgo}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d5LowId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET the open alert",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/alerts?status=OPEN",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const a = pm.response.json().items.find(x => x.glucoseLogId === Number(pm.collectionVariables.get('w2d5LowId')));",
+                  "pm.test('Found', () => pm.expect(a).to.not.be.undefined);",
+                  "pm.collectionVariables.set('w2d5AlertId', a.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve it directly -> 200, resolvedBy = the patient (V7)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/patients/{{w2d5PatientId}}/alerts/{{w2d5AlertId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Resolved by and first handler', () => {",
+                  "  const me = Number(pm.collectionVariables.get('w2d5PatientId'));",
+                  "  pm.expect(b.status).to.eql('RESOLVED');",
+                  "  pm.expect(b.resolvedBy).to.eql(me);",
+                  "  pm.expect(b.acknowledgedBy).to.eql(me);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care team: dr.endo's open alerts count -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/alerts?status=OPEN&size=1",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{endoToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has a count', () => pm.expect(pm.response.json().totalElements).to.be.a('number'));",
+                  "pm.test('Items name the patient', () => pm.response.json().items.forEach(i => pm.expect(i).to.have.property('patientFirstName')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Care team list as a patient -> 403",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/care-team/alerts",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d5Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bug fixes (Week 2 Day 6)",
+      "description": "Week 2 Day 6 (own QA pass, no QA reports yet): times the database cannot store (D6-1, were 500), errors raised before any controller in problem+json (D6-2), clientUuid sent twice / of a deleted log (D6-3; the parallel case is tested by a script, see docs/BACKEND_REVIEW.md section 13). Registers its own patient.",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Deniz\",\n  \"lastName\": \"Arslan\",\n  \"email\": \"{{w2d6Email}}\",\n  \"password\": \"{{testPassword}}\",\n  \"role\": \"PATIENT\",\n  \"dateOfBirth\": \"1992-02-02\",\n  \"gender\": \"MALE\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('w2d6Email', 'w2d6.' + Date.now() + '@diamate.test');",
+                  "pm.collectionVariables.set('oneHourAgo', new Date(Date.now() - 3600 * 1000).toISOString());",
+                  "pm.collectionVariables.set('w2d6Uuid', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login new PATIENT",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{w2d6Email}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('w2d6Token', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('w2d6PatientId', pm.response.json().user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: glucose in year -1000000000 -> 400 (was 500)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":120,\"measurementTime\":\"-1000000000-01-01T00:00:00Z\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A valid Instant, but PostgreSQL answered 'timestamp out of range' and the backend a 500.",
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors[\"measurementTime\"]', () => pm.expect(pm.response.json().errors[\"measurementTime\"]).to.eql(\"Time must not be before the year 1900\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: meal on 1899-12-31 -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/meal-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mealType\":\"LUNCH\",\"eatenAt\":\"1899-12-31T23:59:59Z\",\"carbsG\":40}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors[\"eatenAt\"]', () => pm.expect(pm.response.json().errors[\"eatenAt\"]).to.eql(\"Time must not be before the year 1900\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: ai-entries at year -1000000000 -> 400 on the entry",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/ai-entries",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entries\":[{\"intent\":\"LOG_GLUCOSE\",\"value\":120,\"unit\":\"mg/dL\",\"at\":\"-1000000000-01-01T00:00:00Z\"}]}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors[\"entries[0].at\"]', () => pm.expect(pm.response.json().errors[\"entries[0].at\"]).to.eql(\"Time must not be before the year 1900\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: list from year -999999999 -> 400 (was 500)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs?from=-999999999-01-01T00:00:00Z",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors[\"from\"]', () => pm.expect(pm.response.json().errors[\"from\"]).to.eql(\"Must be between the years 1900 and 9999\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: alerts to year 10000 -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/alerts?to=%2B10000-01-01T00:00:00Z",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors[\"to\"]', () => pm.expect(pm.response.json().errors[\"to\"]).to.eql(\"Must be between the years 1900 and 9999\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-1: list from 1900-01-01 (the limit) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs?from=1900-01-01T00:00:00Z",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-2: path id '1;DROP' -> 400 problem+json (was Spring's default JSON)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/patients/1%3BDROP/glucose-logs",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Refused by Spring Security's firewall; the answer used to be {timestamp, status, error, path}.",
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('problem+json', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
+                  "pm.test('Same fields as every other error', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.detail).to.eql('The request is not valid');",
+                  "  pm.expect(b.title).to.eql('Bad Request');",
+                  "  pm.expect(b).to.not.have.property('timestamp');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-3: glucose with a clientUuid -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":118,\"measurementTime\":\"{{oneHourAgo}}\",\"clientUuid\":\"{{w2d6Uuid}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('w2d6LogId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-3: same clientUuid again -> 200, the same log",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":118,\"measurementTime\":\"{{oneHourAgo}}\",\"clientUuid\":\"{{w2d6Uuid}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The same request sent twice at the same moment now also ends like this (scratchpad parallel_uuid.py:",
+                  "// 50/50); before Day 6 the second one got a 409.",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Same id', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('w2d6LogId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-3: delete that log -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs/{{w2d6LogId}}",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "D6-3: the deleted log's clientUuid -> 409 with a clear reason",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{w2d6PatientId}}/glucose-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"glucoseValue\":118,\"measurementTime\":\"{{oneHourAgo}}\",\"clientUuid\":\"{{w2d6Uuid}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{w2d6Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Says why', () => pm.expect(pm.response.json().detail).to.eql('This clientUuid belongs to a deleted log; send the entry with a new clientUuid'));"
                 ]
               }
             }

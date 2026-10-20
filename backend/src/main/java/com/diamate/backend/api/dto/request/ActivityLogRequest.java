@@ -15,10 +15,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/**
- * Body of POST / PUT for activity logs. There is no "source" field: activity_logs only allows
- * MANUAL / WEARABLE / IMPORT (no AI_ASSISTANT), so every log sent by the app is saved as MANUAL.
- */
+/** Body of POST / PUT for activity logs. */
 public record ActivityLogRequest(
 
         @NotBlank(message = "Activity type is required")
@@ -50,6 +47,8 @@ public record ActivityLogRequest(
 
         @Size(max = 1000, message = "Notes must be at most 1000 characters")
         String notes,
+
+        EntrySource source, // MANUAL (default) or AI_ASSISTANT; kept on PUT (where a log came from never changes)
 
         UUID clientUuid) {
 }

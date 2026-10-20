@@ -2,18 +2,17 @@ package com.diamate.backend.repository;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.entity.InsulinLog;
 
-public interface InsulinLogRepository extends JpaRepository<InsulinLog, Long> {
+public interface InsulinLogRepository extends LogRepository<InsulinLog> {
 
     @Transactional(readOnly = true) // page query + count query in one transaction
     @Query("""
@@ -25,5 +24,9 @@ public interface InsulinLogRepository extends JpaRepository<InsulinLog, Long> {
 
     Optional<InsulinLog> findByIdAndPatientId(long id, long patientId);
 
-    Optional<InsulinLog> findByPatientIdAndClientUuid(long patientId, UUID clientUuid);
+    // A meal was (soft) deleted: its doses no longer point to it. The database's ON DELETE SET NULL only runs for a
+    // real DELETE, never for a soft delete. Plain SQL on purpose, so deleted doses are unlinked too.
+    @Modifying
+    @Query(value = "update insulin_logs set meal_log_id = null where meal_log_id = :mealLogId", nativeQuery = true)
+    int unlinkMeal(@Param("mealLogId") long mealLogId);
 }

@@ -1,0 +1,23 @@
+# Only pom.xml and src/ are needed to build the image. Everything else stays out of the build context:
+# secrets first, then large or local-only folders.
+
+# Secrets / local environment: never part of an image (also not of the throw-away build stage)
+.env
+.env.*
+
+# Build output and IDE files
+target/
+.settings/
+.classpath
+.project
+.factorypath
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Not part of the backend
+Frontend/
+postman/
+docs/
+docker-compose.yml

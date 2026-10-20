@@ -17,6 +17,7 @@ import com.diamate.backend.api.dto.request.LoginRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.ClinicianProfile;
 import com.diamate.backend.entity.DiabetesType;
 import com.diamate.backend.entity.PatientProfile;
 import com.diamate.backend.entity.Role;
@@ -27,6 +28,7 @@ import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.repository.ClinicianProfileRepository;
 import com.diamate.backend.repository.PatientProfileRepository;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.JwtService;
@@ -37,6 +39,8 @@ import com.diamate.backend.service.AuditService.LoginFailure;
 public class AuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
+
+    static final String CLINICIAN_NOT_APPROVED = "This doctor account is waiting for approval by an administrator";
 
     // Younger users not by self-registration.
     static final int MIN_SELF_REGISTRATION_AGE = 16;
@@ -50,6 +54,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PatientProfileRepository patientProfileRepository;
+    private final ClinicianProfileRepository clinicianProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicy passwordPolicy;
     private final JwtService jwtService;
@@ -62,10 +67,11 @@ public class AuthService {
 
     // Constructor
     public AuthService(UserRepository userRepository, PatientProfileRepository patientProfileRepository,
-            PasswordEncoder passwordEncoder, PasswordPolicy passwordPolicy, JwtService jwtService,
-            AuditService auditService, Clock clock) {
+            ClinicianProfileRepository clinicianProfileRepository, PasswordEncoder passwordEncoder,
+            PasswordPolicy passwordPolicy, JwtService jwtService, AuditService auditService, Clock clock) {
         this.userRepository = userRepository;
         this.patientProfileRepository = patientProfileRepository;
+        this.clinicianProfileRepository = clinicianProfileRepository;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
         this.jwtService = jwtService;
@@ -94,8 +100,13 @@ public class AuthService {
             throw new EmailAlreadyRegisteredException();
         }
 
-        User user = new User(email, passwordEncoder.encode(request.password()), request.role(),
-                request.firstName().trim(), request.lastName().trim(), request.dateOfBirth(), request.gender());
+        User user = new User(request.firstName().trim(), request.lastName().trim(), request.dateOfBirth(), request.gender(),
+        		request.role(), email, passwordEncoder.encode(request.password()));
+        // Anyone can choose CLINICIAN on the registration form, so a clinician starts inactive and an ADMIN approves
+        // the account (PATCH /admin/users/{id}/status) before it can log in. Patients and caregivers start active.
+        if (request.role() == Role.CLINICIAN) {
+            user.changeActive(false);
+        }
         User saved;
         try {
         	/**
@@ -119,6 +130,10 @@ public class AuthService {
         if (saved.getRole() == Role.PATIENT) {
             patientProfileRepository.save(new PatientProfile(saved.getId(), DiabetesType.OTHER));
         }
+        // Same for clinicians: treatment plans, prescriptions and recommendations point to clinician_profiles.
+        if (saved.getRole() == Role.CLINICIAN) {
+            clinicianProfileRepository.save(new ClinicianProfile(saved.getId()));
+        }
         return UserResponse.from(saved);
     }
 
@@ -130,6 +145,7 @@ public class AuthService {
             AccountDisabledException.class })
     public AuthResponse login(LoginRequest request) {
         Instant now = clock.instant();
+        
         Optional<User> found = userRepository.findByEmail(normalizeEmail(request.email()));
         if (found.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
@@ -143,7 +159,6 @@ public class AuthService {
             auditService.loginFailed(user.getId(), LoginFailure.ACCOUNT_LOCKED);
             throw new AccountLockedException(Duration.between(now, user.getLockedUntil()));
         }
-
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             auditService.loginFailed(user.getId(), LoginFailure.WRONG_PASSWORD);
             userRepository.incrementFailedLoginAttempts(user.getId());
@@ -158,7 +173,10 @@ public class AuthService {
         // Checked only after the password, so the account state is not revealed to someone without the password.
         if (!user.isActive()) {
             auditService.loginFailed(user.getId(), LoginFailure.ACCOUNT_DISABLED);
-            throw new AccountDisabledException();
+            // A clinician who has never logged in is (almost always) one who is still waiting for approval.
+            throw user.getRole() == Role.CLINICIAN && user.getLastLoginAt() == null
+                    ? new AccountDisabledException(CLINICIAN_NOT_APPROVED)
+                    : new AccountDisabledException();
         }
 
         // The entity is managed inside the transaction: these changes are written with an UPDATE on commit.

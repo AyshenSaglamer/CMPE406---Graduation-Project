@@ -21,8 +21,10 @@ public class AuditLogRepository {
 
     public void insert(Entry entry) {
         jdbc.update("""
-                INSERT INTO audit_logs (user_id, patient_id, action, entity_type, success, details, ip_address, user_agent)
-                VALUES (:userId, :patientId, :action, :entityType, :success, CAST(:details AS jsonb), :ip, :userAgent)
+                INSERT INTO audit_logs (user_id, patient_id, action, entity_type, entity_id, success, details, ip_address,
+                                        user_agent)
+                VALUES (:userId, :patientId, :action, :entityType, :entityId, :success, CAST(:details AS jsonb), :ip,
+                        :userAgent)
                 """,
                 new MapSqlParameterSource()
                         // Types are given because these values can be null (the driver cannot guess a type from null).
@@ -30,6 +32,7 @@ public class AuditLogRepository {
                         .addValue("patientId", entry.patientId(), Types.BIGINT)
                         .addValue("action", entry.action())
                         .addValue("entityType", entry.entityType(), Types.VARCHAR)
+                        .addValue("entityId", entry.entityId(), Types.VARCHAR)
                         .addValue("success", entry.success())
                         .addValue("details", entry.detailsJson(), Types.VARCHAR)
                         .addValue("ip", entry.ipAddress(), Types.VARCHAR)
@@ -40,7 +43,7 @@ public class AuditLogRepository {
      * One audit row. userId: who acted (null when unknown, e.g. a login with an unregistered email);
      * patientId: whose data was touched; detailsJson: extra facts as a JSON object, or null.
      */
-    public record Entry(Long userId, Long patientId, String action, String entityType, boolean success,
-            String detailsJson, String ipAddress, String userAgent) {
+    public record Entry(Long userId, Long patientId, String action, String entityType, String entityId,
+            boolean success, String detailsJson, String ipAddress, String userAgent) {
     }
 }

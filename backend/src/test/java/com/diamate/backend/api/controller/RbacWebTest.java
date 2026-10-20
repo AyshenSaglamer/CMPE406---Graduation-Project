@@ -2,20 +2,28 @@ package com.diamate.backend.api.controller;
 
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+
+import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +37,7 @@ import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -37,6 +46,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import com.diamate.backend.api.dto.response.AdminUserResponse;
 import com.diamate.backend.api.dto.response.CareTeamPatientResponse;
+import com.diamate.backend.api.dto.response.PageResponse;
 import com.diamate.backend.api.dto.response.PatientOverviewResponse;
 import com.diamate.backend.api.dto.response.ProfileResponse;
 import com.diamate.backend.entity.Gender;
@@ -49,6 +59,7 @@ import com.diamate.backend.security.JwtProperties;
 import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
+import com.diamate.backend.service.AlertService;
 import com.diamate.backend.service.PatientService;
 import com.diamate.backend.service.UserService;
 
@@ -83,6 +94,9 @@ class RbacWebTest {
 
     @MockitoBean
     private PatientService patientService;
+
+    @MockitoBean
+    private AlertService alertService;
 
     @MockitoBean
     private UserRepository userRepository;
@@ -157,6 +171,66 @@ class RbacWebTest {
         verifyNoInteractions(patientService);
     }
 
+    @Test
+    void tokenSignedWithAnotherKeyIs401() throws Exception {
+        // Same claims as a real token, but signed by someone who does not know our JWT_SECRET.
+        SecretKeySpec otherKey = new SecretKeySpec(
+                "another-key-of-at-least-32-bytes-0123456789".getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        JwtEncoder forger = NimbusJwtEncoder.withSecretKey(otherKey).algorithm(MacAlgorithm.HS256).build();
+
+        bearer(get("/api/v1/users/me"), signed(forger, jwtProperties.issuer(), "PATIENT"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(userService);
+        verify(userRepository, never()).findActiveUserRole(anyLong());
+    }
+
+    @Test
+    void tokenOfAnotherIssuerIs401() throws Exception {
+        bearer(get("/api/v1/users/me"), signed(jwtEncoder, "someone-else", "PATIENT"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(userService);
+        verify(userRepository, never()).findActiveUserRole(anyLong());
+    }
+
+    @Test
+    void unsignedTokenIs401() throws Exception {
+        // "alg": "none" and no signature: a classic attack on libraries that trust the header's algorithm.
+        long now = Instant.now().getEpochSecond();
+        String header = base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}");
+        String payload = base64Url("{\"iss\":\"" + jwtProperties.issuer() + "\",\"sub\":\"" + PATIENT_ID
+                + "\",\"role\":\"ADMIN\",\"iat\":" + now + ",\"exp\":" + (now + 3600) + "}");
+
+        bearer(get("/api/v1/admin/users"), header + "." + payload + ".")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void tokenWithoutARoleIs401() throws Exception {
+        bearer(get("/api/v1/users/me"), signed(jwtEncoder, jwtProperties.issuer(), null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void tokenIsOnlyReadFromTheBearerHeader() throws Exception {
+        String valid = tokenFor(PATIENT_ID, Role.PATIENT);
+
+        // In the URL it would end up in server and proxy logs, so it is not accepted there.
+        mockMvc.perform(get("/api/v1/users/me").param("access_token", valid))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Authentication required"));
+        // Only Bearer: there is no username/password (Basic) login on API endpoints.
+        mockMvc.perform(get("/api/v1/users/me").header(HttpHeaders.AUTHORIZATION, "Basic dXNlcjpwYXNzd29yZA=="))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Authentication required"));
+        verifyNoInteractions(userService);
+    }
+
     // ---------- /users/me: any role, own profile ----------
 
     @Test
@@ -186,6 +260,51 @@ class RbacWebTest {
                     .andExpect(jsonPath("$.detail").value("You do not have permission to access this resource"));
         }
         verifyNoInteractions(userService);
+    }
+
+    @Test
+    void adminChangesTheStatusOfAnAccount() throws Exception {
+        when(userService.changeStatus(ADMIN_ID, PATIENT_ID, false)).thenReturn(new AdminUserResponse(
+                PATIENT_ID, "Demo Patient", "01", "patient01@diamate.example", Role.PATIENT, false, true, Instant.now(), null));
+
+        as(patch("/api/v1/admin/users/{id}/status", PATIENT_ID).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"active\":false}"), ADMIN_ID, Role.ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
+        verify(userService).changeStatus(ADMIN_ID, PATIENT_ID, false); // the admin's id comes from the token
+    }
+
+    @Test
+    void accountStatusNeedsAdminAndAValidBody() throws Exception {
+        for (long id : new long[] { PATIENT_ID, CLINICIAN_ID, CAREGIVER_ID }) {
+            as(patch("/api/v1/admin/users/{id}/status", 9L).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"active\":true}"), id, roleOf(id))
+                    .andExpect(status().isForbidden());
+        }
+        as(patch("/api/v1/admin/users/{id}/status", 9L).contentType(MediaType.APPLICATION_JSON).content("{}"),
+                ADMIN_ID, Role.ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.active").value("Active is required"));
+        as(patch("/api/v1/admin/users/{id}/status", 9L).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"active\":\"maybe\"}"), ADMIN_ID, Role.ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.active").value("Must be true or false"));
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void careTeamAlertsAreForCliniciansAndCaregiversOnly() throws Exception {
+        when(alertService.careTeamAlerts(anyLong(), isNull(), eq(0),
+                eq(50))).thenReturn(new PageResponse<>(List.of(), 0, 50, 0, 0));
+
+        for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID }) {
+            as(get("/api/v1/care-team/alerts"), id, roleOf(id)).andExpect(status().isOk());
+            verify(alertService).careTeamAlerts(id, null, 0, 50);
+        }
+        as(get("/api/v1/care-team/alerts"), PATIENT_ID, Role.PATIENT).andExpect(status().isForbidden());
+        as(get("/api/v1/care-team/alerts"), ADMIN_ID, Role.ADMIN).andExpect(status().isForbidden());
+        as(get("/api/v1/care-team/alerts").param("status", "CLOSED"), CLINICIAN_ID, Role.CLINICIAN)
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -260,10 +379,32 @@ class RbacWebTest {
     }
 
     private String tokenFor(long userId, Role role) {
-        User user = new User("u" + userId + "@example.com", "hash", role, "First", "Last",
-                LocalDate.of(2000, 1, 15), Gender.OTHER);
+        User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, role, "u" + userId + "@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", userId);
-        return new JwtService(jwtEncoder, jwtProperties).generateToken(user);
+        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+    }
+
+    private ResultActions bearer(MockHttpServletRequestBuilder request, String token) throws Exception {
+        return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
+    }
+
+    /** A token for the patient that is not expired, with the given issuer and role (no role claim when null). */
+    private static String signed(JwtEncoder encoder, String issuer, String role) {
+        Instant now = Instant.now();
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
+                .issuer(issuer)
+                .subject(String.valueOf(PATIENT_ID))
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(3600));
+        if (role != null) {
+            claims.claim(JwtService.ROLE_CLAIM, role);
+        }
+        return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build()))
+                .getTokenValue();
+    }
+
+    private static String base64Url(String json) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8));
     }
 
     private static Role roleOf(long id) {

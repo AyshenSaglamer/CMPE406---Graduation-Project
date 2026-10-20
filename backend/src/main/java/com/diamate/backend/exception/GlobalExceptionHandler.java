@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -44,6 +46,9 @@ import tools.jackson.databind.exc.MismatchedInputException;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    // Jackson's message for a field sent twice: 'Duplicate Object property "glucoseValue"' (older versions: field).
+    private static final Pattern DUPLICATE_FIELD = Pattern.compile("Duplicate (?:Object property|field) \"([^\"]+)\"");
 
     /** @Valid failures: adds an "errors" map of field name -> message so the app can show it under each field. */
     @Override
@@ -191,6 +196,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return validationProblem(Map.of(fieldPath(mismatch), message));
         }
         if (notJson != null) {
+            // spring.jackson.read.strict-duplicate-detection: the same field twice is named like any other field error.
+            Matcher duplicate = DUPLICATE_FIELD.matcher(String.valueOf(notJson.getOriginalMessage()));
+            if (duplicate.find()) {
+                return validationProblem(Map.of(duplicate.group(1), "Must appear only once"));
+            }
             return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request body is not valid JSON");
         }
         if (ex.getMessage() != null && ex.getMessage().startsWith("Required request body is missing")) {
@@ -249,4 +259,5 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         return "Invalid value";
     }
+    
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -122,6 +124,32 @@ class GlucoseLogServiceTest {
         assertThat(result.log().id()).isEqualTo(100L);
         verify(repository, never()).saveAndFlush(any());
         verifyNoInteractions(alertService); // no second alert for the same reading
+    }
+
+    @Test
+    void theClientUuidIsLockedBeforeItIsLookedUpSoAParallelDuplicateIsWaitedFor() {
+        // Week 2 Day 6: two requests with the same clientUuid at the same moment both found nothing, both inserted,
+        // and the second one got a 409. The lock makes the second one wait and then find the first one's log.
+        UUID clientUuid = UUID.randomUUID();
+        when(repository.findByPatientIdAndClientUuid(PATIENT, clientUuid)).thenReturn(Optional.empty());
+        when(repository.saveAndFlush(any(GlucoseLog.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 102L));
+
+        service.create(PATIENT, PATIENT, new GlucoseLogRequest(120, EARLIER, null, null, null, clientUuid));
+
+        InOrder order = inOrder(repository);
+        order.verify(repository).lockKey(PATIENT + ":" + clientUuid);
+        order.verify(repository).findByPatientIdAndClientUuid(PATIENT, clientUuid);
+        order.verify(repository).saveAndFlush(any(GlucoseLog.class));
+    }
+
+    @Test
+    void withoutAClientUuidNothingIsLocked() {
+        when(repository.saveAndFlush(any(GlucoseLog.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 102L));
+
+        service.create(PATIENT, PATIENT, new GlucoseLogRequest(120, EARLIER, null, null, null, null));
+
+        verify(repository, never()).lockKey(any());
+        verify(repository, never()).findByPatientIdAndClientUuid(anyLong(), any());
     }
 
     @Test

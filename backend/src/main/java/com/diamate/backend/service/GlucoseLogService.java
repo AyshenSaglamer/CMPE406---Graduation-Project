@@ -40,13 +40,11 @@ public class GlucoseLogService {
     @Transactional
     public CreateResult<GlucoseLogResponse> create(long viewerId, long patientId, GlucoseLogRequest request) {
         access.checkCanWrite(viewerId, patientId);
-        LogRules.requireNotInFuture(request.measurementTime(), "measurementTime", clock);
+        LogRules.requireLogTime(request.measurementTime(), "measurementTime", clock);
 
-        if (request.clientUuid() != null) {
-            Optional<GlucoseLog> existing = repository.findByPatientIdAndClientUuid(patientId, request.clientUuid());
-            if (existing.isPresent()) {
-                return CreateResult.existing(GlucoseLogResponse.from(existing.get()));
-            }
+        Optional<GlucoseLog> existing = LogRules.existing(repository, patientId, request.clientUuid());
+        if (existing.isPresent()) {
+            return CreateResult.existing(GlucoseLogResponse.from(existing.get()));
         }
 
         GlucoseLog log = new GlucoseLog(patientId, request.clientUuid(),
@@ -77,7 +75,7 @@ public class GlucoseLogService {
     public GlucoseLogResponse update(long viewerId, long patientId, long logId, GlucoseLogRequest request) {
         access.checkCanWrite(viewerId, patientId);
         GlucoseLog log = find(patientId, logId);
-        LogRules.requireNotInFuture(request.measurementTime(), "measurementTime", clock);
+        LogRules.requireLogTime(request.measurementTime(), "measurementTime", clock);
         int previousValue = log.getGlucoseValue();
         apply(log, request);
         // Flush now so the new updated_at (set by a database trigger) is read back into the response.

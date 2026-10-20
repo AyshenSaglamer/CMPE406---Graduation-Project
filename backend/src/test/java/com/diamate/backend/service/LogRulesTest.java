@@ -59,12 +59,50 @@ class LogRulesTest {
     }
 
     @Test
-    void timesUpTo5MinutesAheadAreAcceptedLaterOnesAreNot() {
-        LogRules.requireNotInFuture(NOW.plusSeconds(300), "measurementTime", clock); // phone clock slightly ahead: OK
+    void aPageWhoseOffsetDoesNotFitInAnIntIsAFieldError() {
+        // page 2147483647 x 200 rows: the database offset would overflow; this used to end in a 500.
+        assertThatThrownBy(() -> LogRules.page(Integer.MAX_VALUE, 200))
+                .isInstanceOf(InvalidFieldException.class)
+                .hasMessage("Page is too large for this page size")
+                .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("page"));
+        assertThat(LogRules.page(10_000_000, 200).getOffset()).isEqualTo(2_000_000_000L); // still fits: allowed
+    }
 
-        assertThatThrownBy(() -> LogRules.requireNotInFuture(NOW.plusSeconds(301), "measurementTime", clock))
+    @Test
+    void timesUpTo5MinutesAheadAreAcceptedLaterOnesAreNot() {
+        LogRules.requireLogTime(NOW.plusSeconds(300), "measurementTime", clock); // phone clock slightly ahead: OK
+
+        assertThatThrownBy(() -> LogRules.requireLogTime(NOW.plusSeconds(301), "measurementTime", clock))
                 .isInstanceOf(InvalidFieldException.class)
                 .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("measurementTime"));
+    }
+
+    @Test
+    void aLogTimeBefore1900IsAFieldErrorNotADatabaseError() {
+        // Week 2 Day 6: year -1000000000 is a valid Instant, but PostgreSQL cannot store it ("timestamp out of range", 500).
+        LogRules.requireLogTime(Instant.parse("1900-01-01T00:00:00Z"), "eatenAt", clock);
+
+        for (String time : new String[] { "1899-12-31T23:59:59Z", "0000-01-01T00:00:00Z", "-1000000000-01-01T00:00:00Z" }) {
+            assertThatThrownBy(() -> LogRules.requireLogTime(Instant.parse(time), "eatenAt", clock))
+                    .isInstanceOf(InvalidFieldException.class)
+                    .hasMessage("Time must not be before the year 1900")
+                    .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("eatenAt"));
+        }
+    }
+
+    @Test
+    void listFromAndToMustBeBetween1900And9999() {
+        assertThat(LogRules.window(Instant.parse("1900-01-01T00:00:00Z"), Instant.parse("9999-12-31T23:59:59Z"), 0, 50,
+                clock).to()).isEqualTo(Instant.parse("9999-12-31T23:59:59Z"));
+
+        assertThatThrownBy(() -> LogRules.window(Instant.parse("-999999999-01-01T00:00:00Z"), null, 0, 50, clock))
+                .isInstanceOf(InvalidFieldException.class)
+                .hasMessage("Must be between the years 1900 and 9999")
+                .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("from"));
+        assertThatThrownBy(() -> LogRules.window(null, Instant.parse("1899-12-31T00:00:00Z"), 0, 50, clock))
+                .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("to"));
+        assertThatThrownBy(() -> LogRules.window(null, Instant.parse("+10000-01-01T00:00:00Z"), 0, 50, clock))
+                .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("to"));
     }
 
     @Test

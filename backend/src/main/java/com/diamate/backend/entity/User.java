@@ -18,19 +18,18 @@ import jakarta.persistence.Table;
 
 /**
  * Maps the users table (see Database/sql/06_app_schema.sql and db/migration).
- * Not mapped: the two-factor columns (nothing uses them yet) and full_name, which the database
- * generates from first_name and last_name.
+ * Not mapped: the two-factor columns (nothing uses them yet) and full_name, which the database generates from first_name and last_name.
  *
  * @DynamicUpdate: an UPDATE writes only the changed columns. A login (last_login_at, failed-login counter) then
  * never writes back old values of other columns, e.g. an is_active = false set at the same moment.
  */
-@Entity
+@Entity // This class represents a table
 @Table(name = "users")
 @DynamicUpdate
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY) // The database generates the ID.
     private Long id;
 
     @Column(name = "first_name", nullable = false, length = 50)
@@ -87,23 +86,44 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    
     protected User() {
         // required by JPA
     }
 
-    public User(String email, String passwordHash, Role role, String firstName, String lastName,
-            LocalDate dateOfBirth, Gender gender) {
-        this.email = email;
-        this.passwordHash = passwordHash;
-        this.role = role;
-        this.firstName = firstName;
+    public User(String firstName, String lastName, LocalDate dateOfBirth, Gender gender, Role role , String email, String passwordHash) {
+    	this.firstName = firstName;
         this.lastName = lastName;
         this.dateOfBirth = dateOfBirth;
         this.gender = gender;
+        this.role = role;
+    	this.email = email;
+        this.passwordHash = passwordHash;  
     }
 
+    
     public Long getId() {
         return id;
+    }
+    
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+    
+    public LocalDate getDateOfBirth() {
+        return dateOfBirth;
+    }
+    
+    public Gender getGender() {
+        return gender;
+    }
+    
+    public Role getRole() {
+        return role;
     }
 
     public String getEmail() {
@@ -114,42 +134,14 @@ public class User {
         return passwordHash;
     }
 
-    public Role getRole() {
-        return role;
-    }
-
-    public String getFirstName() {
-        return firstName;
-    }
-
-    public String getLastName() {
-        return lastName;
-    }
-
-    public LocalDate getDateOfBirth() {
-        return dateOfBirth;
-    }
-
-    public Gender getGender() {
-        return gender;
-    }
-
     public String getPhone() {
         return phone;
     }
-
-    public boolean isActive() {
-        return active;
-    }
-
-    public boolean isDemo() {
-        return demo;
-    }
-
+    
     public boolean isEmailVerified() {
         return emailVerified;
     }
-
+    
     public int getFailedLoginAttempts() {
         return failedLoginAttempts;
     }
@@ -162,18 +154,14 @@ public class User {
         return lastLoginAt;
     }
 
-    /** True while a lock caused by too many failed logins is still in force. */
-    public boolean isLockedAt(Instant now) {
-        return lockedUntil != null && lockedUntil.isAfter(now);
+    public boolean isActive() {
+        return active;
     }
 
-    /** A successful login clears the failed-login counter and an expired lock. */
-    public void recordSuccessfulLogin(Instant now) {
-        this.failedLoginAttempts = 0;
-        this.lockedUntil = null;
-        this.lastLoginAt = now;
+    public boolean isDemo() {
+        return demo;
     }
-
+    
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -181,5 +169,23 @@ public class User {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
-    
+
+    // True while a lock caused by too many failed logins is still in force.
+    public boolean isLockedAt(Instant now) {
+        return lockedUntil != null && lockedUntil.isAfter(now);
+    }
+
+    // A successful login clears the failed-login counter and an expired lock.
+    public void recordSuccessfulLogin(Instant now) {
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+        this.lastLoginAt = now;
+    }
+
+    // Activated / deactivated by an ADMIN (or inactive from the start: a clinician waits for approval).
+    // An inactive account cannot log in, and its tokens get 401 at once (ActiveAccountValidator).
+    public void changeActive(boolean active) {
+        this.active = active;
+    }
+  
 }

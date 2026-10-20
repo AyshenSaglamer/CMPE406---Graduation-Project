@@ -12,7 +12,7 @@ import com.diamate.backend.api.dto.response.HealthResponse;
 @RequestMapping("/api/v1/health") // The common address prefix for all endpoints in this class.
 public class HealthController {
 
-    @GetMapping // This binds the method to an HTTP GET request. Since no address is specified, it uses the class's address exactly as is: GET /api/health.
+    @GetMapping // This binds the method to an HTTP GET request. Since no address is specified, it uses the class's address exactly as is: GET /api/v1/health.
     public HealthResponse health() {
         return new HealthResponse("UP", "diamate-backend", Instant.now());
     }

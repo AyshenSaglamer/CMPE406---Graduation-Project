@@ -2,10 +2,12 @@ package com.diamate.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -33,6 +35,7 @@ import com.diamate.backend.api.dto.request.LoginRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.ClinicianProfile;
 import com.diamate.backend.entity.DiabetesType;
 import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.PatientProfile;
@@ -44,6 +47,7 @@ import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
+import com.diamate.backend.repository.ClinicianProfileRepository;
 import com.diamate.backend.repository.PatientProfileRepository;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.JwtService;
@@ -72,6 +76,9 @@ class AuthServiceTest {
     private PatientProfileRepository patientProfileRepository;
 
     @Mock
+    private ClinicianProfileRepository clinicianProfileRepository;
+
+    @Mock
     private JwtService jwtService;
 
     @Mock
@@ -84,8 +91,8 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         Clock fixedClock = Clock.fixed(NOW, ZoneId.of("UTC"));
-        authService = new AuthService(userRepository, patientProfileRepository, passwordEncoder, new PasswordPolicy(),
-                jwtService, auditService, fixedClock);
+        authService = new AuthService(userRepository, patientProfileRepository, clinicianProfileRepository,
+                passwordEncoder, new PasswordPolicy(), jwtService, auditService, fixedClock);
     }
 
     // ---------- register ----------
@@ -108,7 +115,7 @@ class AuthServiceTest {
         assertThat(saved.getValue().getPasswordHash()).startsWith("$2a$").isNotEqualTo("Secret123");
         assertThat(passwordEncoder.matches("Secret123", saved.getValue().getPasswordHash())).isTrue();
         assertThat(saved.getValue().isActive()).isTrue();
-        assertThat(response).isEqualTo(new UserResponse(42L, "Melih", "Kocabıyık", "melih@example.com", Role.PATIENT));
+        assertThat(response).isEqualTo(new UserResponse(42L, "Melih", "Kocabıyık", Role.PATIENT, "melih@example.com"));
     }
 
     @Test
@@ -123,17 +130,70 @@ class AuthServiceTest {
         verify(patientProfileRepository).save(profile.capture());
         assertThat(profile.getValue().getUserId()).isEqualTo(42L);
         assertThat(profile.getValue().getDiabetesType()).isEqualTo(DiabetesType.OTHER);
+        verifyNoInteractions(clinicianProfileRepository);
     }
 
     @Test
-    void registeringOtherRolesCreatesNoPatientProfile() {
+    void registeringAClinicianAlsoCreatesTheirClinicianProfile() {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 43L));
 
         authService.register(register("Dr", "Test", "dr@example.com", Role.CLINICIAN, ADULT_BIRTH_DATE));
+
+        // Treatment plans, prescriptions and recommendations point to clinician_profiles.
+        ArgumentCaptor<ClinicianProfile> profile = ArgumentCaptor.forClass(ClinicianProfile.class);
+        verify(clinicianProfileRepository).save(profile.capture());
+        assertThat(profile.getValue().getUserId()).isEqualTo(43L);
+        verifyNoInteractions(patientProfileRepository);
+    }
+
+    @Test
+    void aClinicianStartsInactiveUntilAnAdminApproves() {
+        // Anyone can pick CLINICIAN on the form: the account must not reach patient data before an ADMIN checks it.
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 43L));
+
+        authService.register(register("Dr", "Test", "dr@example.com", Role.CLINICIAN, ADULT_BIRTH_DATE));
+        authService.register(register("Ayşe", "Yılmaz", "ayse@example.com", Role.PATIENT, ADULT_BIRTH_DATE));
         authService.register(register("Care", "Giver", "care@example.com", Role.CAREGIVER, ADULT_BIRTH_DATE));
 
-        verifyNoInteractions(patientProfileRepository);
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository, times(3)).saveAndFlush(saved.capture());
+        assertThat(saved.getAllValues()).extracting(User::getRole, User::isActive).containsExactly(
+                tuple(Role.CLINICIAN, false),
+                tuple(Role.PATIENT, true),
+                tuple(Role.CAREGIVER, true));
+    }
+
+    @Test
+    void aClinicianWaitingForApprovalIsToldSoAtLogin() {
+        User waiting = clinician(false, null);
+        when(userRepository.findByEmail("dr@example.com")).thenReturn(Optional.of(waiting));
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("dr@example.com", RIGHT_PASSWORD)))
+                .isInstanceOf(AccountDisabledException.class)
+                .hasMessage("This doctor account is waiting for approval by an administrator");
+        verify(auditService).loginFailed(43L, LoginFailure.ACCOUNT_DISABLED);
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void aClinicianStoppedAfterUsingTheAppGetsTheGeneralMessage() {
+        when(userRepository.findByEmail("dr@example.com")).thenReturn(Optional.of(clinician(false, NOW.minusSeconds(86400))));
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("dr@example.com", RIGHT_PASSWORD)))
+                .isInstanceOf(AccountDisabledException.class)
+                .hasMessage("Account is disabled");
+    }
+
+    @Test
+    void registeringACaregiverCreatesNoProfile() {
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 44L));
+
+        authService.register(register("Care", "Giver", "care@example.com", Role.CAREGIVER, ADULT_BIRTH_DATE));
+
+        verifyNoInteractions(patientProfileRepository, clinicianProfileRepository);
     }
 
     @Test
@@ -227,8 +287,7 @@ class AuthServiceTest {
 
     @Test
     void registerRejectsACommonPasswordOnThePasswordField() {
-        assertThatThrownBy(() -> authService.register(new RegisterRequest("Ayşe", "Yılmaz", ADULT_BIRTH_DATE,
-                Gender.FEMALE, "ayse@example.com", "Password123", Role.PATIENT)))
+        assertThatThrownBy(() -> authService.register(new RegisterRequest("Ayşe", "Yılmaz", ADULT_BIRTH_DATE, Gender.FEMALE, Role.PATIENT, "ayse@example.com", "Password123")))
                 .isInstanceOf(InvalidFieldException.class)
                 .hasMessage("This password is too common. Choose a less predictable one")
                 .satisfies(e -> assertThat(((InvalidFieldException) e).getField()).isEqualTo("password"));
@@ -250,7 +309,7 @@ class AuthServiceTest {
         assertThat(response.accessToken()).isEqualTo("test-token");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600L);
-        assertThat(response.user()).isEqualTo(new UserResponse(5L, "Demo Patient", "01", PATIENT_EMAIL, Role.PATIENT));
+        assertThat(response.user()).isEqualTo(new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, PATIENT_EMAIL));
         assertThat(patient.getLastLoginAt()).isEqualTo(NOW);
         verify(auditService).loginSucceeded(5L);
     }
@@ -359,12 +418,20 @@ class AuthServiceTest {
 
     private static RegisterRequest register(String firstName, String lastName, String email, Role role,
             LocalDate dateOfBirth) {
-        return new RegisterRequest(firstName, lastName, dateOfBirth, Gender.MALE, email, "Secret123", role);
+        return new RegisterRequest(firstName, lastName, dateOfBirth, Gender.MALE, role, email, "Secret123");
+    }
+
+    private User clinician(boolean active, Instant lastLoginAt) {
+        User user = new User("Dr", "Test", LocalDate.of(1980, 1, 1), Gender.FEMALE, Role.CLINICIAN, "dr@example.com",
+                passwordEncoder.encode(RIGHT_PASSWORD));
+        withId(user, 43L);
+        ReflectionTestUtils.setField(user, "active", active);
+        ReflectionTestUtils.setField(user, "lastLoginAt", lastLoginAt);
+        return user;
     }
 
     private User patient(boolean active) {
-        User user = new User(PATIENT_EMAIL, passwordEncoder.encode(RIGHT_PASSWORD), Role.PATIENT,
-                "Demo Patient", "01", LocalDate.of(1992, 7, 1), Gender.MALE);
+        User user = new User("Demo Patient", "01", LocalDate.of(1992, 7, 1), Gender.MALE, Role.PATIENT, PATIENT_EMAIL, passwordEncoder.encode(RIGHT_PASSWORD));
         withId(user, 5L);
         ReflectionTestUtils.setField(user, "active", active);
         return user;

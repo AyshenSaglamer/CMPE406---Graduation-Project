@@ -8,14 +8,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import com.diamate.backend.entity.AlertStatus;
 import com.diamate.backend.repository.AuditLogRepository;
 
 import jakarta.servlet.http.HttpServletRequest;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Security audit trail in audit_logs: logins (successful, failed, account locked) and reads of a patient's data by
- * someone other than the patient. Every row also gets the client's IP address and User-Agent.
+ * Security audit trail in audit_logs: logins (successful, failed, account locked), reads of a patient's data by
+ * someone other than the patient, alert status changes and account (de)activations by an ADMIN.
+ * Every row also gets the client's IP address and User-Agent.
  * Never written: passwords, tokens or the health data itself.
  */
 @Service
@@ -25,6 +27,8 @@ public class AuditService {
     static final String LOGIN_FAILED = "LOGIN_FAILED";
     static final String ACCOUNT_LOCKED = "ACCOUNT_LOCKED";
     static final String VIEW_PATIENT_DATA = "VIEW_PATIENT_DATA";
+    static final String ALERT_STATUS_CHANGED = "ALERT_STATUS_CHANGED";
+    static final String ACCOUNT_STATUS_CHANGED = "ACCOUNT_STATUS_CHANGED";
 
     private static final int USER_AGENT_MAX_LENGTH = 255; // audit_logs.user_agent is varchar(255)
 
@@ -46,7 +50,7 @@ public class AuditService {
 
     @Transactional
     public void loginSucceeded(long userId) {
-        write(userId, null, LOGIN, null, true, null);
+        write(userId, null, LOGIN, null, null, true, null);
     }
 
     /**
@@ -55,12 +59,12 @@ public class AuditService {
      */
     @Transactional
     public void loginFailed(Long userId, LoginFailure reason) {
-        write(userId, null, LOGIN_FAILED, null, false, Map.of("reason", reason.name()));
+        write(userId, null, LOGIN_FAILED, null, null, false, Map.of("reason", reason.name()));
     }
 
     @Transactional
     public void accountLocked(long userId, Instant lockedUntil) {
-        write(userId, null, ACCOUNT_LOCKED, null, true, Map.of("lockedUntil", lockedUntil.toString()));
+        write(userId, null, ACCOUNT_LOCKED, null, null, true, Map.of("lockedUntil", lockedUntil.toString()));
     }
 
     /**
@@ -69,17 +73,31 @@ public class AuditService {
      */
     @Transactional
     public void patientDataViewed(long viewerId, long patientId, PatientDataType data, boolean allowed) {
-        write(viewerId, patientId, VIEW_PATIENT_DATA, data.name(), allowed, null);
+        write(viewerId, patientId, VIEW_PATIENT_DATA, data.name(), null, allowed, null);
     }
 
-    private void write(Long userId, Long patientId, String action, String entityType, boolean success,
-            Map<String, String> details) {
+    /** Someone acknowledged or resolved a patient's alert (who, whose, which alert, from which status to which). */
+    @Transactional
+    public void alertStatusChanged(long userId, long patientId, long alertId, AlertStatus from, AlertStatus to) {
+        write(userId, patientId, ALERT_STATUS_CHANGED, "ALERT", String.valueOf(alertId), true,
+                Map.of("from", from.name(), "to", to.name()));
+    }
+
+    /** An ADMIN activated or deactivated an account (e.g. approved a clinician, or stopped a compromised account). */
+    @Transactional
+    public void accountStatusChanged(long adminId, long userId, boolean active) {
+        write(adminId, null, ACCOUNT_STATUS_CHANGED, "USER", String.valueOf(userId), true,
+                Map.of("active", String.valueOf(active)));
+    }
+
+    private void write(Long userId, Long patientId, String action, String entityType, String entityId,
+            boolean success, Map<String, String> details) {
         HttpServletRequest request = currentRequest();
         String ip = request != null ? request.getRemoteAddr() : null;
         String userAgent = request != null ? truncate(request.getHeader("User-Agent")) : null;
         String detailsJson = details != null ? objectMapper.writeValueAsString(details) : null;
-        repository.insert(new AuditLogRepository.Entry(userId, patientId, action, entityType, success, detailsJson,
-                ip, userAgent));
+        repository.insert(new AuditLogRepository.Entry(userId, patientId, action, entityType, entityId, success,
+                detailsJson, ip, userAgent));
     }
 
     /** The HTTP request being handled on this thread, or null outside a request (e.g. in unit tests). */
