@@ -143,6 +143,8 @@ class InsulinLogServiceTest {
         assertThat(updated.insulinType()).isEqualTo(InsulinType.RAPID);
         assertThat(updated.mealLogId()).isEqualTo(30L);
         assertThat(updated.source()).isEqualTo(InsulinSource.MANUAL); // where a log came from never changes
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.INSULIN_LOGS, 200L,
+                AuditService.HealthLogChange.HEALTH_LOG_UPDATED);
     }
 
     @Test
@@ -155,6 +157,7 @@ class InsulinLogServiceTest {
                 .isInstanceOf(InvalidFieldException.class)
                 .hasMessage("Meal log not found");
         verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(auditService); // a refused correction is not recorded as a change
     }
 
     @Test
@@ -166,6 +169,8 @@ class InsulinLogServiceTest {
 
         assertThat(existing.getDeletedAt()).isEqualTo(NOW);
         verify(repository, never()).delete(any());
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.INSULIN_LOGS, 200L,
+                AuditService.HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     @Test

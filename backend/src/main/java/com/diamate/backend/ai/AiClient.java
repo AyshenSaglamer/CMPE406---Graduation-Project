@@ -2,6 +2,7 @@ package com.diamate.backend.ai;
 
 import java.util.Map;
 
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
@@ -17,6 +18,10 @@ import com.diamate.backend.exception.AiServiceException;
  */
 @Component
 public class AiClient {
+
+    private static final ParameterizedTypeReference<Map<String, Object>> JSON_OBJECT =
+            new ParameterizedTypeReference<>() {
+            };
 
     private final RestClient restClient;
 
@@ -42,6 +47,30 @@ public class AiClient {
             throw AiServiceException.badResponse(e);
         }
         if (result == null || result.status() == null) {
+            throw AiServiceException.badResponse(null);
+        }
+        return result;
+    }
+
+    /**
+     * Descriptive summary (statistics, patterns, insights, experimental ML) of health logs the backend has already
+     * authorized and loaded (Ayşen, ai-backend-integration). The answer is passed on to the app as it is.
+     */
+    public Map<String, Object> patientSummary(FastApiPatientSummaryRequest request) {
+        Map<String, Object> result;
+        try {
+            result = restClient.post()
+                    .uri("/api/v1/integration/patient-summary")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JSON_OBJECT);
+        } catch (ResourceAccessException e) {
+            throw AiServiceException.unavailable(e);
+        } catch (RestClientException e) {
+            throw AiServiceException.badResponse(e);
+        }
+        if (result == null || result.isEmpty()) {
             throw AiServiceException.badResponse(null);
         }
         return result;

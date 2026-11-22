@@ -182,7 +182,7 @@ public class User {
         this.lastLoginAt = now;
     }
 
-    // Activated / deactivated by an ADMIN (or inactive from the start: a clinician waits for approval).
+    // Activated / deactivated by an ADMIN.
     // An inactive account cannot log in, and its tokens get 401 at once (ActiveAccountValidator).
     public void changeActive(boolean active) {
         this.active = active;

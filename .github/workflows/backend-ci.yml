@@ -1,0 +1,48 @@
+# DiaMate backend CI: runs the backend tests on each push and pull request that touches the backend.
+#
+#   Unit and web tests, plus the database tests against PostgreSQL 17 in Docker (Testcontainers; the schema is built
+#   from Database/sql + Flyway, like a real install). The AI service has its own workflow (ai-service-ci.yml on the
+#   ai branch); the Flutter app lives on the frontend branch.
+#
+# The Postman collection is not run here: it needs the demo accounts, and the demo seed needs the research dataset
+# files, which are not in the repository (see backend/README.md).
+name: Backend CI
+
+on:
+  push:
+    branches: [main, backend]
+    paths: ["backend/**", "Database/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    paths: ["backend/**", "Database/**", ".github/workflows/backend-ci.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Java 21)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Unit, web and database tests
+        run: mvn -B -ntp test
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports
+          retention-days: 7

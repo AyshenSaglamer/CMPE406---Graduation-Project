@@ -95,7 +95,7 @@ class UserServiceTest {
     }
 
     @Test
-    void adminApprovesAWaitingClinician() {
+    void adminReactivatesAStoppedClinician() {
         User clinician = user(7L, false);
         when(userRepository.findById(7L)).thenReturn(Optional.of(clinician));
 

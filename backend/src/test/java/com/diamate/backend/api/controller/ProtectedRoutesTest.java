@@ -31,7 +31,9 @@ import com.diamate.backend.service.ActivityLogService;
 import com.diamate.backend.service.AiEntryService;
 import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.AlertService;
+import com.diamate.backend.service.AuditLogService;
 import com.diamate.backend.service.AuthService;
+import com.diamate.backend.service.CareRelationshipService;
 import com.diamate.backend.service.GlucoseLogService;
 import com.diamate.backend.service.InsulinLogService;
 import com.diamate.backend.service.MealLogService;
@@ -54,9 +56,9 @@ class ProtectedRoutesTest {
             "POST /api/v1/auth/login",
             "GET /api/v1/health");
 
-    // 34 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
+    // 43 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
     // endpoint inventory in docs/BACKEND_REVIEW.md, the README and AuthorizationMatrixTest.
-    private static final int ENDPOINT_COUNT = 34;
+    private static final int ENDPOINT_COUNT = 43;
 
     @Autowired
     private MockMvc mockMvc;
@@ -94,6 +96,12 @@ class ProtectedRoutesTest {
 
     @MockitoBean
     private AiEntryService aiEntryService;
+
+    @MockitoBean
+    private CareRelationshipService careRelationshipService;
+
+    @MockitoBean
+    private AuditLogService auditLogService;
 
     @MockitoBean
     private UserRepository userRepository;

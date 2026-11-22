@@ -15,6 +15,7 @@ import com.diamate.backend.entity.MealSource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.InsulinLogRepository;
 import com.diamate.backend.repository.MealLogRepository;
+import com.diamate.backend.service.AuditService.HealthLogChange;
 
 /** Meal logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "meals". */
 @Service
@@ -72,13 +73,18 @@ public class MealLogService {
         MealLog log = find(patientId, logId);
         LogRules.requireLogTime(request.eatenAt(), "eatenAt", clock);
         apply(log, request);
-        return MealLogResponse.from(repository.saveAndFlush(log));
+        MealLogResponse response = MealLogResponse.from(repository.saveAndFlush(log));
+        access.recordChange(viewerId, patientId, PatientDataType.MEAL_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_UPDATED);
+        return response;
     }
 
     @Transactional
     public void delete(long viewerId, long patientId, long logId) {
         access.checkCanWrite(viewerId, patientId);
         find(patientId, logId).markDeleted(clock.instant());
+        access.recordChange(viewerId, patientId, PatientDataType.MEAL_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_DELETED);
         // Doses linked to this meal would keep pointing to a meal that no longer exists (and could not be saved
         // again with that link): same transaction, so the meal and the links change together.
         insulinLogRepository.unlinkMeal(logId);

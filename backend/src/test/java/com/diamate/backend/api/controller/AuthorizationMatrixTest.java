@@ -49,7 +49,9 @@ import com.diamate.backend.service.ActivityLogService;
 import com.diamate.backend.service.AiEntryService;
 import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.AlertService;
+import com.diamate.backend.service.AuditLogService;
 import com.diamate.backend.service.AuthService;
+import com.diamate.backend.service.CareRelationshipService;
 import com.diamate.backend.service.CreateResult;
 import com.diamate.backend.service.GlucoseLogService;
 import com.diamate.backend.service.InsulinLogService;
@@ -99,10 +101,21 @@ class AuthorizationMatrixTest {
         RULES.put("PATCH " + LOGS + "alerts/{alertId}", EVERYONE);
         RULES.put("POST " + LOGS + "ai-entries", PATIENT);
         RULES.put("POST /api/v1/ai/parse", PATIENT);
+        RULES.put("GET /api/v1/ai/patients/{patientId}/summary", EVERYONE); // like the log lists: fn_can_access decides
         RULES.put("GET /api/v1/admin/users", ADMIN);
         RULES.put("PATCH /api/v1/admin/users/{userId}/status", ADMIN);
         RULES.put("GET /api/v1/care-team/patients", CARE_TEAM);
         RULES.put("GET /api/v1/care-team/alerts", CARE_TEAM);
+        // Care relationships: which one the caller may touch is checked in CareRelationshipService (404 otherwise).
+        RULES.put("POST /api/v1/care-relationships", PATIENT);
+        RULES.put("GET /api/v1/care-relationships", EVERYONE);
+        RULES.put("POST /api/v1/care-relationships/{id}/accept", CARE_TEAM);
+        RULES.put("POST /api/v1/care-relationships/{id}/decline", CARE_TEAM);
+        RULES.put("PATCH /api/v1/care-relationships/{id}", PATIENT);
+        RULES.put("DELETE /api/v1/care-relationships/{id}", EVERYONE);
+        // Audit trail: the patient's own access log (another patient's id is a 404 in AuditLogService), ADMIN search.
+        RULES.put("GET " + LOGS + "access-log", PATIENT);
+        RULES.put("GET /api/v1/admin/audit-logs", ADMIN);
     }
 
     // Valid bodies, so a request is not stopped by validation (400) before the role check could answer.
@@ -118,7 +131,11 @@ class AuthorizationMatrixTest {
             Map.entry("alerts", "{\"status\":\"ACKNOWLEDGED\"}"),
             Map.entry("ai-entries", "{\"entries\":[{\"intent\":\"LOG_GLUCOSE\",\"value\":120}]}"),
             Map.entry("POST /api/v1/ai/parse", "{\"text\":\"my glucose is 120\"}"),
-            Map.entry("PATCH /api/v1/admin/users/{userId}/status", "{\"active\":false}"));
+            Map.entry("PATCH /api/v1/admin/users/{userId}/status", "{\"active\":false}"),
+            Map.entry("POST /api/v1/care-relationships", "{\"memberEmail\":\"dr@example.com\"}"),
+            Map.entry("POST /api/v1/care-relationships/{id}/accept", "{}"),
+            Map.entry("POST /api/v1/care-relationships/{id}/decline", "{}"),
+            Map.entry("PATCH /api/v1/care-relationships/{id}", "{\"canViewMeals\":false}"));
 
     private static final Map<Role, Long> USER_IDS = Map.of(Role.ADMIN, 1L, Role.CLINICIAN, 2L, Role.CAREGIVER, 4L,
             Role.PATIENT, 5L);
@@ -146,6 +163,8 @@ class AuthorizationMatrixTest {
     @MockitoBean private AiService aiService;
     @MockitoBean private AlertService alertService;
     @MockitoBean private AiEntryService aiEntryService;
+    @MockitoBean private CareRelationshipService careRelationshipService;
+    @MockitoBean private AuditLogService auditLogService;
     @MockitoBean private UserRepository userRepository;
 
     @BeforeEach

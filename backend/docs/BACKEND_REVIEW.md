@@ -1,4 +1,4 @@
-# Backend İncelemesi (2. hafta)
+# Backend İncelemesi (2. ve 3. hafta)
 
 | | |
 |---|---|
@@ -8,7 +8,7 @@
 | İncelenen kod | `melih` dalı, commit `5079967` + bu günün düzeltmesi (rol adı `CLINICIAN`'a geri alındı) |
 | Karşılaştırılan | Takım reposu `CMPE406---Graduation-Project`: `backend`, `frontend` (Flutter), `ai` (FastAPI) dalları, 11 Ekim'deki son `fetch` hali |
 
-> **Takım reposu için not:** Bu rapor Melih'in çalışma reposunda yazıldı. Oradaki `DiaMate/` klasörü bu repodaki `backend/` klasörüdür; `DiaMate/Frontend` Flutter uygulamasıdır (bu repoda `frontend` dalı); `../Database` şema paketi bu repoda henüz yok (bkz. B-2).
+> **Takım reposu için not:** Bu rapor Melih'in çalışma reposunda yazıldı. Oradaki `DiaMate/` klasörü bu repodaki `backend/` klasörüdür; `DiaMate/Frontend` Flutter uygulamasıdır (bu repoda `frontend` dalı); `../Database` şema paketi bu repoda kök dizindeki `Database/` klasörüdür (veri dosyaları `Database/data` hariç). `.github/workflows/ci.yml` bu repoda `.github/workflows/backend-ci.yml`'dir ve yalnızca backend'i çalıştırır.
 
 Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayılar ve bulguların durumu 6. günün sonuna göre güncellendi.
 
@@ -16,10 +16,10 @@ Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayı
 
 | Ölçü | Değer |
 |---|---|
-| Endpoint | **35**: health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
-| Otomatik test | **242**, hepsi geçiyor (`mvn test`, veritabanı gerekmez). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
-| Postman | 12 klasörde **204** istek ve 348 assertion; yerel veritabanında hepsi geçiyor. 1. günde 7 klasör, 105 istek |
-| Şema sürümü | Flyway V7 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde eklendi) |
+| Endpoint | **43**: denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
+| Otomatik test | **356**, hepsi geçiyor (`mvn test`, veritabanı gerekmez). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
+| Postman | 17 klasörde **426** istek ve 663 assertion; yerel veritabanında hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66, her izin bayrağı ayrı ayrı), "Time-limited sharing" (20, gerçek süre dolumu), "Audit log" (31), "OWASP Top 10" (73, bölüm 15). 1. günde 7 klasör, 105 istek |
+| Şema sürümü | Flyway V8 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı) |
 | Takım reposu | `backend` dalı GP ile aynı kodu taşıyor (yalnız `README.md` farklı). `backend`, `frontend` ve `ai` dalları henüz `main`'e merge edilmedi |
 
 **Öne çıkan bulgular** (ayrıntı: [bölüm 5](#5-bulgular)):
@@ -818,3 +818,89 @@ Uyumsuzluk yok: 5. gündeki değişiklikler yalnız alan ekledi, uygulamanın ok
 - **Ayşenur'un QA raporu:** Gelince aynı yöntemle (hata → neden → düzeltme → test) bu bölüme eklenir.
 - **Flutter (Nilsu):** Bölüm 13.4'teki doktor kaydı akışı, Dia ekranının bağlanması, `GET /care-team/alerts`, B-5.
 - **7. gün:** Son regresyon, endpoint ve güvenlik dokümantasyonu, takım reposuna aktarım.
+
+---
+
+## 14. 3. hafta: hata yönetimi ve doğrulama
+
+Görev: *Error handling / validation.* 6. günün taramasından sonra 8 endpoint eklendi (bakım ilişkileri, AI özeti, denetim kaydı okuma) ve tarama aracı repoda değildi. Araç yeniden yazılıp repoya kondu: `tools/api_fuzz_scan.py` (README, "Testler").
+
+### 14.1 Yöntem
+
+Her endpoint'in her JSON alanına (iç içe `entries[0].*` dahil), her sorgu parametresine ve her path id'sine sırayla ~45 bozuk değer; ayrıca 14 bozuk gövde (JSON değil, dizi, 2 MB, 5000 seviye iç içe, aynı alan iki kez, yanlış `Content-Type`, bozuk UTF-8 …) ve 9 bozuk `Authorization` başlığı. Toplam **6071 istek**, yerel veritabanında. İki ölçüt:
+
+1. **Hata:** 5xx, `problem+json` olmayan hata, 2 saniyeden yavaş cevap.
+2. **Sessiz kabul** (`--accepted`): bozuk değer 2xx aldıysa elle incelendi. 6. günün taraması yalnız 1. ölçüte bakıyordu.
+
+### 14.2 Sonuç
+
+| Ölçüt | Önce | Sonra |
+|---|---|---|
+| 5xx / `problem+json` olmayan / yavaş | **0** / 1 (8 KB'tan büyük başlık, aşağıda) / 0 | 0 / 0 / 0 |
+| Yanlış tipte değerin sessizce kabulü | 6 tür (B-25 – B-30) | 0 |
+
+1. ölçütte sorun çıkmadı: 2. haftanın düzeltmeleri yeni endpoint'leri de kapsıyor. Sorunlar 2. ölçütte çıktı: Jackson ve Spring bazı yanlış tipleri hata vermeden başka bir değere çeviriyordu.
+
+| # | Ö | Bulgu | Düzeltme | Test |
+|---|---|---|---|---|
+| B-25 | O | Sayı → boolean: `{"active": 0}` (admin) hesabı durduruyordu; `"canViewMeals": -1` `true` sayılıyordu | `spring.jackson.mapper.allow-coercion-of-scalars: false` (metin → sayı, `"120"`, de artık 400) | `StrictJsonWebTest` |
+| B-26 | O | Sayı → enum sırası: `"source": 0` → `MANUAL`, `"intent": 0` → `LOG_GLUCOSE`. Enum'a yeni değer eklenip sıra değişirse anlam da değişirdi | `spring.jackson.datatype.enum.fail-on-numbers-for-enums: true` | aynı |
+| B-27 | O | Sayı → zaman: `"measurementTime": 0` 1970'ten beri saniye olarak okunup **1970-01-01 tarihli kayıt** olarak saklandı (taramada 12 satır). Milisaniye gönderen hatalı bir istemci "gelecek zaman" 400'ü alıyordu, saniye gönderen sessizce yanlış veri yazıyordu | `StrictInstantDeserializer`: zaman yalnız ISO-8601 metni | aynı |
+| B-28 | D | Sayı/boolean → metin: `"notes": true` → `"true"` | `TextDeserializer` yalnız JSON metnini kabul ediyor | aynı |
+| B-29 | D | Boş/boşluk metin → `null`: `"carbsG": " "`, `"clientUuid": ""`; izinlerde `"canViewMeals": ""` "değiştirme" anlamına geliyordu | `JsonStrictnessConfig` (boş metin sayı, boolean, UUID ya da enum değildir) | aynı |
+| B-30 | D | Query'de sayı → zaman: `?from=0` 1970'ten beri milisaniye | `StrictInstantFormatConfig`: yalnız ISO-8601 (saat farkıyla) | aynı |
+
+**Kabul edildi:** 8 KB'tan büyük bir istek başlığını (ör. 9000 karakterlik `Authorization`) Tomcat, Spring'e gelmeden kısa bir HTML 400 ile reddediyor. Sürüm ya da iç bilgi yok; B-22'deki `%00` / `%2F` ile aynı sınıf. Araç bunu bulgu saymıyor.
+
+**Uygulamaya etkisi yok:** Flutter sayıları sayı, zamanları `toUtc().toIso8601String()`, enum'ları adıyla gönderiyor (kayıt, uyarı ve Dia ekranları kontrol edildi). FastAPI cevapları da aynı ayarlarla okunuyor; AI uçtan uca testi 17/17.
+
+### 14.3 Doğrulama
+
+| Kontrol | Sonuç |
+|---|---|
+| `mvn test` | **356/356** (39 yeni: `StrictJsonWebTest`) |
+| Tarama (6071 istek) | 0 bulgu; `--accepted` listesinde yalnız geçerli değerler (serbest metin, `0`, `1.5`, `null`) |
+| Postman'in tamamı | 353 istek, 546 assertion, 0 hata |
+| AI uçtan uca (gerçek FastAPI) | 17/17 |
+
+Not: Aracın ilk çalıştırması yarıda kesilince dr.diabetes'e açık bir paylaşım bıraktı ve Postman'in "tam olarak bu hastalar" kontrolü kırıldı. Araç artık açtığı paylaşımları her durumda (`finally`) kapatıyor.
+
+---
+
+## 15. 3. hafta: son güvenlik değerlendirmesi (OWASP Top 10, 2021)
+
+Görev: *Final security / OWASP testleri.* Yöntem: önce çalışan backend'e karşı keşif amaçlı bir tur yapıldı (IDOR, mass assignment, başlıklar, actuator, injection, zamanlama, sayım), bulunan açık düzeltildi, sonra her kategori kalıcı bir teste bağlandı: Postman "OWASP Top 10 (Week 3)" (73 istek, 117 assertion; kendi hesaplarını açar, birini bilerek kilitler).
+
+### 15.1 Bulunan ve kapatılan açık
+
+| # | Ö | Bulgu | Düzeltme | Test |
+|---|---|---|---|---|
+| B-31 | Y | Admin bir hasta hesabını durdurduğunda hasta, doktorun care-team listesinden çıkıyordu. Ama doktor, hastanın id'siyle glukoz, özet ve diğer paylaşılan verileri okumaya devam ediyordu (200). `fn_can_access` yalnız **üyenin** hesabına bakıyordu (A01). Canlı doğrulandı | V8: `fn_can_access` hastanın hesabının da aktif olmasını istiyor; yalnız fonksiyon değişti. Hesap yeniden açılınca erişim geri gelir | `access_rules_test.sql` (V8'den önce kırmızı, sonra yeşil; 58 kontrol), Postman A01 V8 adımları |
+
+### 15.2 Kategori kategori
+
+| Kategori | Kontroller | Test | Sonuç |
+|---|---|---|---|
+| **A01** Broken Access Control | Rol: `@PreAuthorize` + yetki matrisi. Veri: `fn_can_access` tek yerde; erişim yoksa 404 (var/yok ayırt edilmez); yazma yalnız hasta. Kayıt ve uyarı her zaman `id` **ve** `patientId` ile aranır. Sunucunun belirlediği alanlar gövdeden okunmaz. Actuator'da yalnız `health` | `AuthorizationMatrixTest`, `RbacWebTest`, `HealthDataAccessTest`, `access_rules_test.sql`, Postman "Permissions", "OWASP" A01: başka hastanın kaydını ve uyarısını kendi adresinden okuma, değiştirme, silme; erişim geçmişi; mass assignment (`patientId`, `id`, `enteredBy`, `createdAt`, `deletedAt`); dikey (hasta → admin, doktor → yazma); ADMIN olarak kayıt; durdurulmuş hasta; `/actuator/env`, `/heapdump`, `/v3/api-docs` | Hepsi 403/404; **B-31 düzeltildi** |
+| **A02** Cryptographic Failures | BCrypt (cost 10, 72 byte sınırı); `JWT_SECRET` ≥ 256 bit yoksa uygulama açılmaz; HS256 sabit (`alg` başlığına güvenilmez). Token'da yalnız `iss, sub, role, iat, exp`, ömrü 1 saat. Hash hiçbir cevapta yok. TLS Nginx'te | Postman A02 (cevaplarda `password` / `$2a$` yok, token içeriği ve süresi), `JwtServiceTest` | Geçti. **Kabul/öneri:** paylaşılan geliştirme anahtarı üretimde kullanılmamalı (README "JWT_SECRET"); HSTS, Nginx/HTTPS arkasında Spring'in kendisi ekler |
+| **A03** Injection | Tüm SQL parametreli (JPA / `NamedParameterJdbcTemplate`); filtre değerleri ve enum'lar beyaz listeyle; path id'ler tip kontrollü. JSON cevap (HTML yok); kontrol karakterleri reddediliyor | Postman A03: giriş e-postası ve şifresinde SQLi, `status` ve `action` filtresinde SQLi → 400, path'te `;DROP` → 400, notta `<script>` metin olarak saklanıp JSON olarak dönüyor; `tools/api_fuzz_scan.py` (6071 istek) | Geçti |
+| **A04** Insecure Design | 5 hatalı şifre → 15 dk kilit (429 + `Retry-After`); bilinmeyen e-posta ile yanlış şifre aynı mesaj ve süre (sahte BCrypt); davette hasta e-postası ile bilinmeyen e-posta aynı 404; 1 MB gövde, 200 sayfa boyutu, 31 günlük AI özeti sınırları; paylaşımı yalnız hasta başlatır | Postman A04 | Geçti. **Kabul edilen riskler:** (1) Kilit hesabın var olduğunu belli eder (bilinmeyen e-posta hiç kilitlenmez) ve 5 denemeyle bir hesap 15 dk kilitlenebilir. Nginx'te IP başına hız sınırı önerildi (bölüm 12.6). (2) Kayıtta 409 "already registered" e-postanın kayıtlı olduğunu söyler; kayıt formunda yaygın bir uzlaşma. (3) Doktor onayı kaldırıldı (B-9 yeniden açık): sahte bir doktor hesabı açılabilir, ama hastanın davet edip hesabın kabul etmesi olmadan hiçbir veri görmez |
+| **A05** Security Misconfiguration | `nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`; `Server` / `X-Powered-By` yok; her hata `problem+json`, iç bilgi yok; `TRACE` 405; health'te bileşen listesi yok; CORS kapalı (başka sitenin tarayıcısı izin almaz) | Postman A05 | Geçti. Kabul: `%00` / `%2F` ve 8 KB'tan büyük başlıkta Tomcat'in kısa HTML 400'ü (B-22, bölüm 14) |
+| **A06** Vulnerable and Outdated Components | Spring Boot 4.1.1, Spring Security 7.1.1, Spring 7.0.9, Tomcat 11.0.24, Jackson 3.1.5, Hibernate 7.4.5, PostgreSQL JDBC 42.7.13, Nimbus JOSE 10.9.1, Flyway 12.4.0, Logback 1.5.38; Java 21 | Sürüm listesi (`mvn dependency:list`) | Güncel hatlar. **Öneri:** CI'a `org.owasp:dependency-check-maven` ya da Dependabot; `ai-service` için `pip-audit` (Ayşen). Bu ortamda NVD veritabanı indirilmediği için CVE taraması çalıştırılmadı |
+| **A07** Identification and Authentication Failures | Şifre: NIST SP 800-63B (en az 8, yaygın şifre listesi, e-postayla aynı olamaz); kilit; token yalnız `Authorization: Bearer`; her istekte hesabın aktifliği ve rolü kontrol edilir (durdurulan hesabın token'ı hemen 401) | Postman A07: `alg: none`, rolü ADMIN yapılmış token, URL'de token, Basic → 401; yaygın şifre → 400; `RbacWebTest` | Geçti. **Kabul:** refresh token ve sunucu tarafında logout yok (B-6), 2FA yok |
+| **A08** Software and Data Integrity Failures | Aynı JSON alanı iki kez → 400; yanlış tipteki değer çevrilmez (bölüm 14); `source` beyaz listeyle; `audit_logs` yalnız eklemeye açık (trigger); Docker'da root olmayan kullanıcı, salt okunur jar | Postman A08, `StrictJsonWebTest`, `UPDATE`/`DELETE`/`TRUNCATE` denemesi (bölüm 14 ve 4. görev) | Geçti. **Öneri:** Dockerfile'daki base image'lar (`maven:3.9-eclipse-temurin-21`, `eclipse-temurin:21-jre`) etiketle değil digest ile sabitlenmeli |
+| **A09** Security Logging and Monitoring Failures | `LOGIN_FAILED` (sebebiyle), `ACCOUNT_LOCKED`, `ACCESS_DENIED`, `ACCOUNT_STATUS_CHANGED`, veri okumaları, düzeltme ve silmeler; şifre, token ve sağlık değeri yazılmaz; admin araması (`GET /admin/audit-logs`) ve hastanın erişim geçmişi | Postman A09: kilitlenen hesabın denemeleri sebepleriyle, hastanın 403'ü, hesap durdurma kayıtta; hiçbir satırda denenen şifre yok | Geçti. **Öneri:** `ACCOUNT_LOCKED` / `ACCESS_DENIED` artışı için uyarı (izleme aracı) |
+| **A10** Server-Side Request Forgery | Backend'in dışarıya yaptığı tek istek FastAPI'ye; adres yalnız ortam değişkeninden (`AI_SERVICE_BASE_URL`), istemciden gelen hiçbir değer adres olamaz; kullanıcının metni yalnız gövdede gider | Postman A10 (metinde bulut metadata adresi → normal cevap, 500 yok) + kod incelemesi | Geçti |
+
+### 15.3 Son regresyon (yerel veritabanı, gerçek FastAPI)
+
+| Kontrol | Sonuç |
+|---|---|
+| `mvn test` | **356/356** |
+| Postman'in tamamı | **426 istek, 663 assertion, 0 hata** |
+| `fn_can_access` SQL testi | **58/58** |
+| Sağlamlık taraması | 6071 istek, **0 bulgu** |
+| AI uçtan uca | **17/17** |
+
+V8 ortak Neon veritabanına, biri yeni backend'i Neon'a bağlı açtığında Flyway ile uygulanır (yalnız fonksiyon değişir).
+

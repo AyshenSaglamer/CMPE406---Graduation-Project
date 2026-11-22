@@ -13,7 +13,7 @@ DiaMate, diyabet öz yönetimi ve hasta izleme sistemidir. Bu proje, Flutter mob
 
 - JDK 21 (macOS: `brew install openjdk@21`)
 - Docker Desktop (yalnızca yerel veritabanı için)
-- `Database` (şema + veri paketi) ve `Dataset` (CSV verileri) klasörleri. **Şimdilik repoda değiller**, takım içinde ayrıca paylaşılır. Aşağıdaki `../Database` yolları, `Database` ve `Dataset` klasörlerini bu `backend` klasörünün yanına koyduğunuzu varsayar.
+- `Database` (şema paketi): bu reponun kökünde, `backend` klasörünün yanında; aşağıdaki `../Database` yolları onu gösterir. `Database/data` ve `Dataset` (CSV verileri) boyutları yüzünden **repoda değil**, takım içinde ayrıca paylaşılır; demo hesaplı tam kurulum (`install_mac.sh`) bunlara ihtiyaç duyar
 
 ## 1. Ortam dosyası
 
@@ -59,6 +59,7 @@ Sonuç: `public` şemasında 30 uygulama tablosu, `research` şemasında 14 veri
 | V5 | Profili olmayan her `CLINICIAN` kullanıcısına `clinician_profiles` satırı eklendi (`specialization = 'General'`). Kayıt sırasında bu satır artık otomatik oluşur; tedavi planı, reçete ve öneri tabloları bu tabloya bağlıdır (2. hafta, 3. gün) |
 | V6 | `activity_logs.source` CHECK kuralına `AI_ASSISTANT` eklendi; aktivite de diğer kayıt türleri gibi Dia'dan geldiğini saklar. Kural yalnızca genişledi, mevcut satırlar etkilenmedi (2. hafta, 4. gün) |
 | V7 | `alerts.resolved_by` eklendi: uyarıyı kimin çözdüğü (ilk ele alan `acknowledged_by`'da zaten vardı). Boş olabilir; eski uyarılarda değer yok (2. hafta, 5. gün) |
+| V8 | `fn_can_access` artık hastanın hesabının da aktif olmasını istiyor: admin bir hasta hesabını durdurunca bakım ekibi o hastanın verisini okuyamaz (önceden care-team listesinden çıkıyordu ama id ile doğrudan okunabiliyordu; 3. hafta, OWASP A01). Yalnız fonksiyon değişti, satır değişmedi |
 
 Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik için yeni sürüm dosyası eklenir.
 
@@ -83,8 +84,10 @@ Kontrol: `curl http://localhost:8080/api/v1/health` → `"status":"UP"`, `curl h
 ## 4. Testler
 
 ```bash
-mvn test        # birim + web katmanı testleri; veritabanı gerekmez
+mvn test        # birim + web katmanı testleri; Docker açıksa veritabanı testleri de
 ```
+
+Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V8. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
 
 `ProtectedRoutesTest` uygulamadaki tüm endpoint'leri Spring'in kendi listesinden bulur ve her birini token'sız çağırır. Yalnızca `register`, `login` ve `health` 401 dışında bir cevap verebilir. Endpoint sayısı değişirse test kırılır: o zaman testteki sayı, aşağıdaki tablo ve `docs/BACKEND_REVIEW.md` birlikte güncellenir.
 
@@ -96,7 +99,23 @@ npx -y newman@6.2.1 run postman/DiaMate.postman_collection.json
 
 Koleksiyon her çalıştırmada yeni test hesapları açar. Ortak Neon verisini kirletmemek için yerel Docker veritabanında çalıştırın.
 
+Sağlamlık taraması ("500 yok" taraması): `tools/api_fuzz_scan.py` her endpoint'in her alanına, sorgu parametresine ve path id'sine sırayla bozuk değerler gönderir (yanlış tip, aşırı büyük sayı, uç tarih, kontrol karakteri, bozuk/çok büyük gövde …). 5xx, `problem+json` olmayan hata ya da 2 saniyeden yavaş cevap bulursa listeler ve 1 ile çıkar. Yalnızca Python standart kütüphanesini kullanır; veri yazdığı için yalnızca `localhost`'a karşı çalışır:
+
+```bash
+python3 tools/api_fuzz_scan.py --base http://localhost:8080/api/v1
+```
+
+`--accepted` bozuk değerlerden 2xx ile kabul edilenleri de listeler (her biri gerçekten geçerli mi diye elle bakmak için).
+
 `AuthorizationMatrixTest` her endpoint'in hangi rollere açık olduğunu tek bir tabloda tutar ve 4 rolün hepsiyle dener (bkz. [Yetkilendirme](#yetkilendirme-rbac)). Yeni bir endpoint bu tabloya eklenmezse test kırılır.
+
+Veri seviyesindeki izinler (hangi doktor/bakıcı hangi hastanın hangi verisini görür) üç yerde test edilir:
+
+| Test | Ne dener | Nasıl çalışır |
+|---|---|---|
+| `HealthDataAccessTest` | Her veri türünün hangi izinle paylaşıldığı (ör. insülin → `medications`), izin adlarının veritabanının tanıdığı adlar olması, reddedilen okumanın 404 + denetim kaydı olması, kimsenin hasta adına yazamaması | `mvn test` |
+| `../Database/tools/access_rules_test.sql` | `fn_can_access`'in kendisi gerçek veritabanında: 7 izin × hasta, doktor, bakıcı, admin; `PENDING`/`DECLINED`/`REVOKED`, süresi dolmuş ve dolmamış ilişki, pasif üye, değişikliklerin anında etkisi, veritabanı korumaları (58 kontrol; V8'den sonra durdurulmuş hasta da). Her şey tek transaction'da yapılır ve geri alınır | `docker exec -i diamate-postgres psql -U diamate -d diamate < ../Database/tools/access_rules_test.sql` |
+| Postman "Permissions (Week 3)" | API üzerinden: hasta doktora tüm izinler kapalı erişim verir, sonra izinleri tek tek açar. Her veri türü yalnızca kendi izniyle açılır; okuma izni yazma izni vermez; izni kapatmak ya da ekipten ayrılmak bir sonraki istekte etkili olur (66 istek) | newman, yukarıdaki gibi |
 
 ## 5. Docker imajı
 
@@ -120,9 +139,16 @@ docker run --env-file .env -p 8080:8080 diamate-backend
 | POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, user}`. Üst üste 5 hatalı şifre → hesap 15 dakika kilitlenir (**429**) |
 | GET | `/api/v1/users/me` | giriş yapmış herkes | Kendi profili (ad, soyad, e-posta, rol, doğum tarihi, cinsiyet). Kimlik token'dan okunur. |
 | GET | `/api/v1/admin/users` | yalnızca `ADMIN` | Hesap listesi; sağlık verisi, doğum tarihi ve cinsiyet **yok** |
-| PATCH | `/api/v1/admin/users/{userId}/status` | yalnızca `ADMIN` | `{"active": false}` hesabı hemen durdurur (giriş 403, mevcut token'lar 401); `{"active": true}` açar, örneğin yeni doktoru onaylar. Admin kendi hesabını değiştiremez (**409**). Her değişiklik denetim kaydına yazılır |
+| PATCH | `/api/v1/admin/users/{userId}/status` | yalnızca `ADMIN` | `{"active": false}` hesabı hemen durdurur (giriş 403, mevcut token'lar 401); `{"active": true}` açar, örneğin durdurulmuş bir hesabı geri açar. Admin kendi hesabını değiştiremez (**409**). Her değişiklik denetim kaydına yazılır |
+| GET | `/api/v1/admin/audit-logs?userId=&patientId=&action=&success=&from=&to=&page=&size=` | yalnızca `ADMIN` | Denetim kayıtlarında arama, yeniden eskiye (IP ve User-Agent dahil). Filtrelerin hepsi isteğe bağlı; `from`/`to` verilmezse son 14 gün. `action` bir olay adı olmalı (`LOGIN_FAILED` gibi; aksi **400**). Admin'in her araması da `AUDIT_LOG_VIEWED` olarak kaydedilir |
 | GET | `/api/v1/care-team/patients` | `CLINICIAN`, `CAREGIVER` | Kullanıcıya **ACTIVE** ilişkiyle erişim vermiş hastalar ve izinleri |
 | GET | `/api/v1/care-team/alerts?status=&page=&size=` | `CLINICIAN`, `CAREGIVER` | Uyarı paylaşan **tüm** hastaların uyarıları tek istekte, yeniden eskiye. Her öğede hastanın adı ve uyarı (`alert`). `?status=OPEN&size=1` → `totalElements` açık uyarı sayısıdır |
+| POST | `/api/v1/care-relationships` | yalnızca `PATIENT` | Hasta, doktoru ya da bakıcıyı DiaMate hesabının e-postasıyla davet eder: `{"memberEmail":"dr@example.com"}` ve isteğe bağlı izinler (`canViewGlucose`, `canViewMeals`, `canViewMedications`, `canViewActivity`, `canViewReports`, `canReceiveAlerts`, `canAddRecommendations`). Verilmeyen izinler varsayılandır: hepsi açık, `canAddRecommendations` kapalı (yalnızca doktora verilebilir, bakıcıya → **400**). İsteğe bağlı `expiresAt` (ISO-8601) paylaşımı süreli yapar: o andan sonra üye hiçbir veriyi göremez; gelecekte ve en fazla 2 yıl sonra olmalı (aksi **400** `errors.expiresAt`), verilmezse süresiz. → 201, `PENDING`. Aktif doktor/bakıcı hesabı yoksa (bilinmeyen, hasta ya da kapalı hesap) **404**; aynı kişiye açık davet ya da erişim varsa **409** |
+| GET | `/api/v1/care-relationships?status=` | giriş yapmış herkes | Kullanıcının hasta ya da üye olarak taraf olduğu tüm ilişkiler, yeni davetten eskiye. `status`: `PENDING`, `ACTIVE`, `DECLINED`, `REVOKED` (isteğe bağlı). Her ilişkide `hasAccess`: üye hastanın verisini **şu an** görebiliyor mu (`ACTIVE` ve süresi dolmamış). Süresi dolan ilişkinin durumu `ACTIVE` kalır, uygulama `hasAccess`'e bakmalı |
+| POST | `/api/v1/care-relationships/{id}/accept` | davet edilen `CLINICIAN` / `CAREGIVER` | `PENDING` → `ACTIVE`; veri paylaşımı bu anda başlar. Zaten `ACTIVE` ise aynen döner; iptal edilmiş/reddedilmiş davet → **409** |
+| POST | `/api/v1/care-relationships/{id}/decline` | davet edilen `CLINICIAN` / `CAREGIVER` | `PENDING` → `DECLINED` |
+| PATCH | `/api/v1/care-relationships/{id}` | yalnızca ilişkinin hastası | İzinleri ve bitiş tarihini değiştirir; yalnızca gönderilen alanlar değişir (`{"canViewMeals":false}`). `{"expiresAt":"..."}` yeni bitiş tarihi (süresi dolmuş ilişkiyi uzatmak erişimi geri açar), `{"removeExpiry":true}` süreyi kaldırır; ikisi birlikte → **400**. Hemen etkili olur. Kapanmış ilişki → **409**. Süresi dolmuş ama `ACTIVE` bir ilişki varken aynı kişiye yeni davet **409** olur; uzatmak için bu endpoint kullanılır |
+| DELETE | `/api/v1/care-relationships/{id}` | ilişkinin iki tarafı | `PENDING`/`ACTIVE` → `REVOKED` (hasta erişimi geri alır ya da daveti iptal eder; üye ayrılır). 204; satır geçmiş olarak kalır. Reddedilmiş davet → **409** |
 | GET | `/api/v1/patients/{patientId}/overview` | hastanın kendisi ya da izinli doktor/bakıcı | Hasta özeti (son glukoz, açık uyarılar). Erişim yoksa **404** (hasta yok ile aynı cevap) |
 | POST | `/api/v1/patients/{patientId}/glucose-logs` | yalnızca hastanın kendisi | Glukoz kaydı (mg/dL) → 201 + `Location`. Eşik dışı değer **uyarı** (`alerts`) oluşturur |
 | GET | `/api/v1/patients/{patientId}/glucose-logs?from=&to=&page=&size=` | hasta ya da izinli doktor/bakıcı | Yeniden eskiye, sayfalı liste (bkz. aşağıda) |
@@ -134,6 +160,8 @@ docker run --env-file .env -p 8080:8080 diamate-backend
 | GET | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | Tek uyarı |
 | PATCH | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | `{"status":"ACKNOWLEDGED"}` ya da `{"status":"RESOLVED"}` |
 | POST | `/api/v1/ai/parse` | `PATIENT` | `{text}` → yapay zekâ servisinin anladığı kayıtlar. **Hiçbir şey kaydetmez** (bkz. aşağıda) |
+| GET | `/api/v1/ai/patients/{patientId}/summary` | hasta + `reports` ve `glucose` izni olan doktor/bakıcı | Yapay zekâ özeti (istatistik, örüntüler, içgörüler; Ayşen). `from`/`to` (varsayılan son 14 gün, en fazla 31 gün), `rangeLow`/`rangeHigh` (varsayılan 70/180, 10–600). Öğün ve aktivite yalnızca izin varsa eklenir; karbonhidratı olmayan öğün ve süresi olmayan aktivite gönderilmez. 2'den az glukoz → 400, servis hatası → 502/503 |
+| GET | `/api/v1/patients/{patientId}/access-log?from=&to=&page=&size=` | yalnızca hastanın kendisi | Hastanın verisini **başka kimin** okuduğu ya da değiştirdiği (reddedilen denemeler dahil), yeniden eskiye: kim (ad, rol), ne (`action`, `dataType`), sonuç (`success`). Varsayılan son 14 gün. Karşı tarafın IP'si gösterilmez. Doktor/bakıcı/admin **403**, başka hasta **404** |
 | POST | `/api/v1/patients/{patientId}/ai-entries` | yalnızca hastanın kendisi | Hastanın onayladığı `/ai/parse` kayıtlarını `AI_ASSISTANT` kaynağıyla kaydeder → 201 (hepsi daha önce kaydedilmişse 200). Hepsi ya da hiçbiri (bkz. [Yapay zekâ asistanı](#yapay-zekâ-asistanı)) |
 
 Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
@@ -141,17 +169,20 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
 ### Yetkilendirme (RBAC)
 
 - **Rol seviyesi:** Token'daki `role` alanı Spring Security'de `ROLE_<rol>` yetkisine çevrilir; endpoint'lerde `@PreAuthorize("hasRole('ADMIN')")` gibi kurallar vardır.
-- **Veri seviyesi:** Bir hastanın verisine kimin erişebileceğine veritabanındaki `fn_can_access` fonksiyonu karar verir: hastanın kendisi ya da **ACTIVE**, süresi dolmamış ve ilgili izni olan bakım ilişkisi. `ADMIN` sağlık verisine erişemez.
+- **Veri seviyesi:** Bir hastanın verisine kimin erişebileceğine veritabanındaki `fn_can_access` fonksiyonu karar verir: hastanın kendisi ya da **ACTIVE**, süresi dolmamış ve ilgili izni olan bakım ilişkisi; üyenin **ve** hastanın hesabı aktif olmalı (V8). `ADMIN` sağlık verisine erişemez.
 - **Hata cevapları:** Token yok veya geçersiz → **401**, rol uymuyor → **403**, veri erişimi yok → **404**; hepsi `application/problem+json`.
 - **Yetki matrisi** (rol seviyesi; veri seviyesi her satırda ayrıca `fn_can_access`):
 
 | Endpoint'ler | PATIENT | CLINICIAN | CAREGIVER | ADMIN |
 |---|---|---|---|---|
 | `register`, `login`, `health` (herkese açık) | ✓ | ✓ | ✓ | ✓ |
-| `GET /users/me`, `GET /patients/{id}/overview`, kayıtların `GET`'leri, `GET`/`PATCH …/alerts` | ✓ | ✓ | ✓ | ✓ (veri yok → 404) |
+| `GET /users/me`, `GET /patients/{id}/overview`, kayıtların `GET`'leri, `GET`/`PATCH …/alerts`, `GET /ai/patients/{id}/summary` | ✓ | ✓ | ✓ | ✓ (veri yok → 404) |
 | Kayıtların `POST`/`PUT`/`DELETE`'i, `POST /ai/parse`, `POST …/ai-entries` | ✓ | 403 | 403 | 403 |
-| `GET /care-team/patients`, `GET /care-team/alerts` | 403 | ✓ | ✓ | 403 |
-| `GET /admin/users`, `PATCH /admin/users/{id}/status` | 403 | 403 | 403 | ✓ |
+| `GET /care-team/patients`, `GET /care-team/alerts`, `POST /care-relationships/{id}/accept` ve `/decline` | 403 | ✓ | ✓ | 403 |
+| `POST /care-relationships` (davet), `PATCH /care-relationships/{id}` (izinler) | ✓ | 403 | 403 | 403 |
+| `GET /care-relationships`, `DELETE /care-relationships/{id}` | ✓ | ✓ | ✓ | ✓ (taraf değilse 404 / boş liste) |
+| `GET /admin/users`, `PATCH /admin/users/{id}/status`, `GET /admin/audit-logs` | 403 | 403 | 403 | ✓ |
+| `GET /patients/{id}/access-log` | ✓ (yalnız kendisi, başkası 404) | 403 | 403 | 403 |
 
 ### Hata cevapları
 
@@ -168,7 +199,7 @@ Her hata aynı biçimde döner (RFC 9457, `Content-Type: application/problem+jso
 | 405 | Desteklenmeyen HTTP metodu (herkese açık adreslerde de) | `detail` |
 | 400 | Gövde JSON değil / gövde yok / nesne yerine dizi | `detail`: `Request body is not valid JSON` / `Request body is required` / `Request body must be a JSON object` |
 | 401 | Token yok, geçersiz, süresi dolmuş **ya da hesap pasif veya silinmiş** | `detail`: `Authentication required` / `Invalid or expired access token` |
-| 403 | Rol uygun değil; doğru şifreyle giriş ama hesap pasif (onay bekleyen doktor: `This doctor account is waiting for approval by an administrator`) | `detail` |
+| 403 | Rol uygun değil; doğru şifreyle giriş ama hesap admin tarafından durdurulmuş | `detail` |
 | 400 | Adres Spring Security'nin güvenlik duvarına takıldı (ör. `;`, `..` ya da `%3B` içeren path) | `detail`: `The request is not valid` (6. gün; önceden Spring Boot'un `timestamp`/`error`/`path` gövdesi). `%00` ve `%2F` içeren adresleri Tomcat, Spring'e gelmeden kısa bir HTML sayfasıyla reddeder |
 | 404 | Kayıt yok, erişim yok (ikisi ayırt edilmez), bilinmeyen adres | `detail`: örn. `Patient not found`, `Resource not found` |
 | 409 | E-posta zaten kayıtlı; `clientUuid` silinmiş bir kayda ait; çözülmüş/kapatılmış bir uyarının durumu değiştirilmek istendi; admin kendi hesabının durumunu değiştirmek istedi | `detail` |
@@ -178,6 +209,20 @@ Her hata aynı biçimde döner (RFC 9457, `Content-Type: application/problem+jso
 | 502 / 503 | Yapay zekâ servisi hata döndü / ulaşılamıyor | `detail` |
 
 Tam sayı alanlarına ondalık değer (`"glucoseValue": 120.7`) gönderilirse **400** döner; değer sessizce `120`'ye kesilmez.
+
+Yanlış JSON tipindeki değer de **400** döner, başka bir değere çevrilmez (3. hafta):
+
+| Gönderilen | Önceden | Şimdi (`errors.<alan>`) |
+|---|---|---|
+| `"active": 0`, `"canViewMeals": -1` | `false` / `true` sayılıyordu (`{"active":0}` hesabı durduruyordu) | `Must be true or false` |
+| `"source": 0`, `"intent": 0` | enum'un ilk değeri (`MANUAL`, `LOG_GLUCOSE`) | `Must be one of: ...` |
+| `"measurementTime": 0` | 1970'ten beri saniye: kayıt 1970-01-01 tarihine yazılıyordu | `Must be an ISO-8601 date-time, e.g. 2026-10-05T08:30:00Z` |
+| `"notes": 42`, `"notes": true` | `"42"`, `"true"` metni | `Must be text` |
+| `"glucoseValue": "120"` | `120` | `Must be a whole number` |
+| `"carbsG": ""`, `"canViewMeals": " "`, `"clientUuid": ""` | `null` (izinde: "değiştirme") | alanın tipine göre mesaj |
+| `?from=0` (query) | 1970'ten beri milisaniye | `errors.from` |
+
+`null` hâlâ "gönderilmedi" demektir. Enum'lar adıyla, zamanlar ISO-8601 metniyle gönderilir (`+03:00` gibi bir saat farkı olabilir; URL'de `%2B03:00`).
 
 ### Sağlık kayıtları (glukoz, insülin, öğün, aktivite)
 
@@ -255,7 +300,7 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 - **Token içeriği:** `iss`, `sub` (kullanıcı id'si), `role`, `iat`, `exp`. Ad, e-posta ya da sağlık verisi yoktur (`JwtServiceTest`).
 - **Süre dolumu:** Token `JWT_EXPIRATION` sonunda geçersiz olur. Spring'in varsayılan **60 saniyelik saat toleransı** yüzünden `exp`'ten sonraki 60 saniye içinde hâlâ kabul edilir; sonra **401** alır. Bu davranış `JWT_EXPIRATION=1m` ile gerçek veritabanında ölçüldü (5. gün).
 - **`JWT_SECRET`:** Takımın ortak geliştirme anahtarı `.env` dosyasıyla paylaşılıyor. Bu anahtarı bilen herkes, ortak Neon veritabanındaki her kullanıcı (ADMIN dahil) için geçerli bir token üretebilir. Bu yüzden **üretim ortamı mutlaka ayrı ve yalnızca sunucuda duran bir anahtar** kullanmalı (`openssl rand -base64 64`). Anahtar sızarsa değiştirilmesi yeterlidir: eski anahtarla imzalanmış tüm token'lar o anda geçersiz olur.
-- **Doktor onayı (5. gün):** Kayıt formunda herkes `CLINICIAN` seçebildiği için yeni doktor hesabı **pasif** açılır. Giriş, `ADMIN` `PATCH /admin/users/{id}/status` ile onaylayana kadar **403** alır ("waiting for approval"). Hasta ve bakıcı hesapları hemen aktif olur; mevcut doktor hesapları etkilenmedi.
+- **Doktor hesabı:** Her rol, `CLINICIAN` dahil, kayıtta hemen aktif olur. 5. günde eklenen admin onayı uygulamada admin ekranı olmadığı için kaldırıldı (3. hafta). **Kabul edilen risk:** Herkes kendini doktor olarak kaydedebilir. Ancak doktor hesabı tek başına hiçbir hastanın verisine ulaşamaz: veri yalnızca hastanın o e-postayı kendisi davet etmesi ve hesabın daveti kabul etmesiyle paylaşılır (`fn_can_access`), ve admin şüpheli bir hesabı durdurabilir. Lisans doğrulaması sonraki işlerde.
 - **Hesabı durdurma:** `ADMIN`, ele geçirilmiş ya da kötüye kullanılan bir hesabı `PATCH /admin/users/{id}/status` ile durdurabilir; hesabın token'ları hemen 401 alır.
 - **Herkese açık adreslerde token yok sayılır:** `/auth/register`, `/auth/login` ve `/health` adreslerinde `Authorization` başlığı okunmaz. Böylece uygulama, giriş ekranında süresi dolmuş eski token'ı göndermeye devam etse de giriş yapılabilir.
 - **Metin:** JSON'daki tüm metin alanlarında kontrol karakterleri (örn. NUL) reddedilir (**400**). Satır sonu ve tab serbesttir. NUL karakteri PostgreSQL'e yazılamıyordu.
@@ -264,14 +309,14 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 - **Sayılar:** Jackson bir sayıyı en fazla 1000 karakter okur. `ai-entries`'te `value` en fazla 100000 ve 3 ondalık olabilir (5. gün, S-1: `1e999999999` gibi kısa bir sayı dönüşüm sırasında milyar basamaklı bir metne dönüşüp belleği tüketebiliyordu).
 - **Sayfa:** `page × size` 2³¹'i geçemez (**400** `errors.page`); önceden çok büyük bir `page` 500 veriyordu (5. gün, S-2).
 - **İstek boyutu:** 1 MB'tan büyük gövde okunmadan **413** ile reddedilir. Bu kontrol filtre zincirinin en başında, Spring Security'den önce çalışır; `Content-Length` olmayan isteklerde baytlar okunurken sayılır.
-- **Denetim kaydı (`audit_logs`):** `LOGIN`, `LOGIN_FAILED` (sebebiyle: `UNKNOWN_EMAIL`, `WRONG_PASSWORD`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED`), `ACCOUNT_LOCKED` ve `VIEW_PATIENT_DATA` olayları yazılır. `VIEW_PATIENT_DATA`, bir hastanın verisini **başka biri** okuduğunda (doktor, bakıcı ya da reddedilen bir deneme) hangi veri türünün okunduğu (`entity_type`) ve sonucuyla (`success`) birlikte kaydedilir. Her kayıtta IP adresi ve User-Agent bulunur. Nginx arkasında gerçek istemci IP'si `X-Forwarded-For` başlığından alınır (`server.forward-headers-strategy: native`). Tomcat bu başlığa yalnızca iç ağdaki bir proxy'den gelirse güvenir, internetten gelen sahte bir başlık dikkate alınmaz. Şifre, token ve sağlık verisi **asla** yazılmaz. Bilinmeyen bir e-postayla yapılan denemede yazılan e-posta da saklanmaz, çünkü kullanıcılar bazen şifrelerini e-posta alanına yazar.
+- **Denetim kaydı (`audit_logs`):** `REGISTER` (rol ve hesabın aktif açılıp açılmadığı), `LOGIN`, `LOGIN_FAILED` (sebebiyle: `UNKNOWN_EMAIL`, `WRONG_PASSWORD`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED`), `ACCOUNT_LOCKED`, `VIEW_PATIENT_DATA`, `HEALTH_LOG_UPDATED` / `HEALTH_LOG_DELETED` (hangi kayıt, kim; eski ya da yeni değer **yazılmaz**), `ALERT_STATUS_CHANGED`, `CARE_*` (davet, kabul, ret, izin, iptal), `ACCOUNT_STATUS_CHANGED`, `ACCESS_DENIED` (giriş yapmış birinin rolü yüzünden aldığı 403: metot ve adres, sorgu dizesi olmadan) ve `AUDIT_LOG_VIEWED` (admin'in denetim kaydını okuması) olayları yazılır. Değişiklik ile denetim satırı aynı transaction'dadır. Tablo yalnızca eklemeye açıktır: `UPDATE`, `DELETE` ve `TRUNCATE`'i veritabanındaki bir trigger reddeder (gerçek veritabanında denendi). Hasta kendi erişim geçmişini `GET /patients/{id}/access-log` ile, admin tüm kayıtları `GET /admin/audit-logs` ile görür. `VIEW_PATIENT_DATA`, bir hastanın verisini **başka biri** okuduğunda (doktor, bakıcı ya da reddedilen bir deneme) hangi veri türünün okunduğu (`entity_type`) ve sonucuyla (`success`) birlikte kaydedilir. Her kayıtta IP adresi ve User-Agent bulunur. Nginx arkasında gerçek istemci IP'si `X-Forwarded-For` başlığından alınır (`server.forward-headers-strategy: native`). Tomcat bu başlığa yalnızca iç ağdaki bir proxy'den gelirse güvenir, internetten gelen sahte bir başlık dikkate alınmaz. Şifre, token ve sağlık verisi **asla** yazılmaz. Bilinmeyen bir e-postayla yapılan denemede yazılan e-posta da saklanmaz, çünkü kullanıcılar bazen şifrelerini e-posta alanına yazar.
 - **Kayıt kuralları:**
   - **Ad ve soyad:** Her dilden harf; aralarında boşluk, kesme işareti (`'` ve `’`), tire ve nokta olabilir (`Ayşe Nur`, `O'Brien`, `Jean-Luc`). Rakam, sembol ve emoji kabul edilmez.
   - **Şifre:** En az 8 karakter ve en fazla 72 byte (BCrypt sınırı). Yaygın şifreler listesinde (`src/main/resources/security/common-passwords.txt`) bulunan şifreler ve e-posta adresinin kendisi reddedilir. Bu kurallar NIST SP 800-63B'yi izler; "büyük harf + rakam + sembol" zorunluluğu yoktur.
 - **Başlıklar:** Spring Security varsayılanları açık: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`.
 - **Doğum tarihi:** En az 16 yaş ve en fazla 120 yıl önce (daha eskisi yazım hatası sayılır; 400 + `errors.dateOfBirth`).
 - **Çıkış (logout):** Şimdilik yalnızca uygulama tarafında yapılır; uygulama token'ı siler. Sunucu token'ı geri çekemez, bu yüzden token süresi dolana kadar (en fazla 1 saat) geçerli kalır. Hesap pasife alınırsa ya da rolü değişirse token hemen 401 alır. Refresh token ve sunucu tarafında logout 2. haftada yapılmayacak, sonraya bırakıldı (karar: 12 Ekim 2026).
-- **Kapsam dışı (sonraki işler):** Refresh token ve sunucu tarafında logout, IP bazlı hız sınırı (Nginx; önerilen ayar `docs/BACKEND_REVIEW.md` bölüm 12'de), 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (şu an admin onayı elle yapılıyor).
+- **Kapsam dışı (sonraki işler):** Refresh token ve sunucu tarafında logout, IP bazlı hız sınırı (Nginx; önerilen ayar `docs/BACKEND_REVIEW.md` bölüm 12'de), 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (admin onayı kaldırıldı, bkz. "Doktor hesabı"). OWASP Top 10 değerlendirmesi ve kabul edilen riskler: `docs/BACKEND_REVIEW.md` bölüm 15.
 
 ## Paket yapısı
 

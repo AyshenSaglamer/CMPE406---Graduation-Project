@@ -46,8 +46,8 @@ public class UserService {
 
     /**
      * For ADMIN only (enforced in AdminController): turns an account on or off. Off takes effect at once: the account
-     * cannot log in (403) and the tokens it already has get 401 (ActiveAccountValidator). On approves a clinician
-     * who registered (they start inactive) or brings back a stopped account. Asking for the status the account
+     * cannot log in (403) and the tokens it already has get 401 (ActiveAccountValidator). On brings back a stopped
+     * account. Asking for the status the account
      * already has changes nothing; only a real change is audited.
      *
      * An admin cannot change their own status: switching yourself off by mistake would leave no way back through the

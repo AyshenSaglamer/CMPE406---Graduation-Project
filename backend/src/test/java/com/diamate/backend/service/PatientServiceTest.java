@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +58,37 @@ class PatientServiceTest {
         assertThat(overview.patientId()).isEqualTo(PATIENT);
         assertThat(overview.lastGlucoseMgdl()).isEqualTo(96);
         verify(auditService).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.OVERVIEW, true);
+    }
+
+    @Test
+    void overviewLeavesOutTherapyTypeAndOpenAlertsWithoutTheirPermissions() {
+        // Glucose only: the therapy type is medication data, the alert count is alert data.
+        when(repository.canAccess(CLINICIAN, PATIENT, "glucose")).thenReturn(true);
+        when(repository.findOverview(PATIENT)).thenReturn(Optional.of(new PatientOverviewRow(
+                PATIENT, "Demo Patient", "01", "MALE", 34, "TYPE_1", "PUMP", 70, 180, 96, Instant.now(), 3)));
+
+        PatientOverviewResponse overview = service.getOverview(CLINICIAN, PATIENT);
+
+        assertThat(overview.therapyType()).isNull();
+        assertThat(overview.openAlerts()).isNull();
+        assertThat(overview.lastGlucoseMgdl()).isEqualTo(96);
+        // Only the overview read is audited, not the two field checks.
+        verify(auditService).patientDataViewed(CLINICIAN, PATIENT, PatientDataType.OVERVIEW, true);
+        verifyNoMoreInteractions(auditService);
+    }
+
+    @Test
+    void overviewShowsTherapyTypeAndOpenAlertsWithTheirPermissions() {
+        when(repository.canAccess(CLINICIAN, PATIENT, "glucose")).thenReturn(true);
+        when(repository.grantedPermissions(CLINICIAN, PATIENT, List.of("medications", "alerts")))
+                .thenReturn(Set.of("medications", "alerts"));
+        when(repository.findOverview(PATIENT)).thenReturn(Optional.of(new PatientOverviewRow(
+                PATIENT, "Demo Patient", "01", "MALE", 34, "TYPE_1", "PUMP", 70, 180, 96, Instant.now(), 3)));
+
+        PatientOverviewResponse overview = service.getOverview(CLINICIAN, PATIENT);
+
+        assertThat(overview.therapyType()).isEqualTo("PUMP");
+        assertThat(overview.openAlerts()).isEqualTo(3L);
     }
 
     @Test

@@ -26,7 +26,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import jakarta.persistence.LockModeType;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -145,11 +148,13 @@ class AuthServiceTest {
         verify(clinicianProfileRepository).save(profile.capture());
         assertThat(profile.getValue().getUserId()).isEqualTo(43L);
         verifyNoInteractions(patientProfileRepository);
+        // Audited with the role and the active flag (no name, email or password).
+        verify(auditService).registered(43L, "CLINICIAN", true);
     }
 
     @Test
-    void aClinicianStartsInactiveUntilAnAdminApproves() {
-        // Anyone can pick CLINICIAN on the form: the account must not reach patient data before an ADMIN checks it.
+    void everyRoleStartsActive() {
+        // No admin approval step: a clinician can log in right after registering, like patients and caregivers.
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> withId(invocation.getArgument(0), 43L));
 
@@ -160,26 +165,26 @@ class AuthServiceTest {
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(userRepository, times(3)).saveAndFlush(saved.capture());
         assertThat(saved.getAllValues()).extracting(User::getRole, User::isActive).containsExactly(
-                tuple(Role.CLINICIAN, false),
+                tuple(Role.CLINICIAN, true),
                 tuple(Role.PATIENT, true),
                 tuple(Role.CAREGIVER, true));
     }
 
     @Test
-    void aClinicianWaitingForApprovalIsToldSoAtLogin() {
-        User waiting = clinician(false, null);
-        when(userRepository.findByEmail("dr@example.com")).thenReturn(Optional.of(waiting));
+    void aDisabledClinicianWhoNeverLoggedInGetsTheGeneralMessage() {
+        User disabled = clinician(false, null);
+        when(userRepository.findByEmailForLogin("dr@example.com")).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("dr@example.com", RIGHT_PASSWORD)))
                 .isInstanceOf(AccountDisabledException.class)
-                .hasMessage("This doctor account is waiting for approval by an administrator");
+                .hasMessage("Account is disabled");
         verify(auditService).loginFailed(43L, LoginFailure.ACCOUNT_DISABLED);
         verifyNoInteractions(jwtService);
     }
 
     @Test
     void aClinicianStoppedAfterUsingTheAppGetsTheGeneralMessage() {
-        when(userRepository.findByEmail("dr@example.com")).thenReturn(Optional.of(clinician(false, NOW.minusSeconds(86400))));
+        when(userRepository.findByEmailForLogin("dr@example.com")).thenReturn(Optional.of(clinician(false, NOW.minusSeconds(86400))));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("dr@example.com", RIGHT_PASSWORD)))
                 .isInstanceOf(AccountDisabledException.class)
@@ -300,7 +305,7 @@ class AuthServiceTest {
     @Test
     void loginReturnsTokenAndRecordsLastLogin() {
         User patient = patient(true);
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(patient));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient));
         when(jwtService.generateToken(patient)).thenReturn("test-token");
         when(jwtService.getExpirationSeconds()).thenReturn(3600L);
 
@@ -316,7 +321,7 @@ class AuthServiceTest {
 
     @Test
     void loginWithUnknownEmailFailsWithGenericMessage() {
-        when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailForLogin("nobody@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("nobody@example.com", RIGHT_PASSWORD)))
                 .isInstanceOf(InvalidCredentialsException.class)
@@ -327,7 +332,7 @@ class AuthServiceTest {
 
     @Test
     void loginWithWrongPasswordFailsWithTheSameGenericMessage() {
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, "WrongPass1")))
                 .isInstanceOf(InvalidCredentialsException.class)
@@ -337,7 +342,7 @@ class AuthServiceTest {
 
     @Test
     void loginDoesNotRevealDisabledAccountWithoutTheRightPassword() {
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(patient(false)));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient(false)));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, "WrongPass1")))
                 .isInstanceOf(InvalidCredentialsException.class);
@@ -345,7 +350,7 @@ class AuthServiceTest {
 
     @Test
     void wrongPasswordIsCountedAndAudited() {
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
         when(userRepository.findFailedLoginAttempts(5L)).thenReturn(3);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, "WrongPass1")))
@@ -358,7 +363,7 @@ class AuthServiceTest {
 
     @Test
     void fifthWrongPasswordInARowLocksTheAccountFor15Minutes() {
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient(true)));
         when(userRepository.findFailedLoginAttempts(5L)).thenReturn(AuthService.MAX_FAILED_LOGIN_ATTEMPTS);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, "WrongPass1")))
@@ -374,7 +379,7 @@ class AuthServiceTest {
     void lockedAccountIsRefusedEvenWithTheRightPassword() {
         User locked = patient(true);
         ReflectionTestUtils.setField(locked, "lockedUntil", NOW.plus(Duration.ofMinutes(10)));
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(locked));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(locked));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, RIGHT_PASSWORD)))
                 .isInstanceOf(AccountLockedException.class)
@@ -392,7 +397,7 @@ class AuthServiceTest {
         User wasLocked = patient(true);
         ReflectionTestUtils.setField(wasLocked, "lockedUntil", NOW.minusSeconds(1));
         ReflectionTestUtils.setField(wasLocked, "failedLoginAttempts", 2);
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(wasLocked));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(wasLocked));
         when(jwtService.generateToken(wasLocked)).thenReturn("test-token");
 
         authService.login(new LoginRequest(PATIENT_EMAIL, RIGHT_PASSWORD));
@@ -405,13 +410,28 @@ class AuthServiceTest {
     @Test
     void loginRejectsDisabledAccountWithTheRightPassword() {
         User disabled = patient(false);
-        when(userRepository.findByEmail(PATIENT_EMAIL)).thenReturn(Optional.of(disabled));
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(disabled));
 
         assertThatThrownBy(() -> authService.login(new LoginRequest(PATIENT_EMAIL, RIGHT_PASSWORD)))
                 .isInstanceOf(AccountDisabledException.class);
         assertThat(disabled.getLastLoginAt()).isNull();
         verifyNoInteractions(jwtService);
         verify(auditService).loginFailed(5L, LoginFailure.ACCOUNT_DISABLED);
+    }
+
+    @Test
+    void loginLoadsTheAccountWithARowLockSoParallelGuessesCannotPassTheLimit() throws Exception {
+        when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest(" Patient01@DiaMate.example ", "WrongPass1")))
+                .isInstanceOf(InvalidCredentialsException.class);
+
+        verify(userRepository).findByEmailForLogin(PATIENT_EMAIL);
+        verify(userRepository, never()).findByEmail(anyString());
+        // SELECT ... FOR UPDATE: without it, parallel wrong passwords all read "not locked" (12 of 60 got through).
+        Lock lock = UserRepository.class.getMethod("findByEmailForLogin", String.class).getAnnotation(Lock.class);
+        assertThat(lock).isNotNull();
+        assertThat(lock.value()).isEqualTo(LockModeType.PESSIMISTIC_WRITE);
     }
 
     // ---------- helpers ----------

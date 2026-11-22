@@ -166,6 +166,8 @@ class MealAndActivityLogServiceTest {
         assertThat(updated.description()).isEqualTo("pasta");
         assertThat(updated.carbsG()).isEqualByComparingTo("80");
         assertThat(updated.source()).isEqualTo(MealSource.MANUAL);
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.MEAL_LOGS, 300L,
+                AuditService.HealthLogChange.HEALTH_LOG_UPDATED);
     }
 
     @Test
@@ -179,6 +181,8 @@ class MealAndActivityLogServiceTest {
         assertThat(existing.getDeletedAt()).isEqualTo(NOW);
         verify(insulinRepository).unlinkMeal(300L);
         verify(mealRepository, never()).delete(any());
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.MEAL_LOGS, 300L,
+                AuditService.HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     @Test
@@ -204,6 +208,8 @@ class MealAndActivityLogServiceTest {
         assertThat(updated.durationMinutes()).isEqualByComparingTo("45");
         assertThat(updated.intensity()).isEqualTo(ActivityIntensity.HIGH);
         assertThat(updated.source()).isEqualTo(ActivitySource.MANUAL);
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.ACTIVITY_LOGS, 400L,
+                AuditService.HealthLogChange.HEALTH_LOG_UPDATED);
     }
 
     @Test
@@ -215,6 +221,8 @@ class MealAndActivityLogServiceTest {
 
         assertThat(existing.getDeletedAt()).isEqualTo(NOW);
         verify(activityRepository, never()).delete(any());
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.ACTIVITY_LOGS, 400L,
+                AuditService.HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     @Test

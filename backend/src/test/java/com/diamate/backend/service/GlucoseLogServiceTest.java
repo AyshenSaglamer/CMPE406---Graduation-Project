@@ -253,6 +253,9 @@ class GlucoseLogServiceTest {
         // The value changed: the old alert no longer applies and the new value is checked.
         verify(alertService).dismissOpenAlerts(existing);
         verify(alertService).checkReading(existing);
+        // Who corrected which log is audited; the old and new values are not.
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.GLUCOSE_LOGS, 100L,
+                AuditService.HealthLogChange.HEALTH_LOG_UPDATED);
     }
 
     @Test
@@ -276,6 +279,8 @@ class GlucoseLogServiceTest {
         assertThat(existing.getDeletedAt()).isEqualTo(NOW);
         verify(repository, never()).delete(any());
         verify(alertService).dismissOpenAlerts(existing); // no open alert for a reading that no longer exists
+        verify(auditService).healthLogChanged(PATIENT, PATIENT, PatientDataType.GLUCOSE_LOGS, 100L,
+                AuditService.HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     @Test
@@ -283,6 +288,7 @@ class GlucoseLogServiceTest {
         assertThatThrownBy(() -> service.delete(PATIENT, OTHER_PATIENT, 100L))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(repository, never()).findByIdAndPatientId(anyLong(), anyLong());
+        verifyNoInteractions(auditService); // nothing changed, nothing to record
     }
 
     // ---------- helpers ----------

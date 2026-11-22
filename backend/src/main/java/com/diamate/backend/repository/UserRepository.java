@@ -5,9 +5,12 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
@@ -18,6 +21,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // so lookups are case-insensitive and use the index.
     @Query("select u from User u where lower(u.email) = lower(:email)")
     Optional<User> findByEmail(@Param("email") String email);
+
+    // Login only: the same lookup with SELECT ... FOR UPDATE. Parallel logins to one account wait for each other
+    // until the transaction ends, so each one sees the counter and the lock the previous one committed. Without it,
+    // a burst of parallel guesses all read "not locked" and get past the limit of 5.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where lower(u.email) = lower(:email)")
+    Optional<User> findByEmailForLogin(@Param("email") String email);
 
     @Query("select count(u) > 0 from User u where lower(u.email) = lower(:email)")
     boolean existsByEmail(@Param("email") String email);

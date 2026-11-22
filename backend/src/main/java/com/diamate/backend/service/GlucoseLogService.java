@@ -14,6 +14,7 @@ import com.diamate.backend.entity.GlucoseLog;
 import com.diamate.backend.entity.GlucoseSource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.GlucoseLogRepository;
+import com.diamate.backend.service.AuditService.HealthLogChange;
 
 /**
  * Glucose logs of one patient. The same pattern is used for insulin, meal and activity logs:
@@ -85,6 +86,8 @@ public class GlucoseLogService {
             alertService.dismissOpenAlerts(saved);
             alertService.checkReading(saved);
         }
+        access.recordChange(viewerId, patientId, PatientDataType.GLUCOSE_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_UPDATED);
         return GlucoseLogResponse.from(saved);
     }
 
@@ -93,6 +96,8 @@ public class GlucoseLogService {
         access.checkCanWrite(viewerId, patientId);
         GlucoseLog log = find(patientId, logId);
         log.markDeleted(clock.instant()); // soft delete: an UPDATE on commit, the row stays
+        access.recordChange(viewerId, patientId, PatientDataType.GLUCOSE_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_DELETED);
         alertService.dismissOpenAlerts(log);
     }
 

@@ -18,6 +18,7 @@ import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.InsulinLogRepository;
 import com.diamate.backend.repository.MealLogRepository;
+import com.diamate.backend.service.AuditService.HealthLogChange;
 
 /** Insulin logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "medications". */
 @Service
@@ -76,13 +77,18 @@ public class InsulinLogService {
         InsulinLog log = find(patientId, logId);
         checkRules(patientId, request);
         apply(log, request);
-        return InsulinLogResponse.from(repository.saveAndFlush(log));
+        InsulinLogResponse response = InsulinLogResponse.from(repository.saveAndFlush(log));
+        access.recordChange(viewerId, patientId, PatientDataType.INSULIN_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_UPDATED);
+        return response;
     }
 
     @Transactional
     public void delete(long viewerId, long patientId, long logId) {
         access.checkCanWrite(viewerId, patientId);
         find(patientId, logId).markDeleted(clock.instant());
+        access.recordChange(viewerId, patientId, PatientDataType.INSULIN_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     private InsulinLog find(long patientId, long logId) {

@@ -37,3 +37,7 @@ ssl/
 *.pfx
 backend.zip
 /.metadata/
+
+# Database package: generated data and the research dataset are shared separately (too large for Git)
+/Database/data/
+/Dataset/

@@ -4,9 +4,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -27,9 +30,9 @@ public class PatientAccessRepository {
     }
 
     /**
-     * True if the viewer is the patient, or has an ACTIVE, not expired care relationship with the patient
-     * that grants this permission (glucose, meals, medications, activity, ...; see PatientDataType).
-     * ADMIN has no implicit access (by design).
+     * True if the viewer is the patient, or has an ACTIVE, not expired care relationship with the patient that
+     * grants this permission (glucose, meals, medications, activity, ...; see PatientDataType), and both accounts are
+     * active (the patient's since V8). ADMIN has no implicit access (by design).
      */
     public boolean canAccess(long viewerId, long patientId, String permission) {
         Boolean allowed = jdbc.queryForObject(
@@ -40,6 +43,17 @@ public class PatientAccessRepository {
                         .addValue("permission", permission),
                 Boolean.class);
         return Boolean.TRUE.equals(allowed);
+    }
+
+    /** Which of these permissions the viewer has for the patient (same rule as canAccess), in one query. */
+    public Set<String> grantedPermissions(long viewerId, long patientId, Collection<String> permissions) {
+        return new HashSet<>(jdbc.queryForList(
+                "SELECT p FROM unnest(CAST(:permissions AS text[])) AS p WHERE fn_can_access(:viewer, :patient, p)",
+                new MapSqlParameterSource()
+                        .addValue("viewer", viewerId)
+                        .addValue("patient", patientId)
+                        .addValue("permissions", permissions.toArray(String[]::new)),
+                String.class));
     }
 
     public Optional<PatientOverviewRow> findOverview(long patientId) {

@@ -37,7 +37,7 @@ public class AdminController {
 
     /**
      * {"active": false} stops an account at once: no login (403) and every token it already has gets 401.
-     * {"active": true} turns it on again, e.g. approves a newly registered clinician.
+     * {"active": true} turns it on again.
      */
     @PatchMapping("/users/{userId}/status")
     public AdminUserResponse changeStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable long userId,

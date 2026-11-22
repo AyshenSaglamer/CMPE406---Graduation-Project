@@ -26,6 +26,14 @@ spring:
     deserialization:
       # 120.7 sent for a whole-number field (e.g. glucoseValue) is a 400 error instead of being silently cut to 120.
       accept-float-as-int: false
+    mapper:
+      # A value of the wrong JSON type is a 400 instead of being converted: {"active": 0} must not switch an account
+      # off, "canViewMeals": -1 must not mean true, "glucoseValue": "120" is not a number (QA scan, week 3).
+      allow-coercion-of-scalars: false
+    datatype:
+      enum:
+        # "source": 0 must not mean the first constant (MANUAL): enum values are sent by name only.
+        fail-on-numbers-for-enums: true
     read:
       # {"glucoseValue":120,"glucoseValue":600} is a 400 instead of "the last one wins": a proxy or log that reads the
       # first value and the backend that reads the second would otherwise disagree about what was sent.

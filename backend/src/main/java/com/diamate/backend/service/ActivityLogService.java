@@ -14,6 +14,7 @@ import com.diamate.backend.entity.ActivityLog;
 import com.diamate.backend.entity.ActivitySource;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.ActivityLogRepository;
+import com.diamate.backend.service.AuditService.HealthLogChange;
 
 /** Activity logs of one patient (same pattern as GlucoseLogService). Shared with the care team under "activity". */
 @Service
@@ -69,13 +70,18 @@ public class ActivityLogService {
         ActivityLog log = find(patientId, logId);
         LogRules.requireLogTime(request.startedAt(), "startedAt", clock);
         apply(log, request);
-        return ActivityLogResponse.from(repository.saveAndFlush(log));
+        ActivityLogResponse response = ActivityLogResponse.from(repository.saveAndFlush(log));
+        access.recordChange(viewerId, patientId, PatientDataType.ACTIVITY_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_UPDATED);
+        return response;
     }
 
     @Transactional
     public void delete(long viewerId, long patientId, long logId) {
         access.checkCanWrite(viewerId, patientId);
         find(patientId, logId).markDeleted(clock.instant());
+        access.recordChange(viewerId, patientId, PatientDataType.ACTIVITY_LOGS, logId,
+                HealthLogChange.HEALTH_LOG_DELETED);
     }
 
     private ActivityLog find(long patientId, long logId) {

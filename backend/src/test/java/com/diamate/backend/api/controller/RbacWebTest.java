@@ -1,5 +1,6 @@
 package com.diamate.backend.api.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -39,6 +40,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -58,6 +61,7 @@ import com.diamate.backend.security.ActiveAccountValidator;
 import com.diamate.backend.security.JwtProperties;
 import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
+import com.diamate.backend.security.RoleAccessDeniedEvent;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AlertService;
 import com.diamate.backend.service.PatientService;
@@ -73,6 +77,7 @@ import com.diamate.backend.service.UserService;
         // Fixed, test-only key (base64 of "test-only-jwt-key-not-a-real-secret-0123456789"); the real one lives in .env.
         properties = "diamate.jwt.secret=dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==")
 @Import({ SecurityConfig.class, ProblemDetailSecurityHandler.class, ActiveAccountValidator.class })
+@RecordApplicationEvents
 class RbacWebTest {
 
     private static final long PATIENT_ID = 5;
@@ -88,6 +93,9 @@ class RbacWebTest {
 
     @Autowired
     private JwtProperties jwtProperties;
+
+    @Autowired
+    private ApplicationEvents events;
 
     @MockitoBean
     private UserService userService;
@@ -251,6 +259,22 @@ class RbacWebTest {
     // ---------- /admin/users: ADMIN only ----------
 
     @Test
+    void a403IsReportedForTheAuditLogWithWhoMethodAndPath() throws Exception {
+        as(get("/api/v1/admin/users?page=1"), PATIENT_ID, Role.PATIENT).andExpect(status().isForbidden());
+
+        // The path is stored without the query string.
+        assertThat(events.stream(RoleAccessDeniedEvent.class))
+                .containsExactly(new RoleAccessDeniedEvent(PATIENT_ID, "GET", "/api/v1/admin/users"));
+    }
+
+    @Test
+    void a401IsNotReportedAsARoleRefusal() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users")).andExpect(status().isUnauthorized());
+
+        assertThat(events.stream(RoleAccessDeniedEvent.class)).isEmpty();
+    }
+
+    @Test
     void nonAdminRolesGet403OnAdminEndpoints() throws Exception {
         for (long id : new long[] { PATIENT_ID, CLINICIAN_ID, CAREGIVER_ID }) {
             as(get("/api/v1/admin/users"), id, roleOf(id))
@@ -345,7 +369,7 @@ class RbacWebTest {
     @Test
     void overviewIsReturnedWhenTheServiceAllowsIt() throws Exception {
         when(patientService.getOverview(CLINICIAN_ID, PATIENT_ID)).thenReturn(new PatientOverviewResponse(
-                PATIENT_ID, "Demo Patient", "01", "MALE", 34, "TYPE_1", "PUMP", 70, 180, 96, Instant.now(), 1));
+                PATIENT_ID, "Demo Patient", "01", "MALE", 34, "TYPE_1", "PUMP", 70, 180, 96, Instant.now(), 1L));
 
         as(get("/api/v1/patients/{id}/overview", PATIENT_ID), CLINICIAN_ID, Role.CLINICIAN)
                 .andExpect(status().isOk())

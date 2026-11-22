@@ -6,9 +6,15 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -59,6 +65,53 @@ class AiClientTest {
         server.expect(requestTo(BASE_URL + "/api/v1/nlp/parse-multiple")).andRespond(withServerError());
 
         assertThatThrownBy(() -> new AiClient(builder.build()).parseMultiple("glucose 130"))
+                .isInstanceOf(AiServiceException.class)
+                .satisfies(e -> assertThat(((AiServiceException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
+
+    /** Field names and formats of ai-service's BackendHistoryRequest (models/integration_schemas.py). */
+    @Test
+    void patientSummarySendsTheFieldsTheAiServiceExpects() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + "/api/v1/integration/patient-summary"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"glucoseLogs":[{"id":1,"patientId":5,"glucoseValue":140,
+                                         "measurementTime":"2026-10-05T08:00:00Z",
+                                         "clientUuid":"8a6e0804-2bd0-4672-b79d-d97027f9071a"}],
+                         "mealLogs":[{"id":10,"patientId":5,"eatenAt":"2026-10-05T07:30:00Z","carbsG":45.5,
+                                      "clientUuid":null}],
+                         "activityLogs":[{"id":20,"patientId":5,"startedAt":"2026-10-05T09:00:00Z",
+                                          "durationMinutes":30,"clientUuid":null}],
+                         "rangeLow":70.0,"rangeHigh":180.0}
+                        """, true))
+                .andRespond(withSuccess("""
+                        {"status":"SUCCESS","summary":{"average_glucose":140.0}}
+                        """, MediaType.APPLICATION_JSON));
+
+        Map<String, Object> summary = new AiClient(builder.build()).patientSummary(new FastApiPatientSummaryRequest(
+                List.of(new FastApiPatientSummaryRequest.Glucose(1, 5, 140, Instant.parse("2026-10-05T08:00:00Z"),
+                        UUID.fromString("8a6e0804-2bd0-4672-b79d-d97027f9071a"))),
+                List.of(new FastApiPatientSummaryRequest.Meal(10, 5, Instant.parse("2026-10-05T07:30:00Z"),
+                        new BigDecimal("45.5"), null)),
+                List.of(new FastApiPatientSummaryRequest.Activity(20, 5, Instant.parse("2026-10-05T09:00:00Z"),
+                        new BigDecimal("30"), null)),
+                70, 180));
+
+        assertThat(summary).containsEntry("status", "SUCCESS");
+        server.verify();
+    }
+
+    @Test
+    void patientSummaryRejectedByTheAiServiceIsA502() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + "/api/v1/integration/patient-summary"))
+                .andRespond(withStatus(HttpStatus.valueOf(422))); // e.g. a meal without carbsG
+
+        assertThatThrownBy(() -> new AiClient(builder.build())
+                .patientSummary(new FastApiPatientSummaryRequest(List.of(), List.of(), List.of(), 70, 180)))
                 .isInstanceOf(AiServiceException.class)
                 .satisfies(e -> assertThat(((AiServiceException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }

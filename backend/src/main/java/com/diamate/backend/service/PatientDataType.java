@@ -12,7 +12,8 @@ public enum PatientDataType {
     INSULIN_LOGS("medications"), // there is no separate insulin flag: insulin is shared as "medications"
     MEAL_LOGS("meals"),
     ACTIVITY_LOGS("activity"),
-    ALERTS("alerts"); // care_relationships.can_receive_alerts
+    ALERTS("alerts"), // care_relationships.can_receive_alerts
+    REPORTS("reports"); // care_relationships.can_view_reports: the AI summary (time in range, patterns, predictions)
 
     private final String permission;
 

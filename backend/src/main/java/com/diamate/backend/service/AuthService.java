@@ -40,8 +40,6 @@ public class AuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
 
-    static final String CLINICIAN_NOT_APPROVED = "This doctor account is waiting for approval by an administrator";
-
     // Younger users not by self-registration.
     static final int MIN_SELF_REGISTRATION_AGE = 16;
 
@@ -102,11 +100,8 @@ public class AuthService {
 
         User user = new User(request.firstName().trim(), request.lastName().trim(), request.dateOfBirth(), request.gender(),
         		request.role(), email, passwordEncoder.encode(request.password()));
-        // Anyone can choose CLINICIAN on the registration form, so a clinician starts inactive and an ADMIN approves
-        // the account (PATCH /admin/users/{id}/status) before it can log in. Patients and caregivers start active.
-        if (request.role() == Role.CLINICIAN) {
-            user.changeActive(false);
-        }
+        // Every role starts active. (A clinician used to wait for an ADMIN's approval; that step was dropped because
+        // the app has no admin screen. An ADMIN can still stop an account with PATCH /admin/users/{id}/status.)
         User saved;
         try {
         	/**
@@ -134,6 +129,7 @@ public class AuthService {
         if (saved.getRole() == Role.CLINICIAN) {
             clinicianProfileRepository.save(new ClinicianProfile(saved.getId()));
         }
+        auditService.registered(saved.getId(), saved.getRole().name(), saved.isActive());
         return UserResponse.from(saved);
     }
 
@@ -146,7 +142,8 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         Instant now = clock.instant();
         
-        Optional<User> found = userRepository.findByEmail(normalizeEmail(request.email()));
+        // Row lock until the end of this transaction: the lock check, the counter and the reset are one step per account.
+        Optional<User> found = userRepository.findByEmailForLogin(normalizeEmail(request.email()));
         if (found.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
             auditService.loginFailed(null, LoginFailure.UNKNOWN_EMAIL);
@@ -173,10 +170,7 @@ public class AuthService {
         // Checked only after the password, so the account state is not revealed to someone without the password.
         if (!user.isActive()) {
             auditService.loginFailed(user.getId(), LoginFailure.ACCOUNT_DISABLED);
-            // A clinician who has never logged in is (almost always) one who is still waiting for approval.
-            throw user.getRole() == Role.CLINICIAN && user.getLastLoginAt() == null
-                    ? new AccountDisabledException(CLINICIAN_NOT_APPROVED)
-                    : new AccountDisabledException();
+            throw new AccountDisabledException();
         }
 
         // The entity is managed inside the transaction: these changes are written with an UPDATE on commit.
