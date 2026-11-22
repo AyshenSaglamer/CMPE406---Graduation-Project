@@ -13,7 +13,8 @@ public enum PatientDataType {
     MEAL_LOGS("meals"),
     ACTIVITY_LOGS("activity"),
     ALERTS("alerts"), // care_relationships.can_receive_alerts
-    REPORTS("reports"); // care_relationships.can_view_reports: the AI summary (time in range, patterns, predictions)
+    REPORTS("reports"), // care_relationships.can_view_reports: the AI summary (time in range, patterns, predictions)
+    REMINDERS("medications"); // the medication plan and its Taken / Missed answers, shared like the insulin logs
 
     private final String permission;
 

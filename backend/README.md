@@ -167,6 +167,13 @@ docker run --env-file .env -p 8080:8080 diamate-backend
 | GET | `/api/v1/patients/{patientId}/alerts?status=&from=&to=&page=&size=` | hasta ya da uyarı izni olan doktor/bakıcı | Uyarılar, yeniden eskiye, sayfalı (bkz. [Uyarılar](#uyarılar)) |
 | GET | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | Tek uyarı |
 | PATCH | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | `{"status":"ACKNOWLEDGED"}` ya da `{"status":"RESOLVED"}` |
+| GET | `/api/v1/patients/{patientId}/reminders` | hasta ya da `medications` izni olan doktor/bakıcı | Hatırlatıcılar (ilaç, glukoz ölçümü, öğün, randevu), günün saatine göre sıralı. Sayfasız (hasta başına en fazla 50) |
+| POST | `/api/v1/patients/{patientId}/reminders` | yalnızca hastanın kendisi | `{reminderType?, medicationName, dosage?, message?, scheduledTime, daysOfWeek, timezone?, active?}` → 201 + `Location`. `scheduledTime` `"08:00"` (`timezone`'daki yerel saat), `daysOfWeek` `["MONDAY","FRIDAY"]`, `timezone` IANA adı ya da `"+03:00"` (varsayılan `UTC`). `reminderType` varsayılan `MEDICATION`; o zaman `medicationName` zorunlu (**400** `errors.medicationName`). 50 hatırlatıcıdan sonra **409**. Bildirimi telefon kendisi kurar; backend tanımı ve cevapları saklar |
+| GET | `/api/v1/patients/{patientId}/reminders/{reminderId}` | hasta ya da `medications` izni olan doktor/bakıcı | Tek hatırlatıcı; `missedCount` ve `lastTriggeredAt` dahil |
+| PUT | `/api/v1/patients/{patientId}/reminders/{reminderId}` | yalnızca hastanın kendisi | Hatırlatıcının tamamını değiştirir; `active:false` silmeden durdurur |
+| DELETE | `/api/v1/patients/{patientId}/reminders/{reminderId}` | yalnızca hastanın kendisi | 204; hatırlatıcının geçmiş cevapları da silinir (`ON DELETE CASCADE`) |
+| POST | `/api/v1/patients/{patientId}/reminders/{reminderId}/events` | yalnızca hastanın kendisi | Bir hatırlatma anına hastanın cevabı: `{"scheduledFor":"2026-11-23T05:00:00Z","status":"TAKEN"}`; `status` `TAKEN`, `SKIPPED` ya da `MISSED` (diğerleri **400**). Yeni an → 201; aynı `scheduledFor` tekrar gelirse durumu değişir → 200 (ör. önce `MISSED`, sonra geç alındı `TAKEN`). `MISSED` her an için bir kez `missedCount`'a sayılır. En fazla 1 gün ilerisi kabul edilir. `v_reminder_adherence_30d` bu satırları sayar *(Nilsu)* |
+| GET | `/api/v1/patients/{patientId}/reminder-events?from=&to=&page=&size=` | hasta ya da `medications` izni olan doktor/bakıcı | Tüm hatırlatıcıların cevapları, yeniden eskiye, sayfalı; varsayılan son 14 gün (ilaç uyumu geçmişi) |
 | POST | `/api/v1/ai/parse` | `PATIENT` | `{text}` → yapay zekâ servisinin anladığı kayıtlar. **Hiçbir şey kaydetmez** (bkz. aşağıda) |
 | POST | `/api/v1/ai/food` | `PATIENT` | `multipart/form-data`, alan `image`: JPG, PNG ya da WEBP yemek fotoğrafı, en fazla **5 MB** ve 50 megapiksel. Modelin en iyi 3 tahminini yaklaşık besin değerleriyle döner: `{model, lowConfidence, requiresConfirmation, predictions: [{food, displayName, confidence, foodCatalogId, kcalPer100g, carbsGPer100g, typicalServingG, carbsGPerServing, nutritionVerified}], note}`. **Hiçbir şey kaydetmez, fotoğrafı saklamaz.** Hatalı dosya → 400 `errors.image`, 5 MB'tan büyük → 413, servisin kullanamadığı görüntü → 422, servis kapalı → 503 |
 | POST | `/api/v1/ai/voice` | `PATIENT` | `multipart/form-data`, alan `audio`: WAV, MP3, M4A, WEBM ya da OGG, en fazla **10 MB**. Konuşmayı metne çevirir (Whisper) ve `/ai/parse` gibi anlar: `{status, transcript, resultCount, results, message}`. **Hiçbir şey kaydetmez**; kayıt yine `ai-entries` ile. Hatalı dosya → 400 `errors.audio`, 10 MB'tan büyük → 413, JSON gövde → 415, anlaşılmayan konuşma → 422 |
@@ -187,8 +194,8 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
 | Endpoint'ler | PATIENT | CLINICIAN | CAREGIVER | ADMIN |
 |---|---|---|---|---|
 | `register`, `login`, `health` (herkese açık) | ✓ | ✓ | ✓ | ✓ |
-| `GET /users/me`, `GET /patients/{id}/overview`, kayıtların `GET`'leri, `GET`/`PATCH …/alerts`, `GET /ai/patients/{id}/summary` | ✓ | ✓ | ✓ | ✓ (veri yok → 404) |
-| Kayıtların `POST`/`PUT`/`DELETE`'i, `POST /ai/parse`, `POST …/ai-entries` | ✓ | 403 | 403 | 403 |
+| `GET /users/me`, `GET /patients/{id}/overview`, kayıtların `GET`'leri, `GET`/`PATCH …/alerts`, `GET …/reminders` ve `…/reminder-events`, `GET /ai/patients/{id}/summary` | ✓ | ✓ | ✓ | ✓ (veri yok → 404) |
+| Kayıtların `POST`/`PUT`/`DELETE`'i, hatırlatıcıların `POST`/`PUT`/`DELETE`'i ve `POST …/reminders/{id}/events`, `POST /ai/parse`, `POST …/ai-entries` | ✓ | 403 | 403 | 403 |
 | `GET /care-team/patients`, `GET /care-team/alerts`, `POST /care-relationships/{id}/accept` ve `/decline` | 403 | ✓ | ✓ | 403 |
 | `POST /care-relationships` (davet), `PATCH /care-relationships/{id}` (izinler) | ✓ | 403 | 403 | 403 |
 | `GET /care-relationships`, `DELETE /care-relationships/{id}` | ✓ | ✓ | ✓ | ✓ (taraf değilse 404 / boş liste) |
