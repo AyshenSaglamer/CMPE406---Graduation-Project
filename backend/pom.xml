@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- Spring Boot's tested versions of all Spring/third-party libraries and plugin defaults -->
+    <!--
+        Spring Boot's tested versions of all Spring/third-party
+        libraries and plugin defaults
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -16,6 +21,7 @@
     <artifactId>diamate</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
+
     <name>DiaMate</name>
 
     <properties>
@@ -23,76 +29,136 @@
     </properties>
 
     <dependencies>
-        <!-- Spring MVC for REST controllers, Jackson for JSON, embedded Tomcat -->
+
+        <!--
+            Spring MVC for REST controllers,
+            Jackson for JSON,
+            embedded Tomcat
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
 
-        <!-- JPA + Hibernate, Spring Data repositories, transactions, HikariCP connection pool -->
+        <!--
+            JPA + Hibernate,
+            Spring Data repositories,
+            transactions,
+            HikariCP connection pool
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- PostgreSQL JDBC driver: needed only at runtime, our code talks to JPA -->
+        <!--
+            PostgreSQL JDBC driver:
+            needed only at runtime,
+            our code talks to JPA
+        -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Versioned database migrations (src/main/resources/db/migration), applied on startup -->
+        <!--
+            Versioned database migrations
+            (src/main/resources/db/migration),
+            applied on startup
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- /actuator/health with a live database connectivity check -->
+        <!--
+            /actuator/health with a live
+            database connectivity check
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Bean Validation (@NotBlank, @Email, @Size, @Valid) for request DTOs -->
+        <!--
+            Reactive Streams API.
+
+            Required by Spring's multipart HTTP handling used
+            when forwarding voice/audio files from Spring Boot
+            to the FastAPI AI service.
+        -->
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams</artifactId>
+            <version>1.0.4</version>
+        </dependency>
+
+        <!--
+            Bean Validation
+            (@NotBlank, @Email, @Size, @Valid)
+            for request DTOs
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- Spring Security + JWT support (issuing and validating tokens with Nimbus JOSE) -->
+        <!--
+            Spring Security + JWT support
+            (issuing and validating tokens with Nimbus JOSE)
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
-        <!-- Tests: JUnit 5, Mockito, AssertJ, MockMvc -->
+        <!--
+            Tests:
+            JUnit 5,
+            Mockito,
+            AssertJ,
+            MockMvc
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
 
-        <!-- Tests: security helpers (mock users, JWTs) for MockMvc -->
+        <!--
+            Tests:
+            security helpers
+            (mock users, JWTs)
+            for MockMvc
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Enables ./mvnw spring-boot:run and builds an executable jar -->
+
+            <!--
+                Enables ./mvnw spring-boot:run
+                and builds an executable jar
+            -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+
         </plugins>
     </build>
+
 </project>

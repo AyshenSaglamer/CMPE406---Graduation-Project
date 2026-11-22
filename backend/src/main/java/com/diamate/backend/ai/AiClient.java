@@ -1,26 +1,33 @@
 package com.diamate.backend.ai;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.diamate.backend.exception.AiServiceException;
 
 /**
- * Calls the team's FastAPI AI service.
+ * Client responsible for communication with the DiaMate
+ * FastAPI AI service.
  *
  * Spring Boot remains responsible for authorization and
- * database access. FastAPI receives only the data required
- * for AI analysis.
+ * database access.
+ *
+ * FastAPI receives only the information required for
+ * AI-related processing.
  */
 @Component
 public class AiClient {
@@ -36,9 +43,20 @@ public class AiClient {
     }
 
     /**
-     * Splits a sentence into structured health-log entries.
+     * Sends natural-language health logging text to
+     * FastAPI's multi-intent NLP parser.
+     *
+     * Example:
+     *
+     * "My glucose is 145 and I walked for 30 minutes."
+     *
+     * may produce:
+     *
+     * LOG_GLUCOSE -> 145 mg/dL
+     * LOG_ACTIVITY -> 30 minutes
      */
-    public FastApiParseResult parseMultiple(String text) {
+    public FastApiParseResult parseMultiple(
+            String text) {
 
         FastApiParseResult result;
 
@@ -64,7 +82,9 @@ public class AiClient {
             throw AiServiceException.badResponse(e);
         }
 
-        if (result == null || result.status() == null) {
+        if (result == null
+                || result.status() == null) {
+
             throw AiServiceException.badResponse(null);
         }
 
@@ -72,8 +92,127 @@ public class AiClient {
     }
 
     /**
-     * Sends authorized patient health-log data to the
-     * FastAPI patient-summary integration endpoint.
+     * Sends a voice recording to FastAPI.
+     *
+     * FastAPI performs:
+     *
+     * audio
+     *   ->
+     * speech-to-text
+     *   ->
+     * transcript
+     *   ->
+     * NLP parser
+     *   ->
+     * structured health-log intents
+     *
+     * Example transcript:
+     *
+     * "My glucose is 145 and I walked for 30 minutes."
+     *
+     * Example structured result:
+     *
+     * LOG_GLUCOSE -> 145 mg/dL
+     * LOG_ACTIVITY -> 30 minutes
+     */
+    public Map<String, Object> parseVoice(
+            MultipartFile audio) {
+
+        if (audio == null || audio.isEmpty()) {
+
+            throw AiServiceException.unprocessable(
+                    "Audio file is required.",
+                    null);
+        }
+
+        Map<String, Object> result;
+
+        try {
+
+            MultipartBodyBuilder builder =
+                    new MultipartBodyBuilder();
+
+            ByteArrayResource audioResource =
+                    new ByteArrayResource(
+                            audio.getBytes()) {
+
+                        @Override
+                        public String getFilename() {
+
+                            String filename =
+                                    audio.getOriginalFilename();
+
+                            if (filename == null
+                                    || filename.isBlank()) {
+
+                                return "audio.m4a";
+                            }
+
+                            return filename;
+                        }
+                    };
+
+            MediaType audioMediaType =
+                    resolveAudioMediaType(
+                            audio.getOriginalFilename(),
+                            audio.getContentType());
+
+            builder.part(
+                            "audio",
+                            audioResource)
+                    .contentType(audioMediaType);
+
+            result = restClient.post()
+                    .uri("/api/v1/voice/parse")
+                    .contentType(
+                            MediaType.MULTIPART_FORM_DATA)
+                    .body(builder.build())
+                    .retrieve()
+                    .body(
+                            new ParameterizedTypeReference<
+                                    Map<String, Object>>() {
+                            });
+
+        } catch (ResourceAccessException e) {
+
+            /*
+             * FastAPI could not be reached.
+             */
+            throw AiServiceException.unavailable(e);
+
+        } catch (RestClientResponseException e) {
+
+            /*
+             * FastAPI returned an HTTP error.
+             */
+            throw translateFastApiError(e);
+
+        } catch (IOException e) {
+
+            /*
+             * Spring could not read the uploaded audio file.
+             */
+            throw AiServiceException.badResponse(e);
+
+        } catch (RestClientException e) {
+
+            /*
+             * Unexpected communication/response problem.
+             */
+            throw AiServiceException.badResponse(e);
+        }
+
+        if (result == null || result.isEmpty()) {
+
+            throw AiServiceException.badResponse(null);
+        }
+
+        return result;
+    }
+
+    /**
+     * Sends authorized patient health history to FastAPI
+     * for summary generation.
      */
     public Map<String, Object> patientSummary(
             FastApiPatientSummaryRequest request) {
@@ -84,11 +223,13 @@ public class AiClient {
     }
 
     /**
-     * Sends authorized patient health-log data to the
-     * FastAPI personalized anomaly integration endpoint.
+     * Sends authorized patient health history to FastAPI
+     * for personalized anomaly analysis.
      *
-     * FastAPI evaluates the latest glucose observation
-     * relative to the patient's own historical pattern.
+     * The result describes statistical unusualness relative
+     * to the patient's own historical pattern.
+     *
+     * It does not represent diagnosis or medical advice.
      */
     public Map<String, Object> patientAnomaly(
             FastApiPatientSummaryRequest request) {
@@ -99,12 +240,8 @@ public class AiClient {
     }
 
     /**
-     * Sends authorized patient health-log data to the
-     * FastAPI data-quality integration endpoint.
-     *
-     * FastAPI evaluates the aggregated patient history
-     * for missing values, duplicate records, invalid
-     * timestamps, and large logging gaps.
+     * Sends authorized patient health history to FastAPI
+     * for engineering data-quality analysis.
      */
     public Map<String, Object> patientDataQuality(
             FastApiPatientSummaryRequest request) {
@@ -115,16 +252,13 @@ public class AiClient {
     }
 
     /**
-     * Sends authorized patient health-log data to the
-     * FastAPI model-input drift integration endpoint.
+     * Sends authorized patient health history to FastAPI
+     * for model-input drift monitoring.
      *
-     * FastAPI compares an older reference period with
-     * newer patient-history records to identify statistical
-     * changes in model-input features.
+     * Drift is an engineering model-monitoring signal.
      *
-     * Drift is an engineering model-monitoring signal only.
-     * It does not represent diagnosis, clinical deterioration,
-     * medical risk, treatment advice, or medication guidance.
+     * It does not represent clinical deterioration,
+     * diagnosis, treatment advice, or medication guidance.
      */
     public Map<String, Object> patientDrift(
             FastApiPatientSummaryRequest request) {
@@ -135,22 +269,23 @@ public class AiClient {
     }
 
     /**
-     * Sends authorized patient health-log data to the
-     * FastAPI XGBoost prediction integration endpoint.
+     * Sends authorized patient health history to FastAPI
+     * for the experimental XGBoost glucose-trend
+     * classification pipeline.
      *
-     * FastAPI converts the health logs into the shared
-     * patient-history representation and applies the
-     * experimental XGBoost model to classify the next
-     * glucose trend.
+     * The response may include:
      *
-     * The response may include class probabilities,
-     * confidence, uncertainty, and explainable-AI
-     * information.
+     * - predicted trend
+     * - class probabilities
+     * - confidence
+     * - uncertainty
+     * - feature importance
+     * - SHAP explanation
      *
-     * These outputs describe experimental model behaviour
-     * only. They do not represent clinical probability,
-     * diagnosis, medical risk, treatment advice, or
-     * medication guidance.
+     * These outputs describe experimental model behaviour.
+     *
+     * They do not represent clinical probability,
+     * diagnosis, treatment advice, or medication guidance.
      */
     public Map<String, Object> patientPrediction(
             FastApiPatientSummaryRequest request) {
@@ -161,8 +296,8 @@ public class AiClient {
     }
 
     /**
-     * Shared helper for FastAPI endpoints that return
-     * JSON objects.
+     * Shared helper for FastAPI endpoints that accept
+     * JSON requests and return JSON objects.
      */
     private Map<String, Object> postForMap(
             String uri,
@@ -192,24 +327,111 @@ public class AiClient {
         } catch (RestClientResponseException e) {
 
             /*
-             * FastAPI was reached but returned an HTTP
-             * error such as 422 or 503.
+             * FastAPI returned an HTTP error.
              */
             throw translateFastApiError(e);
 
         } catch (RestClientException e) {
 
             /*
-             * Unexpected communication or response problem.
+             * Unexpected communication/response problem.
              */
             throw AiServiceException.badResponse(e);
         }
 
         if (result == null || result.isEmpty()) {
+
             throw AiServiceException.badResponse(null);
         }
 
         return result;
+    }
+
+    /**
+     * Determines the audio MIME type that should be sent
+     * to FastAPI.
+     *
+     * Why this exists:
+     *
+     * Some browsers/mobile clients upload an M4A recording
+     * as application/octet-stream.
+     *
+     * FastAPI expects an actual supported audio MIME type.
+     *
+     * Therefore we normalize common formats here.
+     */
+    private MediaType resolveAudioMediaType(
+            String filename,
+            String contentType) {
+
+        String normalizedFilename =
+                filename == null
+                        ? ""
+                        : filename.toLowerCase();
+
+        /*
+         * Prefer the filename for known formats because
+         * mobile clients sometimes report an incorrect
+         * generic content type.
+         */
+
+        if (normalizedFilename.endsWith(".m4a")) {
+
+            return MediaType.parseMediaType(
+                    "audio/mp4");
+        }
+
+        if (normalizedFilename.endsWith(".mp3")) {
+
+            return MediaType.parseMediaType(
+                    "audio/mpeg");
+        }
+
+        if (normalizedFilename.endsWith(".wav")) {
+
+            return MediaType.parseMediaType(
+                    "audio/wav");
+        }
+
+        if (normalizedFilename.endsWith(".webm")) {
+
+            return MediaType.parseMediaType(
+                    "audio/webm");
+        }
+
+        if (normalizedFilename.endsWith(".ogg")) {
+
+            return MediaType.parseMediaType(
+                    "audio/ogg");
+        }
+
+        /*
+         * If the client already supplied a real audio MIME
+         * type, preserve it.
+         */
+        if (contentType != null
+                && !contentType.isBlank()
+                && contentType.startsWith("audio/")) {
+
+            try {
+
+                return MediaType.parseMediaType(
+                        contentType);
+
+            } catch (IllegalArgumentException ignored) {
+
+                /*
+                 * Fall through to the safe default below.
+                 */
+            }
+        }
+
+        /*
+         * Safe fallback for the M4A format used by our
+         * current DiaMate mobile voice test.
+         */
+        return MediaType.parseMediaType(
+                "audio/mp4");
     }
 
     /**
@@ -223,16 +445,21 @@ public class AiClient {
                 exception.getStatusCode();
 
         /*
-         * 422:
-         * FastAPI understood the request, but the supplied
-         * patient data is insufficient or invalid for the
-         * requested analysis.
+         * 422 means FastAPI understood the request but
+         * could not process the supplied data.
+         *
+         * Examples:
+         *
+         * - insufficient glucose history
+         * - invalid AI request
+         * - invalid/unsupported audio input
          */
         if (status.value() == 422) {
 
             String detail =
                     extractFastApiDetail(
-                            exception.getResponseBodyAsString());
+                            exception
+                                    .getResponseBodyAsString());
 
             return AiServiceException.unprocessable(
                     detail,
@@ -240,9 +467,8 @@ public class AiClient {
         }
 
         /*
-         * 503:
-         * FastAPI or a required AI component is temporarily
-         * unavailable.
+         * 503 means FastAPI or a required AI component
+         * is temporarily unavailable.
          */
         if (status.value() == 503) {
 
@@ -251,21 +477,25 @@ public class AiClient {
         }
 
         /*
-         * Any other FastAPI HTTP error is unexpected from
-         * the integration perspective.
+         * Any other FastAPI HTTP error is considered an
+         * unexpected AI-service response.
          */
         return AiServiceException.badResponse(
                 exception);
     }
 
     /**
-     * Extracts FastAPI's normal textual error detail:
+     * Extracts FastAPI's normal textual error detail.
      *
-     * {"detail":"At least three glucose readings are required..."}
+     * Example:
      *
-     * This intentionally handles only textual detail messages.
-     * If FastAPI returns a different structure, Spring falls
-     * back to the generic safe 422 message.
+     * {
+     *   "detail":
+     *   "At least 10 records are required."
+     * }
+     *
+     * If FastAPI returns another structure, Spring uses
+     * the generic safe error message instead.
      */
     private String extractFastApiDetail(
             String responseBody) {
@@ -281,6 +511,7 @@ public class AiClient {
                         responseBody);
 
         if (!matcher.find()) {
+
             return null;
         }
 
@@ -289,8 +520,8 @@ public class AiClient {
     }
 
     /**
-     * Decodes the small set of JSON escape sequences that
-     * may appear inside FastAPI's textual detail message.
+     * Decodes common JSON escape sequences from FastAPI's
+     * textual detail message.
      */
     private String unescapeJsonString(
             String value) {

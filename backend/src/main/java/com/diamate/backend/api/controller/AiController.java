@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -13,7 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.diamate.backend.api.dto.request.AiParseRequest;
 import com.diamate.backend.api.dto.response.AiParseResponse;
@@ -41,6 +44,34 @@ public class AiController {
             @Valid @RequestBody AiParseRequest request) {
 
         return aiService.parse(request.text());
+    }
+
+    /**
+     * Parses a patient voice health-log entry.
+     *
+     * The authenticated patient uploads an audio recording
+     * to Spring Boot as multipart/form-data.
+     *
+     * Spring forwards the audio to the FastAPI AI service,
+     * where speech-to-text converts the recording into a
+     * transcript. The transcript is then processed by the
+     * existing NLP pipeline.
+     *
+     * Example:
+     *
+     * "My glucose is 145 and I walked for 30 minutes."
+     *
+     * may produce structured LOG_GLUCOSE and LOG_ACTIVITY
+     * results.
+     */
+    @PostMapping(
+            value = "/voice",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('PATIENT')")
+    public Map<String, Object> parseVoice(
+            @RequestPart("audio") MultipartFile audio) {
+
+        return aiService.parseVoice(audio);
     }
 
     /**

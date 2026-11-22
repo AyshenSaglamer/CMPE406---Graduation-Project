@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.diamate.backend.ai.AiClient;
 import com.diamate.backend.ai.FastApiParseResult;
@@ -72,6 +73,19 @@ public class AiService {
                 entries.size(),
                 entries,
                 result.message());
+    }
+
+    /**
+     * Parses a voice health-log entry using the FastAPI
+     * speech-to-text and NLP pipeline.
+     *
+     * FastAPI converts the uploaded audio to text and then
+     * processes the transcript with the existing NLP parser.
+     */
+    public Map<String, Object> parseVoice(
+            MultipartFile audio) {
+
+        return aiClient.parseVoice(audio);
     }
 
     /**
