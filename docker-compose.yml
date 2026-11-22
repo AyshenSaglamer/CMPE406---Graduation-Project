@@ -18,10 +18,20 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: diamate
       JWT_SECRET: ${JWT_SECRET}
+      AI_SERVICE_BASE_URL: http://ai-service:8000
     expose:
       - "8080"
     depends_on:
       - database
+      - ai-service
+
+  ai-service:
+    build:
+      context: ./ai-service
+    environment:
+      WHISPER_MODEL_SIZE: base
+    expose:
+      - "8000"
 
   database:
     image: postgres:17
