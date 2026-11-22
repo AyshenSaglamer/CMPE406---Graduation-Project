@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Voice logging in the AI assistant records a short audio clip. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="gradia"
         android:name="${applicationName}"

@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'data/activity_store.dart';
+import 'data/glucose_store.dart';
+import 'data/insulin_store.dart';
+import 'data/meal_store.dart';
+import 'data/offline_queue.dart';
 import 'models/app_user.dart';
+import 'models/user_role.dart';
 import 'navigation/session_navigation.dart';
 import 'screens/role_selection_screen.dart';
 import 'services/api_client.dart';
+import 'services/api_exception.dart';
 import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
 
@@ -13,6 +20,27 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final user = await authService.restoreSession();
+
+  // Logs made without internet: once sent, reload the lists so they show.
+  await offlineQueue.restore();
+  offlineQueue.onSynced = () async {
+    try {
+      await Future.wait([
+        glucoseStore.load(),
+        insulinStore.load(),
+        mealStore.load(),
+        activityStore.load(),
+      ]);
+    } on ApiException {
+      // Shown on the next successful load.
+    }
+  };
+  offlineQueue.startAutoSync(() {
+    final current = authService.currentUser;
+    return current != null && current.role == UserRole.patient
+        ? current.id
+        : null;
+  });
 
   ApiClient.onUnauthorized = () {
     navigatorKey.currentState?.pushAndRemoveUntil(

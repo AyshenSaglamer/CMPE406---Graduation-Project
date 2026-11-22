@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../data/alert_store.dart';
-import '../models/family_member.dart';
+import '../data/care_patients_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
-import 'add_family_member_screen.dart';
+import '../utils/form_helpers.dart';
 import 'alerts_screen.dart';
+import 'care_invitations_screen.dart';
+import 'care_patient_detail_screen.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
-  const CaregiverDashboardScreen({super.key});
+  const CaregiverDashboardScreen({super.key, this.patientsStore});
+
+  /// Defaults to [carePatientsStore]; tests pass one with a fake backend.
+  final CarePatientsStore? patientsStore;
 
   @override
   State<CaregiverDashboardScreen> createState() =>
@@ -17,7 +22,11 @@ class CaregiverDashboardScreen extends StatefulWidget {
 
 class _CaregiverDashboardScreenState
     extends State<CaregiverDashboardScreen> {
-  final List<FamilyMember> familyMembers = [];
+  /// The people who invited this caregiver and were accepted
+  /// (GET /care-team/patients + each one's overview).
+  List<CarePatient> familyMembers = [];
+  bool familyLoading = true;
+  String? familyError;
 
   int selectedIndex = 0;
 
@@ -26,11 +35,46 @@ class _CaregiverDashboardScreenState
   int? openAlertCount;
   String? alertCountError;
 
+  CarePatientsStore get _patientsStore =>
+      widget.patientsStore ?? carePatientsStore;
+
   @override
   void initState() {
     super.initState();
+    _loadFamily();
     _loadAlertCount();
   }
+
+  Future<void> _loadFamily() async {
+    setState(() {
+      familyLoading = true;
+      familyError = null;
+    });
+
+    try {
+      final result = await _patientsStore.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        familyMembers = result;
+        familyLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        familyLoading = false;
+        familyError = e.message;
+      });
+    }
+  }
+
+  Future<void> _refresh() => Future.wait([_loadFamily(), _loadAlertCount()]);
 
   Future<void> _loadAlertCount() async {
     setState(() {
@@ -72,21 +116,21 @@ class _CaregiverDashboardScreenState
   }
 
   // ------------------------------------------------------------
-  // ADD FAMILY MEMBER
+  // INVITATIONS
+  // A family member invites the caregiver from their own app
+  // (More -> Care Team); the caregiver accepts here.
   // ------------------------------------------------------------
 
-  Future<void> _addFamilyMember() async {
-    final member = await Navigator.push<FamilyMember>(
+  Future<void> _openInvitations() async {
+    final accepted = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => const AddFamilyMemberScreen(),
+        builder: (_) => const CareInvitationsScreen(),
       ),
     );
 
-    if (member != null) {
-      setState(() {
-        familyMembers.add(member);
-      });
+    if (accepted == true && mounted) {
+      _loadFamily();
     }
   }
 
@@ -94,10 +138,60 @@ class _CaregiverDashboardScreenState
   // OPEN FAMILY MEMBER
   // ------------------------------------------------------------
 
-  void _openFamilyMember(FamilyMember member) {
-    _showFeatureMessage(
-      '${member.name} profile will open here.',
+  void _openFamilyMember(CarePatient member) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CarePatientDetailScreen(patient: member),
+      ),
     );
+  }
+
+  /// The family cards, or what to show while loading, after an error or
+  /// when nobody shares their data yet.
+  List<Widget> _buildFamilyCards() {
+    if (familyLoading && familyMembers.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+
+    if (familyError != null) {
+      return [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Text(familyError!, textAlign: TextAlign.center),
+                TextButton(
+                  onPressed: _loadFamily,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+
+    if (familyMembers.isEmpty) {
+      return const [_EmptyFamilyCard()];
+    }
+
+    return [
+      for (final member in familyMembers)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _FamilyMemberCard(
+            member: member,
+            onTap: () => _openFamilyMember(member),
+          ),
+        ),
+    ];
   }
 
   // ------------------------------------------------------------
@@ -234,7 +328,10 @@ class _CaregiverDashboardScreenState
   // ============================================================
 
   Widget _buildHomePage() {
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         18,
         14,
@@ -262,25 +359,7 @@ class _CaregiverDashboardScreenState
 
           const SizedBox(height: 8),
 
-          // ------------------------------------------------------
-          // HOME'DA SADECE ÜYELER GÖSTERİLİYOR.
-          // ADD FAMILY MEMBER BUTONU YOK.
-          // ------------------------------------------------------
-
-          if (familyMembers.isEmpty)
-            _EmptyFamilyCard()
-          else
-            ...familyMembers.map(
-              (member) => Padding(
-                padding: const EdgeInsets.only(
-                  bottom: 12,
-                ),
-                child: _FamilyMemberCard(
-                  member: member,
-                  onTap: () => _openFamilyMember(member),
-                ),
-              ),
-            ),
+          ..._buildFamilyCards(),
 
           const SizedBox(height: 12),
 
@@ -290,6 +369,7 @@ class _CaregiverDashboardScreenState
 
           _buildQuickActions(),
         ],
+      ),
       ),
     );
   }
@@ -642,7 +722,7 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 6),
 
           const Text(
-            'Manage your family members.',
+            'People who share their health data with you.',
             style: TextStyle(
               fontSize: 13,
               color: Color(0xFF718096),
@@ -651,37 +731,24 @@ class _CaregiverDashboardScreenState
 
           const SizedBox(height: 20),
 
-          if (familyMembers.isEmpty)
-            _EmptyFamilyCard()
-          else
-            ...familyMembers.map(
-              (member) => Padding(
-                padding: const EdgeInsets.only(
-                  bottom: 12,
-                ),
-                child: _FamilyMemberCard(
-                  member: member,
-                  onTap: () => _openFamilyMember(member),
-                ),
-              ),
-            ),
+          ..._buildFamilyCards(),
 
           const SizedBox(height: 12),
 
           // ----------------------------------------------------
-          // TEK ADD FAMILY MEMBER BUTONU SADECE BURADA
+          // A family member is added by accepting their invitation.
           // ----------------------------------------------------
 
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton.icon(
-              onPressed: _addFamilyMember,
+              onPressed: _openInvitations,
               icon: const Icon(
-                Icons.add_rounded,
+                Icons.mark_email_unread_outlined,
               ),
               label: const Text(
-                'Add Family Member',
+                'Invitations',
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF765BD4),
@@ -800,6 +867,13 @@ class _CaregiverDashboardScreenState
         ),
 
         _MoreOption(
+          icon: Icons.mark_email_unread_outlined,
+          title: 'Invitations',
+          subtitle: 'Accept patients who invited you',
+          onTap: _openInvitations,
+        ),
+
+        _MoreOption(
           icon: Icons.security_outlined,
           title: 'Privacy & Security',
           subtitle: 'Manage account security settings',
@@ -841,7 +915,7 @@ class _CaregiverDashboardScreenState
 // ============================================================================
 
 class _FamilyMemberCard extends StatelessWidget {
-  final FamilyMember member;
+  final CarePatient member;
   final VoidCallback onTap;
 
   const _FamilyMemberCard({
@@ -849,53 +923,10 @@ class _FamilyMemberCard extends StatelessWidget {
     required this.onTap,
   });
 
-  IconData _getIcon() {
-    switch (member.relationship) {
-      case 'Mother':
-        return Icons.woman_rounded;
-
-      case 'Father':
-        return Icons.man_rounded;
-
-      case 'Spouse':
-        return Icons.favorite_rounded;
-
-      case 'Sibling':
-        return Icons.people_rounded;
-
-      case 'Child':
-        return Icons.child_care_rounded;
-
-      default:
-        return Icons.person_rounded;
-    }
-  }
-
-  Color _getIconColor() {
-    switch (member.relationship) {
-      case 'Mother':
-        return const Color(0xFFE85D9E);
-
-      case 'Father':
-        return const Color(0xFF168AF7);
-
-      case 'Spouse':
-        return const Color(0xFFE85D75);
-
-      case 'Sibling':
-        return const Color(0xFF765BD4);
-
-      case 'Child':
-        return const Color(0xFF168AF7);
-
-      default:
-        return const Color(0xFF667085);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final iconColor = _getIconColor();
+    const iconColor = Color(0xFF765BD4);
+    final statusColor = glucoseStatusColor(member.status);
 
     return Card(
       child: InkWell(
@@ -914,8 +945,8 @@ class _FamilyMemberCard extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: Icon(
-                  _getIcon(),
+                child: const Icon(
+                  Icons.person_rounded,
                   color: iconColor,
                   size: 30,
                 ),
@@ -939,7 +970,7 @@ class _FamilyMemberCard extends StatelessWidget {
                     const SizedBox(height: 4),
 
                     Text(
-                      member.relationship,
+                      member.subtitle,
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF718096),
@@ -949,12 +980,31 @@ class _FamilyMemberCard extends StatelessWidget {
 
                     const SizedBox(height: 5),
 
-                    Text(
-                      member.gender,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF8A97A5),
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.water_drop_rounded,
+                          size: 14,
+                          color: statusColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            member.lastGlucose == null
+                                ? 'No readings yet'
+                                : '${member.lastGlucose} mg/dL • '
+                                    '${member.statusLabel}'
+                                    '${member.lastGlucoseAt == null ? '' : ' • ${formatRelativeDay(member.lastGlucoseAt!)}'}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: member.lastGlucose == null
+                                  ? const Color(0xFF8A97A5)
+                                  : statusColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1006,7 +1056,7 @@ class _EmptyFamilyCard extends StatelessWidget {
             const SizedBox(height: 16),
 
             const Text(
-              'No family members added yet',
+              'No family members yet',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
@@ -1017,8 +1067,8 @@ class _EmptyFamilyCard extends StatelessWidget {
             const SizedBox(height: 7),
 
             const Text(
-              'Add a family member to start managing '
-              'their health information.',
+              'Ask your family member to invite you from More → Care Team '
+              'in their DiaMate app, then accept it under Invitations.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,

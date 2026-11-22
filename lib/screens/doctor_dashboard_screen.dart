@@ -2,12 +2,19 @@
 import 'package:flutter/material.dart';
 
 import '../data/alert_store.dart';
+import '../data/care_patients_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
+import '../utils/form_helpers.dart';
 import 'alerts_screen.dart';
+import 'care_invitations_screen.dart';
+import 'care_patient_detail_screen.dart';
 
 class DoctorDashboardScreen extends StatefulWidget {
-  const DoctorDashboardScreen({super.key});
+  const DoctorDashboardScreen({super.key, this.patientsStore});
+
+  /// Defaults to [carePatientsStore]; tests pass one with a fake backend.
+  final CarePatientsStore? patientsStore;
 
   @override
   State<DoctorDashboardScreen> createState() =>
@@ -21,42 +28,68 @@ class _DoctorDashboardScreenState
   final TextEditingController searchController =
       TextEditingController();
 
-  final List<DoctorPatient> patients = [
-    DoctorPatient(
-      name: 'Emma Wilson',
-      age: 12,
-      diabetesType: 'Type 1 Diabetes',
-      glucose: 112,
-      lastMeasurement: 'Today, 08:30',
-      status: 'In Range',
-    ),
-    DoctorPatient(
-      name: 'Noah Smith',
-      age: 16,
-      diabetesType: 'Type 1 Diabetes',
-      glucose: 245,
-      lastMeasurement: 'Today, 09:15',
-      status: 'High',
-    ),
-    DoctorPatient(
-      name: 'Olivia Brown',
-      age: 10,
-      diabetesType: 'Type 1 Diabetes',
-      glucose: 68,
-      lastMeasurement: 'Today, 09:40',
-      status: 'Low',
-    ),
-  ];
+  /// The patients who invited this doctor and were accepted
+  /// (GET /care-team/patients + each patient's overview).
+  List<CarePatient> patients = [];
+  bool patientsLoading = true;
+  String? patientsError;
 
   /// OPEN alerts of the patients who allow alerts (from the backend).
   /// null while loading or after an error.
   int? openAlertCount;
   String? alertCountError;
 
+  CarePatientsStore get _patientsStore =>
+      widget.patientsStore ?? carePatientsStore;
+
   @override
   void initState() {
     super.initState();
+    _loadPatients();
     _loadAlertCount();
+  }
+
+  Future<void> _loadPatients() async {
+    setState(() {
+      patientsLoading = true;
+      patientsError = null;
+    });
+
+    try {
+      final result = await _patientsStore.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        patients = result;
+        patientsLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        patientsLoading = false;
+        patientsError = e.message;
+      });
+    }
+  }
+
+  Future<void> _refresh() =>
+      Future.wait([_loadPatients(), _loadAlertCount()]);
+
+  Future<void> _openInvitations() async {
+    final accepted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CareInvitationsScreen()),
+    );
+
+    if (accepted == true && mounted) {
+      _loadPatients();
+    }
   }
 
   @override
@@ -106,16 +139,7 @@ class _DoctorDashboardScreenState
 
   Color get primaryColor => const Color(0xFF168AF7);
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'High':
-        return const Color(0xFFE85D75);
-      case 'Low':
-        return const Color(0xFFF0A126);
-      default:
-        return const Color(0xFF35B779);
-    }
-  }
+  Color _statusColor(GlucoseStatus status) => glucoseStatusColor(status);
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -223,11 +247,14 @@ class _DoctorDashboardScreenState
 
   Widget _buildHomePage() {
     final highCount =
-        patients.where((p) => p.status == 'High').length;
+        patients.where((p) => p.status == GlucoseStatus.high).length;
     final lowCount =
-        patients.where((p) => p.status == 'Low').length;
+        patients.where((p) => p.status == GlucoseStatus.low).length;
 
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -288,24 +315,73 @@ class _DoctorDashboardScreenState
 
           const SizedBox(height: 12),
 
-          ...patients.map(
-            (patient) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _PatientCard(
-                patient: patient,
-                statusColor:
-                    _statusColor(patient.status),
-                onTap: () => _openPatient(patient),
-              ),
-            ),
-          ),
+          ..._buildPatientCards(patients),
 
           const SizedBox(height: 10),
 
           _buildAlertsCard(),
         ],
       ),
+      ),
     );
+  }
+
+  /// The patient cards, or what to show while loading, after an error or
+  /// when nobody has invited this doctor yet.
+  List<Widget> _buildPatientCards(List<CarePatient> list,
+      {bool filtered = false}) {
+    if (patientsLoading && patients.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+
+    if (patientsError != null) {
+      return [
+        _InfoCard(
+          icon: Icons.cloud_off_rounded,
+          text: patientsError!,
+          actionLabel: 'Try again',
+          onAction: _loadPatients,
+        ),
+      ];
+    }
+
+    if (patients.isEmpty) {
+      return [
+        _InfoCard(
+          icon: Icons.mark_email_unread_outlined,
+          text: 'No patients yet. When a patient invites you with your '
+              'account email, accept it under Invitations.',
+          actionLabel: 'Open Invitations',
+          onAction: _openInvitations,
+        ),
+      ];
+    }
+
+    if (list.isEmpty && filtered) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 30),
+          child: Center(child: Text('No patients found.')),
+        ),
+      ];
+    }
+
+    return [
+      for (final patient in list)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _PatientCard(
+            patient: patient,
+            statusColor: _statusColor(patient.status),
+            onTap: () => _openPatient(patient),
+          ),
+        ),
+    ];
   }
 
   Widget _buildHeader() {
@@ -570,7 +646,7 @@ class _DoctorDashboardScreenState
 
     final filteredPatients = patients.where((patient) {
       return patient.name.toLowerCase().contains(query) ||
-          patient.diabetesType.toLowerCase().contains(query);
+          patient.diabetesLabel.toLowerCase().contains(query);
     }).toList();
 
     return Column(
@@ -617,31 +693,19 @@ class _DoctorDashboardScreenState
         ),
 
         Expanded(
-          child: filteredPatients.isEmpty
-              ? const Center(
-                  child: Text('No patients found.'),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    18, 10, 18, 25,
-                  ),
-                  itemCount: filteredPatients.length,
-                  itemBuilder: (context, index) {
-                    final patient = filteredPatients[index];
-
-                    return Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: 12,
-                      ),
-                      child: _PatientCard(
-                        patient: patient,
-                        statusColor:
-                            _statusColor(patient.status),
-                        onTap: () => _openPatient(patient),
-                      ),
-                    );
-                  },
-                ),
+          child: RefreshIndicator(
+            onRefresh: _loadPatients,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                18, 10, 18, 25,
+              ),
+              children: _buildPatientCards(
+                filteredPatients,
+                filtered: true,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -694,8 +758,8 @@ class _DoctorDashboardScreenState
                 ),
               ),
               subtitle: Text(
-                '${patient.diabetesType}\n'
-                'Latest: ${patient.glucose} mg/dL',
+                '${patient.diabetesLabel}\n'
+                '${patient.lastGlucose == null ? 'No readings yet' : 'Latest: ${patient.lastGlucose} mg/dL'}',
               ),
               isThreeLine: true,
               trailing: const Icon(
@@ -744,6 +808,13 @@ class _DoctorDashboardScreenState
         ),
 
         _MoreOption(
+          icon: Icons.mark_email_unread_outlined,
+          title: 'Invitations',
+          subtitle: 'Accept patients who invited you',
+          onTap: _openInvitations,
+        ),
+
+        _MoreOption(
           icon: Icons.security_outlined,
           title: 'Privacy & Security',
           subtitle: 'Manage account security settings',
@@ -775,37 +846,55 @@ class _DoctorDashboardScreenState
     );
   }
 
-  void _openPatient(DoctorPatient patient) {
+  void _openPatient(CarePatient patient) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => DoctorPatientDetailScreen(
-          patient: patient,
-          statusColor: _statusColor(patient.status),
-        ),
+        builder: (_) => CarePatientDetailScreen(patient: patient),
       ),
     );
   }
 }
 
-// PATIENT MODEL
-
-class DoctorPatient {
-  final String name;
-  final int age;
-  final String diabetesType;
-  final int glucose;
-  final String lastMeasurement;
-  final String status;
-
-  const DoctorPatient({
-    required this.name,
-    required this.age,
-    required this.diabetesType,
-    required this.glucose,
-    required this.lastMeasurement,
-    required this.status,
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({
+    required this.icon,
+    required this.text,
+    required this.actionLabel,
+    required this.onAction,
   });
+
+  final IconData icon;
+  final String text;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(icon, size: 32, color: const Color(0xFF9AA8B7)),
+            const SizedBox(height: 10),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: Color(0xFF64788B),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextButton(onPressed: onAction, child: Text(actionLabel)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // STAT CARD
@@ -881,7 +970,7 @@ class _StatCard extends StatelessWidget {
 // PATIENT CARD
 
 class _PatientCard extends StatelessWidget {
-  final DoctorPatient patient;
+  final CarePatient patient;
   final Color statusColor;
   final VoidCallback onTap;
 
@@ -930,7 +1019,7 @@ class _PatientCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${patient.age} years • ${patient.diabetesType}',
+                      patient.subtitle,
                       style: const TextStyle(
                         fontSize: 11,
                         color: Color(0xFF718096),
@@ -946,7 +1035,9 @@ class _PatientCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${patient.glucose} mg/dL',
+                          patient.lastGlucose == null
+                              ? 'No readings yet'
+                              : '${patient.lastGlucose} mg/dL',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
@@ -954,14 +1045,16 @@ class _PatientCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      patient.lastMeasurement,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF8A97A5),
+                    if (patient.lastGlucoseAt != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        formatRelativeDay(patient.lastGlucoseAt!),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF8A97A5),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -979,7 +1072,7 @@ class _PatientCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      patient.status,
+                      patient.statusLabel,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
@@ -1058,245 +1151,6 @@ class _MoreOption extends StatelessWidget {
           color: Color(0xFF9AA8B7),
         ),
         onTap: onTap,
-      ),
-    );
-  }
-}
-
-// PATIENT DETAIL SCREEN
-
-class DoctorPatientDetailScreen extends StatelessWidget {
-  final DoctorPatient patient;
-  final Color statusColor;
-
-  const DoctorPatientDetailScreen({
-    super.key,
-    required this.patient,
-    required this.statusColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Patient Details',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 75,
-                  height: 75,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF5FF),
-                    borderRadius: BorderRadius.circular(23),
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    size: 42,
-                    color: Color(0xFF168AF7),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  patient.name,
-                  style: const TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${patient.age} years • ${patient.diabetesType}',
-                  style: const TextStyle(
-                    color: Color(0xFF718096),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 18),
-
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFFEAF5FF),
-                  Color(0xFFF4F8FF),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Latest Blood Glucose',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${patient.glucose}',
-                      style: const TextStyle(
-                        fontSize: 42,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.only(
-                        left: 8,
-                        bottom: 9,
-                      ),
-                      child: Text(
-                        'mg/dL',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFF718096),
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        patient.status,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Last measurement: ${patient.lastMeasurement}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF718096),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          const Text(
-            'Glucose History',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          const _HistoryRow(
-            time: '08:30 AM',
-            glucose: '112 mg/dL',
-            color: Color(0xFF35B779),
-          ),
-          const _HistoryRow(
-            time: '12:30 PM',
-            glucose: '125 mg/dL',
-            color: Color(0xFF35B779),
-          ),
-          const _HistoryRow(
-            time: '06:00 PM',
-            glucose: '118 mg/dL',
-            color: Color(0xFF35B779),
-          ),
-
-          const SizedBox(height: 20),
-
-          SizedBox(
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Patient report feature will be connected to the backend.',
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.analytics_rounded),
-              label: const Text('View Full Report'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HistoryRow extends StatelessWidget {
-  final String time;
-  final String glucose;
-  final Color color;
-
-  const _HistoryRow({
-    required this.time,
-    required this.glucose,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: Icon(
-          Icons.water_drop_rounded,
-          color: color,
-        ),
-        title: Text(
-          glucose,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        trailing: Text(
-          time,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFF718096),
-          ),
-        ),
       ),
     );
   }

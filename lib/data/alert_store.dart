@@ -64,6 +64,9 @@ class PatientAlert {
   final int patientId;
   final String type;
   final String severity;
+
+  /// The reading that triggered the alert.
+  final int? glucoseLogId;
   final double? valueMgdl;
   final String message;
   final String status;
@@ -78,6 +81,7 @@ class PatientAlert {
     required this.patientId,
     required this.type,
     required this.severity,
+    this.glucoseLogId,
     required this.valueMgdl,
     required this.message,
     required this.status,
@@ -101,6 +105,7 @@ class PatientAlert {
       patientId: (json['patientId'] as num).toInt(),
       type: json['alertType'] as String,
       severity: json['severity'] as String,
+      glucoseLogId: (json['glucoseLogId'] as num?)?.toInt(),
       valueMgdl: parseApiDecimal(json['valueMgdl']),
       message: json['message'] as String,
       status: json['status'] as String,
@@ -221,6 +226,33 @@ class AlertStore {
     ) as Map<String, dynamic>;
 
     return (json['totalElements'] as num).toInt();
+  }
+
+  /// Number of OPEN alerts of one patient (e.g. the logged-in patient's own).
+  Future<int> openAlertCount(int patientId) async {
+    final json = await _api.get(
+      '/patients/$patientId/alerts?status=${PatientAlert.open}&size=1',
+    ) as Map<String, dynamic>;
+
+    return (json['totalElements'] as num).toInt();
+  }
+
+  /// The OPEN alert the backend created for a reading just saved, or null
+  /// when the reading was in range. The backend checks a new reading in the
+  /// same request that saves it, so the alert already exists.
+  Future<PatientAlert?> alertForReading(int patientId, int glucoseLogId) async {
+    final json = await _api.get(
+      '/patients/$patientId/alerts?status=${PatientAlert.open}&size=20',
+    ) as Map<String, dynamic>;
+
+    for (final item in json['items'] as List<dynamic>) {
+      final alert = PatientAlert.fromJson(item as Map<String, dynamic>);
+      if (alert.glucoseLogId == glucoseLogId) {
+        return alert;
+      }
+    }
+
+    return null;
   }
 
   /// [status] is ACKNOWLEDGED ("seen") or RESOLVED. Asking for the status the

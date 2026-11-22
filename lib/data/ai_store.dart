@@ -97,8 +97,25 @@ class AiParseResult {
   }
 }
 
+/// Answer of POST /ai/voice: what the speech-to-text heard ([transcript])
+/// and what the assistant understood from it, the same as /ai/parse.
+class AiVoiceResult {
+  final String transcript;
+  final AiParseResult parsed;
+
+  const AiVoiceResult({required this.transcript, required this.parsed});
+
+  factory AiVoiceResult.fromJson(Map<String, dynamic> json) {
+    return AiVoiceResult(
+      transcript: (json['transcript'] as String? ?? '').trim(),
+      parsed: AiParseResult.fromJson(json),
+    );
+  }
+}
+
 /// The AI assistant of the logged-in patient:
 ///   POST /api/v1/ai/parse                       what was understood (nothing saved)
+///   POST /api/v1/ai/voice                       the same for a voice recording
 ///   POST /api/v1/patients/{patientId}/ai-entries saves the entries the patient confirmed
 class AiStore {
   AiStore({ApiClient? api}) : _api = api ?? apiClient;
@@ -115,6 +132,22 @@ class AiStore {
     final json = await _api.post('/ai/parse', body: {'text': text.trim()});
 
     return AiParseResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The backend accepts recordings of at most 10 MB.
+  static const int maxAudioBytes = 10 * 1024 * 1024;
+
+  /// Sends a recording (WAV, MP3, M4A, WEBM or OGG, told by the extension of
+  /// [filename]) as the multipart field "audio". Nothing is saved.
+  Future<AiVoiceResult> parseVoice(List<int> bytes, String filename) async {
+    final json = await _api.postFile(
+      '/ai/voice',
+      field: 'audio',
+      bytes: bytes,
+      filename: filename,
+    );
+
+    return AiVoiceResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Saves [entries] for the logged-in patient (or [patientId]) and returns

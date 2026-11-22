@@ -12,6 +12,14 @@ dependencies:
     sdk: flutter
   flutter_secure_storage: ^11.2.0
   http: ^1.6.0
+  # Not used directly: keeps pdf's image dependency off 4.11.0, which calls an
+  # archive API it does not require (fails to compile with archive < 4.4,
+  # the newest archive pdf 3.12 allows). Can go once pdf >= 3.13 is used.
+  image: ">=4.0.0 <4.11.0"
+  image_picker: ^1.2.4
+  pdf: ^3.12.0
+  record: ^6.2.1
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
@@ -20,3 +28,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Fonts embedded in the exported PDF report (Turkish letters such as ş, ı, ğ
+  # are missing from the PDF standard fonts). Roboto, Apache License 2.0.
+  assets:
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf

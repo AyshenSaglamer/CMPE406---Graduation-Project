@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/activity_store.dart';
@@ -6,17 +8,30 @@ import '../data/glucose_store.dart';
 import '../data/insulin_store.dart';
 import '../data/meal_store.dart';
 import '../services/api_exception.dart';
+import '../services/voice_recorder.dart';
 import '../utils/form_helpers.dart';
 
-/// The patient types a sentence ("My glucose is 125 and I took 5 units of
-/// insulin"); the assistant shows what it understood (POST /ai/parse, nothing
-/// saved) and saves the entries only after the patient confirms them
-/// (POST /patients/{id}/ai-entries). The assistant understands English.
+/// The patient types or says a sentence ("My glucose is 125 and I took 5
+/// units of insulin"); the assistant shows what it understood (POST /ai/parse
+/// or, for a recording, POST /ai/voice; nothing saved) and saves the entries
+/// only after the patient confirms them (POST /patients/{id}/ai-entries).
+/// The assistant understands English.
 class AiAssistantScreen extends StatefulWidget {
-  const AiAssistantScreen({super.key, this.store, this.onSaved});
+  const AiAssistantScreen({
+    super.key,
+    this.store,
+    this.onSaved,
+    this.recorder,
+  });
 
   /// Defaults to [aiStore]; tests pass one with a fake backend.
   final AiStore? store;
+
+  /// Defaults to the microphone ([MicVoiceRecorder]); tests pass a fake.
+  final VoiceRecorder? recorder;
+
+  /// A recording stops by itself after this long.
+  static const Duration maxRecording = Duration(seconds: 60);
 
   /// Called after entries were saved. Defaults to reloading the patient's
   /// glucose, insulin, meal and activity logs so the dashboard shows them.
@@ -54,6 +69,206 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   bool isSending = false;
 
   AiStore get _store => widget.store ?? aiStore;
+
+  /// Created on the first tap of the microphone button.
+  VoiceRecorder? _ownRecorder;
+
+  VoiceRecorder get _recorder =>
+      widget.recorder ?? (_ownRecorder ??= MicVoiceRecorder());
+
+  /// True while the microphone records.
+  bool isRecording = false;
+
+  /// Time recorded so far, updated every second.
+  Duration recordedTime = Duration.zero;
+
+  Timer? _recordTimer;
+
+  Future<void> _startRecording() async {
+    if (isSending || isRecording) {
+      return;
+    }
+
+    final bool started;
+
+    try {
+      started = await _recorder.start();
+    } catch (_) {
+      _addMessage(ChatMessage(
+        text: 'The microphone could not be started on this device. '
+            'You can type your message instead.',
+        isUser: false,
+        isError: true,
+      ));
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!started) {
+      _addMessage(ChatMessage(
+        text: 'I need access to the microphone to hear you. Please allow it '
+            'in your settings, or type your message instead.',
+        isUser: false,
+        isError: true,
+      ));
+      return;
+    }
+
+    setState(() {
+      isRecording = true;
+      recordedTime = Duration.zero;
+    });
+
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        recordedTime += const Duration(seconds: 1);
+      });
+
+      if (recordedTime >= AiAssistantScreen.maxRecording) {
+        _stopRecording();
+      }
+    });
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordTimer?.cancel();
+
+    setState(() {
+      isRecording = false;
+    });
+
+    try {
+      await _recorder.cancel();
+    } catch (_) {
+      // Nothing to keep anyway.
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!isRecording) {
+      return;
+    }
+
+    _recordTimer?.cancel();
+
+    setState(() {
+      isRecording = false;
+    });
+
+    RecordedAudio? audio;
+
+    try {
+      audio = await _recorder.stop();
+    } catch (_) {
+      audio = null;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (audio == null || audio.bytes.isEmpty) {
+      _addMessage(ChatMessage(
+        text: 'I did not hear anything. Tap the microphone and try again.',
+        isUser: false,
+        isError: true,
+      ));
+      return;
+    }
+
+    if (audio.bytes.length > AiStore.maxAudioBytes) {
+      _addMessage(ChatMessage(
+        text: 'That recording is too long. Please keep it short.',
+        isUser: false,
+        isError: true,
+      ));
+      return;
+    }
+
+    final recording = audio;
+
+    setState(() {
+      messages.add(ChatMessage(
+        text: 'Voice message (${_formatDuration(recording.duration)})',
+        isUser: true,
+        isVoice: true,
+      ));
+      isSending = true;
+    });
+    _scrollToEnd();
+
+    try {
+      final result =
+          await _store.parseVoice(recording.bytes, recording.filename);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSending = false;
+
+        if (result.transcript.isEmpty) {
+          messages.add(ChatMessage(
+            text: 'I could not make out any words. Please speak a little '
+                'closer to the microphone and try again.',
+            isUser: false,
+          ));
+          return;
+        }
+
+        messages.add(ChatMessage(
+          text: 'I heard: "${result.transcript}"',
+          isUser: false,
+        ));
+        messages.add(_answerFor(result.parsed));
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isSending = false;
+        messages.add(ChatMessage(text: e.message, isUser: false, isError: true));
+      });
+    }
+
+    _scrollToEnd();
+  }
+
+  static String _formatDuration(Duration d) {
+    final seconds = d.inSeconds;
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
+  /// The assistant's reply to what it understood from text or voice.
+  static ChatMessage _answerFor(AiParseResult result) {
+    if (result.entries.isEmpty) {
+      return ChatMessage(
+        text: result.message?.isNotEmpty == true
+            ? result.message!
+            : 'I could not find a glucose, insulin, meal or activity '
+                'value in that. Try "I walked for 30 minutes".',
+        isUser: false,
+      );
+    }
+
+    return ChatMessage(
+      text: result.savable.isEmpty
+          ? 'I understood this, but something is missing:'
+          : 'Here is what I understood. Shall I save it?',
+      isUser: false,
+      result: result,
+    );
+  }
 
   void _addMessage(ChatMessage message) {
     setState(() {
@@ -95,24 +310,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
       setState(() {
         isSending = false;
-
-        if (result.entries.isEmpty) {
-          messages.add(ChatMessage(
-            text: result.message?.isNotEmpty == true
-                ? result.message!
-                : 'I could not find a glucose, insulin, meal or activity '
-                    'value in that. Try "I walked for 30 minutes".',
-            isUser: false,
-          ));
-        } else {
-          messages.add(ChatMessage(
-            text: result.savable.isEmpty
-                ? 'I understood this, but something is missing:'
-                : 'Here is what I understood. Shall I save it?',
-            isUser: false,
-            result: result,
-          ));
-        }
+        messages.add(_answerFor(result));
       });
     } on ApiException catch (e) {
       if (!mounted) {
@@ -220,6 +418,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   @override
   void dispose() {
+    _recordTimer?.cancel();
+    if (isRecording) {
+      _recorder.cancel().catchError((_) {});
+    }
+    _ownRecorder?.dispose();
     messageController.dispose();
     scrollController.dispose();
     super.dispose();
@@ -443,9 +646,93 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: Row(
+        child: isRecording ? _buildRecordingBar() : _buildTextComposer(),
+      ),
+    );
+  }
+
+  /// Shown instead of the text field while the microphone records.
+  Widget _buildRecordingBar() {
+    const red = Color(0xFFE85D75);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF0F3),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.fiber_manual_record_rounded,
+                  color: red,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Listening… ${_formatDuration(recordedTime)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF7A3445),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _cancelRecording,
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: red,
+            borderRadius: BorderRadius.circular(17),
+          ),
+          child: IconButton(
+            tooltip: 'Stop and send',
+            onPressed: _stopRecording,
+            icon: const Icon(
+              Icons.stop_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextComposer() {
+    return Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            SizedBox(
+              width: 46,
+              height: 52,
+              child: IconButton(
+                tooltip: 'Speak',
+                onPressed: isSending ? null : _startRecording,
+                icon: const Icon(
+                  Icons.mic_none_rounded,
+                  color: Color(0xFF8B62D6),
+                  size: 25,
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 6),
+
             Expanded(
               child: TextField(
                 controller: messageController,
@@ -513,9 +800,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 }
 
@@ -525,6 +810,9 @@ class ChatMessage {
 
   /// An error from the backend (shown in red).
   final bool isError;
+
+  /// A recording the patient sent (shown with a microphone).
+  final bool isVoice;
 
   /// The entries the assistant understood, shown under the text.
   final AiParseResult? result;
@@ -536,6 +824,7 @@ class ChatMessage {
     required this.text,
     required this.isUser,
     this.isError = false,
+    this.isVoice = false,
     this.result,
   });
 }
@@ -730,17 +1019,32 @@ class _ChatBubble extends StatelessWidget {
                         color: const Color(0xFFE5EAF0),
                       ),
               ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.45,
-                  color: isUser
-                      ? Colors.white
-                      : message.isError
-                          ? const Color(0xFFE85D75)
-                          : const Color(0xFF334155),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.isVoice) ...[
+                    Icon(
+                      Icons.mic_rounded,
+                      size: 17,
+                      color: isUser ? Colors.white : const Color(0xFF8B62D6),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      message.text,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        color: isUser
+                            ? Colors.white
+                            : message.isError
+                                ? const Color(0xFFE85D75)
+                                : const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

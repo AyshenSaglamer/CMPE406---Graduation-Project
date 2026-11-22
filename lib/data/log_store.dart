@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../services/api_client.dart';
+import '../services/api_exception.dart';
 import '../services/auth_service.dart';
+import 'offline_queue.dart';
 
 /// A saved health log (glucose, insulin, meal or activity).
 abstract class LogRecord {
@@ -16,9 +18,17 @@ abstract class LogRecord {
 /// patientId is the logged-in patient's user id.
 /// [value] holds the last 14 days, newest first.
 class LogStore<T extends LogRecord> extends ValueNotifier<List<T>> {
-  LogStore({required this.resource, required this.fromJson, ApiClient? api})
-    : _api = api ?? apiClient,
-      super(const []);
+  LogStore({
+    required this.resource,
+    required this.fromJson,
+    ApiClient? api,
+    OfflineQueue? queue,
+  }) : _api = api ?? apiClient,
+       _queue = queue,
+       super(const []);
+
+  /// Where logs made without a connection wait; defaults to [offlineQueue].
+  final OfflineQueue? _queue;
 
   /// e.g. 'glucose-logs'
   final String resource;
@@ -47,7 +57,11 @@ class LogStore<T extends LogRecord> extends ValueNotifier<List<T>> {
 
   /// Reads every page between [from] and [to] without changing [value].
   /// Without [from] the backend returns the last 14 days. Newest first.
-  Future<List<T>> fetch({DateTime? from, DateTime? to}) async {
+  /// [patientId] reads another patient's logs (a doctor or caregiver with
+  /// the patient's permission); default: the logged-in patient.
+  Future<List<T>> fetch({DateTime? from, DateTime? to, int? patientId}) async {
+    final path =
+        patientId == null ? _path : '/patients/$patientId/$resource';
     final records = <T>[];
     var page = 0;
     var totalPages = 1;
@@ -65,7 +79,7 @@ class LogStore<T extends LogRecord> extends ValueNotifier<List<T>> {
           .join('&');
 
       final json =
-          await _api.get('$_path?$queryString') as Map<String, dynamic>;
+          await _api.get('$path?$queryString') as Map<String, dynamic>;
 
       for (final item in json['items'] as List<dynamic>) {
         records.add(fromJson(item as Map<String, dynamic>));
@@ -79,11 +93,30 @@ class LogStore<T extends LogRecord> extends ValueNotifier<List<T>> {
   }
 
   /// POST. Added to [value] only after the backend accepted it.
-  Future<T> create(Map<String, dynamic> body) async {
-    final json = await _api.post(_path, body: body);
-    final saved = fromJson(json as Map<String, dynamic>);
-    _put(saved);
-    return saved;
+  ///
+  /// When the backend cannot be reached the log is kept on the phone
+  /// ([offlineQueue]) and sent later; then null is returned. [body] must
+  /// carry a clientUuid so a resend is not saved twice.
+  Future<T?> create(Map<String, dynamic> body) async {
+    final path = _path;
+
+    try {
+      final json = await _api.post(path, body: body);
+      final saved = fromJson(json as Map<String, dynamic>);
+      _put(saved);
+      return saved;
+    } on ApiException catch (e) {
+      if (e.statusCode != 0 || body['clientUuid'] == null) {
+        rethrow;
+      }
+
+      await (_queue ?? offlineQueue).add(
+        resource: resource,
+        patientId: authService.currentUser!.id,
+        body: body,
+      );
+      return null;
+    }
   }
 
   /// PUT replaces all editable fields, so send the whole log.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/insulin_store.dart';
+import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
@@ -75,15 +76,17 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
       isSaving = true;
     });
 
+    final bool savedOffline;
+
     try {
-      await insulinStore.create({
+      savedOffline = await insulinStore.create({
         'doseUnits': amount,
         'insulinType': insulinTypeOptions[selectedType],
         'deliveryMethod': insulinDeliveryOptions[selectedDelivery],
         'administeredAt': administeredAt.toUtc().toIso8601String(),
         'source': 'MANUAL',
         'clientUuid': clientUuid,
-      });
+      }) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -105,7 +108,9 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
     }
 
     _showMessage(
-      '${formatNumber(amount)} units of $selectedType insulin saved.',
+      savedOffline
+          ? savedOfflineMessage
+          : '${formatNumber(amount)} units of $selectedType insulin saved.',
     );
 
     Navigator.pop(context);

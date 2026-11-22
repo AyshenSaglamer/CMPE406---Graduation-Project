@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/activity_store.dart';
+import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
@@ -74,14 +75,16 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       isSaving = true;
     });
 
+    final bool savedOffline;
+
     try {
-      await activityStore.create({
+      savedOffline = await activityStore.create({
         'activityType': selectedActivity,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'durationMinutes': duration,
         'intensity': activityIntensityOptions[selectedIntensity],
         'clientUuid': clientUuid,
-      });
+      }) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -102,7 +105,11 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
       return;
     }
 
-    _showMessage('$selectedActivity activity for $duration minutes saved.');
+    _showMessage(
+      savedOffline
+          ? savedOfflineMessage
+          : '$selectedActivity activity for $duration minutes saved.',
+    );
 
     Navigator.pop(context);
   }

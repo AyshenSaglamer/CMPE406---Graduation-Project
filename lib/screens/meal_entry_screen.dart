@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../data/food_recognition.dart';
 import '../data/meal_store.dart';
+import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/date_time_tile.dart';
+import 'food_camera_screen.dart';
 
 class MealEntryScreen extends StatefulWidget {
-  const MealEntryScreen({super.key});
+  const MealEntryScreen({super.key, this.photoPicker, this.recognizer});
+
+  /// Passed on to the meal photo screen (tests use fakes).
+  final PhotoPicker? photoPicker;
+  final FoodRecognizer? recognizer;
 
   @override
   State<MealEntryScreen> createState() => _MealEntryScreenState();
@@ -17,6 +24,37 @@ class MealEntryScreen extends StatefulWidget {
 class _MealEntryScreenState extends State<MealEntryScreen> {
   final mealDescriptionController = TextEditingController();
   final carbsController = TextEditingController();
+
+  /// The description holds foods the patient confirmed from a photo; the
+  /// meal is then saved with source AI_ASSISTANT (the backend does not take
+  /// AI_PHOTO from the app yet).
+  bool fromPhoto = false;
+
+  Future<void> _addFromPhoto() async {
+    final result = await Navigator.push<FoodPhotoResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FoodCameraScreen(
+          picker: widget.photoPicker,
+          recognizer: widget.recognizer,
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    final current = mealDescriptionController.text.trim();
+
+    _changed(() {
+      mealDescriptionController.text =
+          current.isEmpty ? result.description : '$current, ${result.description}';
+      fromPhoto = fromPhoto || result.fromRecognition;
+    });
+
+    _showMessage('Foods added. Check the meal type, time and carbs, then save.');
+  }
 
   String selectedMealType = 'Breakfast';
 
@@ -77,15 +115,17 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
       isSaving = true;
     });
 
+    final bool savedOffline;
+
     try {
-      await mealStore.create({
+      savedOffline = await mealStore.create({
         'mealType': mealTypeOptions[selectedMealType],
         'eatenAt': eatenAt.toUtc().toIso8601String(),
         'description': description,
         'carbsG': ?carbs,
-        'source': 'MANUAL',
+        'source': fromPhoto ? 'AI_ASSISTANT' : 'MANUAL',
         'clientUuid': clientUuid,
-      });
+      }) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -108,7 +148,9 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
       return;
     }
 
-    _showMessage('Meal record saved successfully.');
+    _showMessage(
+      savedOffline ? savedOfflineMessage : 'Meal record saved successfully.',
+    );
 
     Navigator.pop(context);
   }
@@ -134,6 +176,10 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeaderCard(),
+
+            const SizedBox(height: 14),
+
+            _buildPhotoButton(),
 
             const SizedBox(height: 24),
 
@@ -295,6 +341,50 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoButton() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: isSaving ? null : _addFromPhoto,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFF3D3A2)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.photo_camera_rounded, color: Color(0xFFF0A126)),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Take a photo of your meal',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'DiaMate suggests the foods; you confirm them.',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF806F5D)),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Color(0xFFCA821B)),
+            ],
+          ),
+        ),
       ),
     );
   }

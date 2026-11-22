@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/glucose_store.dart';
 import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
+import '../widgets/ai_insights_card.dart';
 import 'glucose_entry_screen.dart';
 
 class GlucoseChartScreen extends StatefulWidget {
@@ -288,6 +289,10 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
                 const SizedBox(height: 18),
 
                 _buildStatisticsCard(),
+
+                const SizedBox(height: 18),
+
+                AiInsightsCard(days: periodDays),
 
                 const SizedBox(height: 18),
 

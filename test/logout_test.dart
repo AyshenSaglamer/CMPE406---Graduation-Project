@@ -35,8 +35,13 @@ void main() {
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
 
+    // The More list is lazy: scroll until the Log Out row is built.
     final tile = find.text('Log Out');
-    await tester.ensureVisible(tile);
+    await tester.scrollUntilVisible(
+      tile,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(tile);
     await tester.pumpAndSettle();
 

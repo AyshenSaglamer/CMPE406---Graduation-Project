@@ -1,16 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../data/alert_store.dart';
 import '../data/glucose_store.dart';
+import '../data/log_store.dart';
+import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../widgets/date_time_tile.dart';
+import '../widgets/glucose_alert_sheet.dart';
 
 class GlucoseEntryScreen extends StatefulWidget {
   /// Pass a reading to edit it; leave empty to add a new one.
-  const GlucoseEntryScreen({super.key, this.existing});
+  const GlucoseEntryScreen({
+    super.key,
+    this.existing,
+    this.store,
+    this.alerts,
+  });
 
   final GlucoseRecord? existing;
+
+  /// Default to [glucoseStore] and [alertStore]; tests pass fakes.
+  final LogStore<GlucoseRecord>? store;
+  final AlertStore? alerts;
 
   @override
   State<GlucoseEntryScreen> createState() => _GlucoseEntryScreenState();
@@ -95,13 +109,18 @@ class _GlucoseEntryScreenState extends State<GlucoseEntryScreen> {
       notes: notesController.text.trim(),
     );
 
+    final store = widget.store ?? glucoseStore;
+    var savedOffline = false;
+    GlucoseRecord? saved;
+
     try {
       final existing = widget.existing;
 
       if (existing == null) {
-        await glucoseStore.create(body);
+        saved = await store.create(body);
+        savedOffline = saved == null;
       } else {
-        await glucoseStore.update(existing.id, body);
+        saved = await store.update(existing.id, body);
       }
     } on ApiException catch (e) {
       if (!mounted) {
@@ -125,12 +144,68 @@ class _GlucoseEntryScreenState extends State<GlucoseEntryScreen> {
     }
 
     _showMessage(
-      isEditing
-          ? 'Blood glucose record updated.'
-          : 'Blood glucose record saved successfully.',
+      savedOffline
+          ? savedOfflineMessage
+          : isEditing
+              ? 'Blood glucose record updated.'
+              : 'Blood glucose record saved successfully.',
     );
 
+    await _showAlertIfOutOfRange(glucose, saved);
+
+    if (!mounted) {
+      return;
+    }
+
     Navigator.pop(context);
+  }
+
+  /// A low or high reading opens the alert sheet with the first steps.
+  /// Online, the backend's alert decides (the patient's own thresholds) and
+  /// "Got it" marks it as seen; offline, the default thresholds are used.
+  Future<void> _showAlertIfOutOfRange(int value, GlucoseRecord? saved) async {
+    final alerts = widget.alerts ?? alertStore;
+    final patientId = authService.currentUser?.id;
+
+    PatientAlert? alert;
+    String? type;
+
+    if (saved != null && patientId != null) {
+      try {
+        alert = await alerts.alertForReading(patientId, saved.id);
+        type = alert?.type;
+      } on ApiException {
+        type = defaultAlertTypeFor(value);
+      }
+
+      // No backend alert (e.g. no patient profile yet, so no thresholds):
+      // still warn about an urgent value.
+      if (alert == null) {
+        final fallback = defaultAlertTypeFor(value);
+        if (fallback == 'URGENT_LOW' || fallback == 'URGENT_HIGH') {
+          type = fallback;
+        }
+      }
+    } else {
+      type = defaultAlertTypeFor(value);
+    }
+
+    if (type == null || !mounted) {
+      return;
+    }
+
+    // Saved: stop the spinner behind the sheet.
+    setState(() {
+      isSaving = false;
+    });
+
+    await showGlucoseAlertSheet(
+      context,
+      type: type,
+      value: value.toDouble(),
+      alert: alert,
+      store: alerts,
+    );
   }
 
   @override

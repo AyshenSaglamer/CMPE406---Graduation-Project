@@ -76,20 +76,35 @@ class ApiClient {
     );
   }
 
-  Future<dynamic> _send(
-    String method,
+  /// POST multipart/form-data with one file in [field] (e.g. a voice
+  /// recording). The file is sent as application/octet-stream; the backend
+  /// decides its type by the extension of [filename].
+  Future<dynamic> postFile(
     String path, {
-    Object? body,
-    required bool auth,
+    required String field,
+    required List<int> bytes,
+    required String filename,
+    bool auth = true,
   }) async {
+    final request = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(await _headers(auth: auth))
+      ..files.add(http.MultipartFile.fromBytes(
+        field,
+        bytes,
+        filename: filename,
+      ));
+
+    return _execute(request, auth: auth);
+  }
+
+  Uri _uri(String path) =>
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.apiPrefix}$path');
+
+  Future<Map<String, String>> _headers({required bool auth}) async {
     final headers = <String, String>{
       'Accept':
           'application/json, application/problem+json',
     };
-
-    if (body != null) {
-      headers['Content-Type'] = 'application/json';
-    }
 
     if (auth) {
       final token = await TokenStorage.readValidToken();
@@ -107,19 +122,37 @@ class ApiClient {
       headers['Authorization'] = 'Bearer $token';
     }
 
-    final uri = Uri.parse(
-      '${ApiConfig.baseUrl}${ApiConfig.apiPrefix}$path',
-    );
+    return headers;
+  }
+
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? body,
+    required bool auth,
+  }) async {
+    final headers = await _headers(auth: auth);
+
+    if (body != null) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     final request = http.Request(
       method,
-      uri,
+      _uri(path),
     )..headers.addAll(headers);
 
     if (body != null) {
       request.body = jsonEncode(body);
     }
 
+    return _execute(request, auth: auth);
+  }
+
+  Future<dynamic> _execute(
+    http.BaseRequest request, {
+    required bool auth,
+  }) async {
     final http.Response response;
 
     try {

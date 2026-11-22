@@ -35,6 +35,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>DiaMate uses the camera to take a photo of your meal and suggest the foods in it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>DiaMate lets you choose a meal photo from your library to suggest the foods in it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DiaMate records your voice so you can log glucose, insulin, meals and activity by speaking.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>DiaMate connects to its server on your local network to sync your health data.</string>
 	<key>UIApplicationSceneManifest</key>

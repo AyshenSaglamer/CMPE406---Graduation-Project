@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import '../data/activity_store.dart';
+import '../data/alert_store.dart';
 import '../data/glucose_store.dart';
 import '../data/insulin_store.dart';
 import '../data/meal_store.dart';
+import '../data/offline_queue.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
 import 'activity_entry_screen.dart';
 import 'ai_assistant_screen.dart';
+import 'care_team_screen.dart';
 import 'csv_import_screen.dart';
 import 'glucose_chart_screen.dart';
 import 'glucose_entry_screen.dart';
 import 'insulin_entry_screen.dart';
 import 'meal_entry_screen.dart';
 import 'offline_mode_screen.dart';
+import 'patient_alerts_screen.dart';
 import 'pdf_report_screen.dart';
 import 'reminder_screen.dart';
 
@@ -36,6 +41,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadRecords();
+    _sendOfflineLogs();
+  }
+
+  /// Logs saved on the phone while offline (maybe in an earlier session)
+  /// are sent as soon as the patient opens the app.
+  Future<void> _sendOfflineLogs() async {
+    final id = authService.currentUser?.id;
+    if (id == null) {
+      return;
+    }
+
+    await offlineQueue.restore();
+    if (offlineQueue.forPatient(id).any((p) => p.error == null)) {
+      await offlineQueue.sync(id);
+    }
   }
 
   /// Loads the last 14 days of glucose, insulin, meal and activity logs.
@@ -121,6 +141,220 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+/// "2 entries saved on this phone" while logs made offline wait to be sent;
+/// nothing when the queue is empty. Opens Offline Mode.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: offlineQueue,
+      builder: (context, _) {
+        final id = authService.currentUser?.id;
+        final logs = id == null ? const [] : offlineQueue.forPatient(id);
+
+        if (logs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final failed = logs.where((p) => p.error != null).length;
+        final count = logs.length;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Material(
+            color: const Color(0xFFFFF3DF),
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OfflineModeScreen()),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Icon(
+                      offlineQueue.isSyncing
+                          ? Icons.sync_rounded
+                          : Icons.cloud_upload_outlined,
+                      color: const Color(0xFFF0A126),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        failed > 0
+                            ? '$failed of $count saved '
+                                '${count == 1 ? 'entry needs' : 'entries need'} '
+                                'your attention.'
+                            : count == 1
+                                ? '1 entry saved on this phone, waiting to sync.'
+                                : '$count entries saved on this phone, '
+                                    'waiting to sync.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF7A5414),
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFFB88A3B),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The patient's open hypo / hyper alerts (GET /patients/{id}/alerts).
+/// Reloads when a glucose reading changes; opens My Alerts.
+class _MyAlertsCard extends StatefulWidget {
+  const _MyAlertsCard();
+
+  @override
+  State<_MyAlertsCard> createState() => _MyAlertsCardState();
+}
+
+class _MyAlertsCardState extends State<_MyAlertsCard> {
+  int? openCount;
+  bool failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    glucoseStore.addListener(_load);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    glucoseStore.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final id = authService.currentUser?.id;
+    if (id == null) {
+      return;
+    }
+
+    try {
+      final count = await alertStore.openAlertCount(id);
+      if (mounted) {
+        setState(() {
+          openCount = count;
+          failed = false;
+        });
+      }
+    } on ApiException {
+      if (mounted) {
+        setState(() {
+          failed = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _open() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PatientAlertsScreen()),
+    );
+    if (mounted) {
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = openCount;
+    final hasOpen = (count ?? 0) > 0;
+    final color = hasOpen ? const Color(0xFFE85D75) : const Color(0xFF35B779);
+
+    final String text;
+    if (failed) {
+      text = 'Alerts could not be loaded. Tap to open.';
+    } else if (count == null) {
+      text = 'Checking your alerts…';
+    } else if (count == 0) {
+      text = 'No open alerts. Your readings look in range.';
+    } else {
+      text = count == 1
+          ? '1 open alert: tap to see what to do.'
+          : '$count open alerts: tap to see what to do.';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _open,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: hasOpen ? color : const Color(0xFFE9EEF5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  hasOpen
+                      ? Icons.notifications_active_outlined
+                      : Icons.check_circle_outline_rounded,
+                  color: color,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'My Alerts',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              hasOpen ? FontWeight.w700 : FontWeight.w400,
+                          color: hasOpen ? color : const Color(0xFF718096),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF9AA8B7),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeTab extends StatelessWidget {
   const _HomeTab();
   void _open(BuildContext context, Widget screen) {
@@ -138,6 +372,8 @@ class _HomeTab extends StatelessWidget {
           const SizedBox(height: 18),
           _buildTodayCard(context),
           const SizedBox(height: 14),
+          const _OfflineBanner(),
+          const _MyAlertsCard(),
           // ----------------------------
           // HEALTH METRICS
           // ----------------------------
@@ -1102,6 +1338,14 @@ class _MoreTab extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         _MoreTile(
+          icon: Icons.group_add_outlined,
+          title: 'Care Team',
+          subtitle: 'Share your data with your doctor or family',
+          onTap: () {
+            _open(context, const CareTeamScreen());
+          },
+        ),
+        _MoreTile(
           icon: Icons.upload_file_rounded,
           title: 'Import CSV',
           subtitle: 'Import blood glucose data',
@@ -1119,8 +1363,8 @@ class _MoreTab extends StatelessWidget {
         ),
         _MoreTile(
           icon: Icons.picture_as_pdf_rounded,
-          title: 'PDF Report',
-          subtitle: 'Generate your health report',
+          title: 'Health Report',
+          subtitle: 'Export your records as PDF or CSV',
           onTap: () {
             _open(context, const PdfReportScreen());
           },
