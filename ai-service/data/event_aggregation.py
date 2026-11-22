@@ -30,7 +30,6 @@ def _parse_timestamp(value: str) -> datetime:
 
     try:
         return datetime.fromisoformat(cleaned)
-
     except ValueError as exc:
         raise ValueError(
             "Event timestamp must be a valid "
@@ -45,7 +44,7 @@ def _validate_number(
     allow_zero: bool,
 ) -> float:
     """
-    Validate a numeric event value.
+    Validate a required numeric event value.
     """
 
     if isinstance(value, bool):
@@ -55,7 +54,6 @@ def _validate_number(
 
     try:
         number = float(value)
-
     except (TypeError, ValueError) as exc:
         raise ValueError(
             f"{field_name} must be numeric."
@@ -71,7 +69,6 @@ def _validate_number(
             raise ValueError(
                 f"{field_name} cannot be negative."
             )
-
     elif number <= 0:
         raise ValueError(
             f"{field_name} must be greater "
@@ -81,6 +78,30 @@ def _validate_number(
     return number
 
 
+def _validate_optional_number(
+    value,
+    *,
+    field_name: str,
+    allow_zero: bool,
+):
+    """
+    Validate an optional numeric event value.
+
+    None means that the value is unknown.
+    Unknown values remain None and are not
+    converted to zero.
+    """
+
+    if value is None:
+        return None
+
+    return _validate_number(
+        value,
+        field_name=field_name,
+        allow_zero=allow_zero,
+    )
+
+
 def normalize_patient_events(
     events: List[Dict],
 ) -> List[Dict]:
@@ -88,9 +109,16 @@ def normalize_patient_events(
     Validate and sort raw patient events.
 
     Supported events:
+
     - GLUCOSE
     - MEAL
     - ACTIVITY
+
+    Glucose values are required.
+
+    Meal carbohydrate amounts and activity
+    durations may be unknown. Unknown values
+    are represented as None.
     """
 
     if not events:
@@ -158,7 +186,7 @@ def normalize_patient_events(
         elif event_type == "MEAL":
             normalized_event[
                 "carbs_g"
-            ] = _validate_number(
+            ] = _validate_optional_number(
                 event.get("carbs_g"),
                 field_name="carbs_g",
                 allow_zero=True,
@@ -167,7 +195,7 @@ def normalize_patient_events(
         elif event_type == "ACTIVITY":
             normalized_event[
                 "activity_minutes"
-            ] = _validate_number(
+            ] = _validate_optional_number(
                 event.get(
                     "activity_minutes"
                 ),
@@ -206,10 +234,15 @@ def aggregate_events_for_ml(
     Convert time-ordered patient events into
     glucose-centered ML records.
 
-    Meal carbohydrate amounts and activity
+    Known meal carbohydrate amounts and activity
     minutes are accumulated only after the
     previous glucose event and up to the
     current glucose event.
+
+    Unknown meal carbohydrate amounts and
+    activity durations are not treated as zero;
+    they are simply excluded from the numeric
+    accumulation.
 
     Future events are never used.
     """
@@ -235,16 +268,24 @@ def aggregate_events_for_ml(
         ]
 
         if event_type == "MEAL":
-            pending_carbs += event[
+            carbs_g = event[
                 "carbs_g"
             ]
+
+            if carbs_g is not None:
+                pending_carbs += carbs_g
 
             continue
 
         if event_type == "ACTIVITY":
-            pending_activity += event[
+            activity_minutes = event[
                 "activity_minutes"
             ]
+
+            if activity_minutes is not None:
+                pending_activity += (
+                    activity_minutes
+                )
 
             continue
 

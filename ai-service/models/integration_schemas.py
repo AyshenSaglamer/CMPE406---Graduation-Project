@@ -37,6 +37,10 @@ class BackendMealLog(BaseModel):
     """
     Relevant meal-log fields received from
     the DiaMate Spring Boot backend.
+
+    Carbohydrate information is optional because
+    the patient may log a meal without knowing
+    its carbohydrate amount.
     """
 
     id: Optional[int] = None
@@ -52,10 +56,13 @@ class BackendMealLog(BaseModel):
         description="Time when the meal was consumed.",
     )
 
-    carbsG: float = Field(
-        ...,
+    carbsG: Optional[float] = Field(
+        default=None,
         ge=0,
-        description="Logged carbohydrate amount in grams.",
+        description=(
+            "Logged carbohydrate amount in grams. "
+            "May be null when the amount is unknown."
+        ),
     )
 
     clientUuid: Optional[UUID] = None
@@ -65,6 +72,10 @@ class BackendActivityLog(BaseModel):
     """
     Relevant activity-log fields received from
     the DiaMate Spring Boot backend.
+
+    Activity duration is optional because the
+    backend allows an activity to be recorded
+    without a known duration.
     """
 
     id: Optional[int] = None
@@ -80,10 +91,13 @@ class BackendActivityLog(BaseModel):
         description="Time when the activity started.",
     )
 
-    durationMinutes: float = Field(
-        ...,
+    durationMinutes: Optional[float] = Field(
+        default=None,
         ge=0,
-        description="Activity duration in minutes.",
+        description=(
+            "Activity duration in minutes. "
+            "May be null when the duration is unknown."
+        ),
     )
 
     clientUuid: Optional[UUID] = None
