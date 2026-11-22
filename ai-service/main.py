@@ -1,4 +1,4 @@
-import os
+import os 
 from data.event_aggregation import (
     aggregate_events_for_ml,
 )
@@ -852,5 +852,366 @@ def build_backend_patient_summary(
             detail=(
                 "Backend patient summary "
                 "generation failed."
+            ),
+        )
+
+# ============================================================
+# BACKEND INTEGRATION - PATIENT ANOMALY
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/patient-anomaly",
+    tags=["Integration"],
+    summary="Analyze a patient anomaly from backend health logs",
+    description=(
+        "Accepts authorized DiaMate Spring Boot glucose, meal, "
+        "and activity logs, converts them into the shared "
+        "internal AI history representation, and evaluates "
+        "the latest glucose record relative to the patient's "
+        "own historical statistical pattern. This analysis "
+        "describes statistical unusualness only and does not "
+        "represent diagnosis, clinical risk, treatment, or "
+        "medication advice."
+    ),
+)
+def build_backend_patient_anomaly(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    if len(records) < 6:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "At least seven glucose readings are required "
+                "to generate six aggregated patient-history "
+                "records for personalized anomaly detection."
+            ),
+        )
+
+    try:
+        return analyze_patient_glucose_anomaly(
+            records=records,
+            z_threshold=2.0,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Backend patient anomaly analysis failed."
+            ),
+        )
+# ============================================================
+# BACKEND INTEGRATION - PATIENT DATA QUALITY
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/patient-data-quality",
+    tags=["Integration"],
+    summary="Analyze patient data quality from backend health logs",
+    description=(
+        "Accepts authorized DiaMate Spring Boot glucose, meal, "
+        "and activity logs, converts them into the shared "
+        "internal AI history representation, and evaluates "
+        "the resulting patient history for data-quality issues "
+        "such as missing values, duplicate records, invalid "
+        "timestamps, and large logging gaps. Logging-gap "
+        "thresholds are engineering thresholds and not "
+        "clinical thresholds."
+    ),
+)
+def build_backend_patient_data_quality(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    if not records:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "At least two glucose readings are required "
+                "to generate aggregated patient-history "
+                "records for data-quality analysis."
+            ),
+        )
+
+    try:
+        return build_data_quality_report(
+            records=records,
+            large_gap_hours=24.0,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Backend patient data-quality "
+                "analysis failed."
+            ),
+        )
+# ============================================================
+# BACKEND INTEGRATION - PATIENT MODEL DRIFT
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/patient-drift",
+    tags=["Integration"],
+    summary="Analyze patient model-input drift from backend health logs",
+    description=(
+        "Accepts authorized DiaMate Spring Boot glucose, meal, "
+        "and activity logs, converts them into the shared "
+        "internal AI history representation, and compares "
+        "historical reference records with newer patient "
+        "records to identify statistical changes in model-input "
+        "features. Drift is an engineering model-monitoring "
+        "signal only and does not represent diagnosis, clinical "
+        "deterioration, medical risk, treatment advice, or "
+        "medication guidance."
+    ),
+)
+def build_backend_patient_drift(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    # Drift monitoring requires at least:
+    #
+    #   6 reference records
+    #   4 current records
+    #
+    # Event aggregation generates one fewer patient-history
+    # record than the number of glucose readings because the
+    # first glucose reading provides the previous observation.
+    #
+    # Therefore:
+    #
+    #   11 glucose readings
+    #       -> 10 aggregated records
+    #       -> 6 reference + 4 current
+    if len(records) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "At least eleven glucose readings are required "
+                "to generate ten aggregated patient-history "
+                "records for model-input drift monitoring."
+            ),
+        )
+
+    # Records are already chronological.
+    #
+    # The newest four records represent the current period.
+    # All older records represent the historical reference
+    # period.
+    reference_records = records[:-4]
+    current_records = records[-4:]
+
+    try:
+        return analyze_model_drift(
+            reference_records=reference_records,
+            current_records=current_records,
+            mean_shift_threshold=1.0,
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Backend patient model-input drift "
+                "analysis failed."
+            ),
+        )
+
+
+# ============================================================
+# BACKEND INTEGRATION - PATIENT XGBOOST PREDICTION
+# ============================================================
+
+
+@app.post(
+    "/api/v1/integration/patient-prediction",
+    tags=["Integration"],
+    summary="Generate glucose-trend prediction from backend health logs",
+    description=(
+        "Accepts authorized DiaMate Spring Boot glucose, meal, "
+        "and activity logs, converts them into the shared "
+        "internal AI history representation, and applies the "
+        "saved XGBoost model to classify the next glucose trend. "
+        "The response can include class probabilities, confidence, "
+        "uncertainty, and explainable-AI information. These outputs "
+        "describe experimental model behaviour only and do not "
+        "represent diagnosis, clinical risk, treatment advice, "
+        "or medication guidance."
+    ),
+)
+def build_backend_patient_prediction(
+    request: BackendHistoryRequest,
+):
+    glucose_logs = [
+        log.model_dump()
+        for log in request.glucoseLogs
+    ]
+
+    meal_logs = [
+        log.model_dump()
+        for log in request.mealLogs
+    ]
+
+    activity_logs = [
+        log.model_dump()
+        for log in request.activityLogs
+    ]
+
+    events = convert_backend_logs_to_events(
+        glucose_logs=glucose_logs,
+        meal_logs=meal_logs,
+        activity_logs=activity_logs,
+    )
+
+    records = aggregate_events_for_ml(
+        events
+    )
+
+    # Prediction requires at least two aggregated
+    # patient-history records.
+    #
+    # Aggregation produces one fewer record than the
+    # number of glucose readings.
+    #
+    # Therefore:
+    #
+    #   3 glucose readings
+    #       -> 2 aggregated records
+    #       -> enough history for prediction
+    if len(records) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "At least three glucose readings are required "
+                "to generate two aggregated patient-history "
+                "records for glucose-trend prediction."
+            ),
+        )
+
+    try:
+        prediction = predict_from_patient_history(
+            records
+        )
+
+        return {
+            **prediction,
+            "integration_source": "spring_backend_health_logs",
+        }
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Glucose trend model is not currently available."
+            ),
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Backend patient glucose-trend prediction failed."
             ),
         )
