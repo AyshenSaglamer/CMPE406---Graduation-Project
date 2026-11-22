@@ -25,6 +25,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * With a Content-Length header the request is refused at once. Without it (chunked upload) the size is only
  * known while reading, so the bytes are counted and reading stops after 1 MB.
+ *
+ * One exception: POST /api/v1/ai/voice carries a recording of up to 10 MB, so it may be 11 MB (the file plus the
+ * multipart headers). Its multipart parts are read by Tomcat with the same limits (spring.servlet.multipart).
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
@@ -32,6 +35,9 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
     static final long MAX_BODY_BYTES = 1024 * 1024;
     static final String TOO_LARGE = "Request body must be at most 1 MB";
+    static final String VOICE_PATH = "/api/v1/ai/voice";
+    static final long MAX_VOICE_BYTES = 11L * 1024 * 1024;
+    static final String VOICE_TOO_LARGE = "The recording must be at most 10 MB";
 
     private final ObjectMapper objectMapper;
 
@@ -42,27 +48,34 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        boolean voice = "POST".equals(request.getMethod()) && VOICE_PATH.equals(request.getRequestURI());
+        long limit = voice ? MAX_VOICE_BYTES : MAX_BODY_BYTES;
+        String message = voice ? VOICE_TOO_LARGE : TOO_LARGE;
         long declaredLength = request.getContentLengthLong(); // -1 when the client did not send Content-Length
-        if (declaredLength > MAX_BODY_BYTES) {
-            ProblemJson.write(objectMapper, request, response, HttpStatus.CONTENT_TOO_LARGE, TOO_LARGE);
+        if (declaredLength > limit) {
+            ProblemJson.write(objectMapper, request, response, HttpStatus.CONTENT_TOO_LARGE, message);
             return;
         }
-        chain.doFilter(declaredLength < 0 ? new SizeLimitedRequest(request) : request, response);
+        chain.doFilter(declaredLength < 0 ? new SizeLimitedRequest(request, limit, message) : request, response);
     }
 
     /** Gives the application a body stream that throws RequestTooLargeException (413) after 1 MB. */
     private static final class SizeLimitedRequest extends HttpServletRequestWrapper {
 
+        private final long limit;
+        private final String message;
         private ServletInputStream limitedStream;
 
-        SizeLimitedRequest(HttpServletRequest request) {
+        SizeLimitedRequest(HttpServletRequest request, long limit, String message) {
             super(request);
+            this.limit = limit;
+            this.message = message;
         }
 
         @Override
         public ServletInputStream getInputStream() throws IOException {
             if (limitedStream == null) {
-                limitedStream = new SizeLimitedInputStream(super.getInputStream());
+                limitedStream = new SizeLimitedInputStream(super.getInputStream(), limit, message);
             }
             return limitedStream;
         }
@@ -71,10 +84,14 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     private static final class SizeLimitedInputStream extends ServletInputStream {
 
         private final ServletInputStream body;
+        private final long limit;
+        private final String message;
         private long bytesRead;
 
-        SizeLimitedInputStream(ServletInputStream body) {
+        SizeLimitedInputStream(ServletInputStream body, long limit, String message) {
             this.body = body;
+            this.limit = limit;
+            this.message = message;
         }
 
         @Override
@@ -97,8 +114,8 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
         private void count(int read) {
             bytesRead += read;
-            if (bytesRead > MAX_BODY_BYTES) {
-                throw new RequestTooLargeException(TOO_LARGE);
+            if (bytesRead > limit) {
+                throw new RequestTooLargeException(message);
             }
         }
 

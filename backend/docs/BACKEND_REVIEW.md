@@ -16,9 +16,9 @@ Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayı
 
 | Ölçü | Değer |
 |---|---|
-| Endpoint | **43**: denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
-| Otomatik test | **375**, hepsi geçiyor (`mvn test`; 7'si Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 22 Kasım'da 375 (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
-| Postman | 17 klasörde **426** istek ve 663 assertion; yerel veritabanında hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66, her izin bayrağı ayrı ayrı), "Time-limited sharing" (20, gerçek süre dolumu), "Audit log" (31), "OWASP Top 10" (73, bölüm 15). 1. günde 7 klasör, 105 istek |
+| Endpoint | **48**: yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
+| Otomatik test | **411**, hepsi geçiyor (`mvn test`; 7'si Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
+| Postman | 18 klasörde **465** istek ve 711 assertion; yerel veritabanında ve gerçek FastAPI ile hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66), "Time-limited sharing" (20), "Audit log" (31), "OWASP Top 10" (73), "AI analyses and voice" (36). 1. günde 7 klasör, 105 istek |
 | Şema sürümü | Flyway V8 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı) |
 | Takım reposu | `backend` dalı GP ile aynı kodu taşıyor (yalnız `README.md` farklı). `backend`, `frontend` ve `ai` dalları henüz `main`'e merge edilmedi |
 
@@ -903,4 +903,26 @@ Görev: *Final security / OWASP testleri.* Yöntem: önce çalışan backend'e k
 | AI uçtan uca | **17/17** |
 
 V8 ortak Neon veritabanına, biri yeni backend'i Neon'a bağlı açtığında Flyway ile uygulanır (yalnız fonksiyon değişir).
+
+---
+
+## 16. 3. hafta: Ayşen'in yapay zekâ entegrasyonunun yeni backend'e taşınması
+
+Ayşen'in takım reposundaki `ai-backend-integration` dalı (`670de93`, `a2c61e3`, 22 Kasım) 6 Ekim'deki eski backend'den ayrılmıştı ve beş endpoint ekliyordu: sesle kayıt ve dört hasta geçmişi analizi. Bunlar bu backend'e aşağıdaki farklarla taşındı. FastAPI tarafı (`ai-service`) takımın `ai` dalıyla (`8220cc0`) aynı.
+
+| Konu | Ayşen'in dalında | Burada | Neden |
+|---|---|---|---|
+| Geçmişin toplanması | Kayıt servislerinden sayfa sayfa, sınırsız aralık | Özetin mevcut kodu (`AiService.patientAnalysis`): en fazla 31 gün, tür başına 10 000 kayıt, tek sorgu | Her sayfa ayrı bir denetim satırı yazıyordu; sınırsız aralık tek istekte çok büyük gövde demekti |
+| Erişim | Kayıt endpoint'lerinin kuralları; doktorun öğün izni yoksa bütün istek 404 | `reports` + `glucose` izni; öğün ve aktivite izin varsa eklenir | Özetle aynı kural (düşük bulgular, 20 Kasım) |
+| Karbonhidratı / süresi bilinmeyen kayıt | Gönderiliyordu | Gönderiliyor (`null`); özet de artık filtrelemiyor | FastAPI `8220cc0` bunları sıfır saymadan işliyor |
+| FastAPI hatası | Regex ile `"detail"` arıyordu | JSON olarak `error.message` (servisin kendi biçimi) ya da `detail`; en fazla 300 karakter, tek satır | Servis `{"status":"ERROR","error":{...}}` döndürüyor: regex hiçbir mesajı bulamıyordu (uçtan uca görüldü) |
+| Ses: yükleme | `MultipartBodyBuilder` + 88 satırlık `pom.xml` değişikliği | Spring'in standart `MultiValueMap`'i; yeni bağımlılık yok | `MultipartBodyBuilder` reactive-streams ister (testte `NoClassDefFound`) |
+| Ses: dosya | Kontrol FastAPI'de | Önce backend'de de: tür (uzantıdan), içerik türü, boş değil, 10 MB; FastAPI'ye `recording.<uzantı>` adı | Bozuk istek servise hiç gitmez; istemcinin dosya adı aktarılmaz |
+| Ses: boyut | 1 MB filtresi yüzünden 1 MB üstü kayıt 413 alırdı | Yalnız `POST /ai/voice` için 11 MB; multipart `resolve-lazily` | Kayıtlar genelde 1 MB'tan büyük |
+| Ses: süre | Diğer çağrılarla aynı 10 sn okuma süresi | Ayrı istemci, 60 sn (`diamate.ai.voice-read-timeout`) | Whisper uzun kayıtta 10 sn'yi aşabilir |
+| Cevap | Ham `Map` | Ses için tipli `AiVoiceResponse`; analizler servisin JSON'u, değiştirilmeden | Ses cevabı `/ai/parse` ile aynı biçimde olmalı |
+
+**Doğrulama:** `mvn test` **411/411** (36 yeni). Gerçek FastAPI (`8220cc0`) ve yerel veritabanıyla uçtan uca 20/20: beş analiz 200 (tahmin 503: eğitilmiş model `ml/models/*.joblib` Git'te değil), az veride servisin 422 açıklaması iletiliyor, erişim kuralları, 31 gün sınırı, ses için 400/403/413/415. Tarama 6409 istek, 0 bulgu (yeni analizler dahil; `/ai/` adreslerinde 502/503 belgelenmiş cevap). Postman 465 istek, 711 assertion, 0 hata.
+
+**Ayşen için:** (1) Yerel imajda Whisper modeli yok, container modeli Hugging Face'ten indirmeye çalışıyor ve ses isteği 500 dönüyor (backend bunu 502'ye çeviriyor). Model imaja konmalı ya da ilk açılışta indirilmeli. (2) Tahmin için eğitilmiş XGBoost modeli imajda yok (503). (3) Doktor geçersiz bir multipart gönderirse 403 yerine 400 alır, çünkü dosya alanı rol kontrolünden önce okunur; geçerli bir yüklemede 403 alır (güvenlik açığı değil).
 

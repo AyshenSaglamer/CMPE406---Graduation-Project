@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 import java.time.Clock;
@@ -27,9 +28,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
@@ -101,7 +104,11 @@ class AuthorizationMatrixTest {
         RULES.put("PATCH " + LOGS + "alerts/{alertId}", EVERYONE);
         RULES.put("POST " + LOGS + "ai-entries", PATIENT);
         RULES.put("POST /api/v1/ai/parse", PATIENT);
-        RULES.put("GET /api/v1/ai/patients/{patientId}/summary", EVERYONE); // like the log lists: fn_can_access decides
+        RULES.put("POST /api/v1/ai/voice", PATIENT);
+        // Patient-history analyses: like the log lists, fn_can_access (reports + glucose) decides who sees what.
+        for (String analysis : new String[] { "summary", "anomaly", "data-quality", "drift", "prediction" }) {
+            RULES.put("GET /api/v1/ai/patients/{patientId}/" + analysis, EVERYONE);
+        }
         RULES.put("GET /api/v1/admin/users", ADMIN);
         RULES.put("PATCH /api/v1/admin/users/{userId}/status", ADMIN);
         RULES.put("GET /api/v1/care-team/patients", CARE_TEAM);
@@ -218,11 +225,16 @@ class AuthorizationMatrixTest {
     }
 
     /** The patient's own id in {patientId}, 9 for any other id, a valid body for POST / PUT / PATCH. */
-    private MockHttpServletRequestBuilder withToken(String endpoint, Role role) {
+    private AbstractMockHttpServletRequestBuilder<?> withToken(String endpoint, Role role) {
         String[] methodAndPath = endpoint.split(" ", 2);
         String path = methodAndPath[1].replace("{patientId}", "5").replaceAll("\\{[^}]+}", "9");
         MockHttpServletRequestBuilder request = request(HttpMethod.valueOf(methodAndPath[0]), path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(role));
+        if (endpoint.equals("POST /api/v1/ai/voice")) {
+            // A recording, not JSON: a JSON body would be refused (415) before the role check runs.
+            return multipart(path).file(new MockMultipartFile("audio", "r.m4a", "audio/mp4", new byte[] { 1 }))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(role));
+        }
         if (!methodAndPath[0].equals("GET") && !methodAndPath[0].equals("DELETE")) {
             request.contentType(MediaType.APPLICATION_JSON).content(bodyFor(endpoint));
         }

@@ -20,5 +20,7 @@ import jakarta.validation.constraints.NotNull;
 public record AiProperties(
         @NotBlank String baseUrl,
         @NotNull Duration connectTimeout,
-        @NotNull Duration readTimeout) {
+        @NotNull Duration readTimeout,
+        // Speech-to-text of a recording (up to 10 MB) takes longer than the other calls.
+        @NotNull Duration voiceReadTimeout) {
 }

@@ -56,9 +56,9 @@ class ProtectedRoutesTest {
             "POST /api/v1/auth/login",
             "GET /api/v1/health");
 
-    // 43 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
+    // 48 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
     // endpoint inventory in docs/BACKEND_REVIEW.md, the README and AuthorizationMatrixTest.
-    private static final int ENDPOINT_COUNT = 43;
+    private static final int ENDPOINT_COUNT = 48;
 
     @Autowired
     private MockMvc mockMvc;

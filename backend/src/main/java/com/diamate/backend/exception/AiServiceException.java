@@ -23,6 +23,16 @@ public class AiServiceException extends RuntimeException {
         return new AiServiceException(HttpStatus.BAD_GATEWAY, "The AI service returned an invalid response", cause);
     }
 
+    /**
+     * The AI service understood the request but cannot work with it (its 422), e.g. too few glucose readings for an
+     * anomaly analysis, or speech it could not recognise. detail is the service's own short explanation (already
+     * checked by AiClient), or null for a general text.
+     */
+    public static AiServiceException unprocessable(String detail, Throwable cause) {
+        return new AiServiceException(HttpStatus.UNPROCESSABLE_CONTENT,
+                detail != null ? detail : "The AI service could not process this request", cause);
+    }
+
     public HttpStatus getStatus() {
         return status;
     }

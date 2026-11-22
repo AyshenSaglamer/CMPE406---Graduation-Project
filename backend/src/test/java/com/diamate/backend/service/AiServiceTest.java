@@ -21,17 +21,24 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.diamate.backend.ai.AiAnalysis;
 import com.diamate.backend.ai.AiClient;
 import com.diamate.backend.ai.FastApiParseResult;
 import com.diamate.backend.ai.FastApiPatientSummaryRequest;
+import com.diamate.backend.ai.FastApiVoiceResult;
 import com.diamate.backend.api.dto.response.AiParseResponse;
+import com.diamate.backend.api.dto.response.AiVoiceResponse;
 import com.diamate.backend.entity.ActivityIntensity;
 import com.diamate.backend.entity.ActivityLog;
 import com.diamate.backend.entity.ActivitySource;
@@ -110,7 +117,7 @@ class AiServiceTest {
     // ---------- patient summary ----------
 
     @Test
-    void summarySendsTheLast14DaysAndLeavesOutMealsWithoutCarbsAndActivitiesWithoutDuration() {
+    void summarySendsTheLast14DaysIncludingMealsWithoutCarbsAndActivitiesWithoutDuration() {
         allow(PATIENT, "glucose", "meals", "activity", "reports");
         when(glucoseRepository.findInRange(eq(PATIENT), any(), any(), any()))
                 .thenReturn(page(glucose(1, 140), glucose(2, 180)));
@@ -118,18 +125,22 @@ class AiServiceTest {
                 .thenReturn(page(meal(10, new BigDecimal("45")), meal(11, null)));
         when(activityRepository.findInRange(eq(PATIENT), any(), any(), any()))
                 .thenReturn(page(activity(20, new BigDecimal("30")), activity(21, null)));
-        when(aiClient.patientSummary(any())).thenReturn(Map.of("status", "SUCCESS"));
+        when(aiClient.patientAnalysis(eq(AiAnalysis.SUMMARY), any())).thenReturn(Map.of("status", "SUCCESS"));
 
         Map<String, Object> summary = service.patientSummary(PATIENT, PATIENT, null, null, 70, 180);
 
         assertThat(summary).containsEntry("status", "SUCCESS");
         ArgumentCaptor<FastApiPatientSummaryRequest> sent = ArgumentCaptor.forClass(FastApiPatientSummaryRequest.class);
-        verify(aiClient).patientSummary(sent.capture());
+        verify(aiClient).patientAnalysis(eq(AiAnalysis.SUMMARY), sent.capture());
         assertThat(sent.getValue().glucoseLogs()).extracting(FastApiPatientSummaryRequest.Glucose::glucoseValue)
                 .containsExactly(140, 180);
-        assertThat(sent.getValue().mealLogs()).extracting(FastApiPatientSummaryRequest.Meal::id).containsExactly(10L);
+        // Unknown amounts are sent as null: the AI service leaves them out instead of counting them as zero.
+        assertThat(sent.getValue().mealLogs()).extracting(FastApiPatientSummaryRequest.Meal::id)
+                .containsExactly(10L, 11L);
+        assertThat(sent.getValue().mealLogs().get(1).carbsG()).isNull();
         assertThat(sent.getValue().activityLogs()).extracting(FastApiPatientSummaryRequest.Activity::id)
-                .containsExactly(20L);
+                .containsExactly(20L, 21L);
+        assertThat(sent.getValue().activityLogs().get(1).durationMinutes()).isNull();
         assertThat(sent.getValue().rangeLow()).isEqualTo(70);
         assertThat(sent.getValue().rangeHigh()).isEqualTo(180);
         // Default window of the log lists: 14 days up to now (+ 5 minutes clock tolerance), one bounded page.
@@ -146,12 +157,12 @@ class AiServiceTest {
         allow(CAREGIVER, "glucose", "reports");
         when(glucoseRepository.findInRange(eq(PATIENT), any(), any(), any()))
                 .thenReturn(page(glucose(1, 140), glucose(2, 180)));
-        when(aiClient.patientSummary(any())).thenReturn(Map.of("status", "SUCCESS"));
+        when(aiClient.patientAnalysis(eq(AiAnalysis.SUMMARY), any())).thenReturn(Map.of("status", "SUCCESS"));
 
         service.patientSummary(CAREGIVER, PATIENT, null, null, 70, 180);
 
         ArgumentCaptor<FastApiPatientSummaryRequest> sent = ArgumentCaptor.forClass(FastApiPatientSummaryRequest.class);
-        verify(aiClient).patientSummary(sent.capture());
+        verify(aiClient).patientAnalysis(eq(AiAnalysis.SUMMARY), sent.capture());
         assertThat(sent.getValue().mealLogs()).isEmpty();
         assertThat(sent.getValue().activityLogs()).isEmpty();
         verifyNoInteractions(mealRepository, activityRepository);
@@ -192,7 +203,7 @@ class AiServiceTest {
                 .isInstanceOf(InvalidFieldException.class)
                 .hasMessageContaining("At least 2 glucose readings");
 
-        verify(aiClient, never()).patientSummary(any());
+        verify(aiClient, never()).patientAnalysis(any(), any());
     }
 
     @Test
@@ -201,7 +212,7 @@ class AiServiceTest {
 
         assertThatThrownBy(() -> service.patientSummary(PATIENT, PATIENT, NOW.minus(Duration.ofDays(32)), NOW, 70, 180))
                 .isInstanceOf(InvalidFieldException.class)
-                .hasMessage("A summary covers at most 31 days");
+                .hasMessage("An analysis covers at most 31 days");
 
         verifyNoInteractions(glucoseRepository, aiClient);
     }
@@ -216,7 +227,7 @@ class AiServiceTest {
                 .isInstanceOf(InvalidFieldException.class)
                 .hasMessageContaining("Too many records");
 
-        verify(aiClient, never()).patientSummary(any());
+        verify(aiClient, never()).patientAnalysis(any(), any());
     }
 
     @Test
@@ -236,6 +247,93 @@ class AiServiceTest {
     // ---------- helpers ----------
 
     /** viewer may see these permissions of PATIENT (fn_can_access), nothing else. */
+    // ---------- the other analyses share the summary's rules ----------
+
+    @ParameterizedTest
+    @EnumSource(AiAnalysis.class)
+    void everyAnalysisSendsTheSameHistoryToItsOwnAddress(AiAnalysis analysis) {
+        allow(CAREGIVER, "glucose", "reports", "meals");
+        when(glucoseRepository.findInRange(eq(PATIENT), any(), any(), any()))
+                .thenReturn(page(glucose(1, 140), glucose(2, 180)));
+        when(mealRepository.findInRange(eq(PATIENT), any(), any(), any())).thenReturn(page(meal(10, null)));
+        when(aiClient.patientAnalysis(eq(analysis), any())).thenReturn(Map.of("status", "SUCCESS"));
+
+        assertThat(service.patientAnalysis(analysis, CAREGIVER, PATIENT, null, null, 70, 180))
+                .containsEntry("status", "SUCCESS");
+
+        ArgumentCaptor<FastApiPatientSummaryRequest> sent = ArgumentCaptor.forClass(FastApiPatientSummaryRequest.class);
+        verify(aiClient).patientAnalysis(eq(analysis), sent.capture());
+        assertThat(sent.getValue().glucoseLogs()).hasSize(2);
+        assertThat(sent.getValue().mealLogs()).hasSize(1);
+        assertThat(sent.getValue().activityLogs()).isEmpty(); // no activity permission
+        verifyNoInteractions(activityRepository);
+    }
+
+    @ParameterizedTest
+    @EnumSource(AiAnalysis.class)
+    void noAnalysisWithoutTheReportsPermission(AiAnalysis analysis) {
+        allow(CAREGIVER, "glucose", "meals", "activity");
+
+        assertThatThrownBy(() -> service.patientAnalysis(analysis, CAREGIVER, PATIENT, null, null, 70, 180))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(aiClient, glucoseRepository);
+        verify(auditService).patientDataViewed(CAREGIVER, PATIENT, PatientDataType.REPORTS, false);
+    }
+
+    @ParameterizedTest
+    @EnumSource(AiAnalysis.class)
+    void everyAnalysisHasTheSameWindowLimit(AiAnalysis analysis) {
+        allow(PATIENT, "glucose", "reports");
+
+        assertThatThrownBy(() -> service.patientAnalysis(analysis, PATIENT, PATIENT, NOW.minus(Duration.ofDays(32)),
+                NOW, 70, 180))
+                .isInstanceOfSatisfying(InvalidFieldException.class, e -> assertThat(e.getField()).isEqualTo("from"));
+        verifyNoInteractions(aiClient);
+    }
+
+    // ---------- voice ----------
+
+    @Test
+    void voiceAnswerHasTheTranscriptAndTheEntries() {
+        when(aiClient.parseVoice(any(), eq("recording.m4a"), eq(MediaType.parseMediaType("audio/mp4"))))
+                .thenReturn(new FastApiVoiceResult("SUCCESS", "my glucose is 145", List.of(
+                        new FastApiParseResult.Entry("LOG_GLUCOSE", "SUCCESS", 145.0, "mg/dL", null, null)), null));
+
+        AiVoiceResponse answer = service.parseVoice(
+                new MockMultipartFile("audio", "Kayıt 1.M4A", "application/octet-stream", new byte[] { 1, 2 }));
+
+        assertThat(answer.transcript()).isEqualTo("my glucose is 145");
+        assertThat(answer.resultCount()).isEqualTo(1);
+        assertThat(answer.results().get(0).value()).isEqualTo(145.0);
+        verifyNoInteractions(patientAccessRepository, auditService); // nothing about a patient's data is read
+    }
+
+    @Test
+    void aBadRecordingNeverReachesTheAiService() {
+        for (MockMultipartFile bad : List.of(
+                new MockMultipartFile("audio", "a.m4a", "audio/mp4", new byte[0]),
+                new MockMultipartFile("audio", "a.txt", "audio/mp4", new byte[] { 1 }),
+                new MockMultipartFile("audio", "no-extension", "audio/mp4", new byte[] { 1 }),
+                new MockMultipartFile("audio", "a.m4a", "image/png", new byte[] { 1 }),
+                new MockMultipartFile("audio", "a.m4a", "audio/mp4", new byte[(int) AudioFile.MAX_BYTES + 1]))) {
+            assertThatThrownBy(() -> service.parseVoice(bad))
+                    .isInstanceOfSatisfying(InvalidFieldException.class,
+                            e -> assertThat(e.getField()).isEqualTo("audio"));
+        }
+        verifyNoInteractions(aiClient);
+    }
+
+    @Test
+    void theTypeComesFromTheExtensionAndTheNameIsNotPassedOn() {
+        for (String[] accepted : new String[][] { { "x.wav", "audio/wav" }, { "x.MP3", "audio/mpeg" },
+                { "x.webm", "video/webm" }, { "x.ogg", "" }, { "../../etc/x.m4a", "audio/x-m4a; codecs=aac" } }) {
+            AudioFile file = AudioFile.check(new MockMultipartFile("audio", accepted[0],
+                    accepted[1].isEmpty() ? null : accepted[1], new byte[] { 1 }));
+            assertThat(file.filename()).matches("recording\\.(wav|mp3|webm|ogg|m4a)");
+            assertThat(file.contentType().getType()).isEqualTo("audio");
+        }
+    }
+
     private void allow(long viewer, String... permissions) {
         when(patientAccessRepository.canAccess(anyLong(), anyLong(), any())).thenAnswer(call -> (long) call
                 .getArgument(0) == viewer && (long) call.getArgument(1) == PATIENT

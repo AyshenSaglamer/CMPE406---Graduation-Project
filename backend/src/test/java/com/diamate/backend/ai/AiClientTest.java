@@ -2,7 +2,10 @@ package com.diamate.backend.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
@@ -17,6 +20,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -104,27 +109,146 @@ class AiClientTest {
     }
 
     @Test
-    void patientSummaryRejectedByTheAiServiceIsA502() {
+    void patientSummaryRejectedByTheAiServiceWithoutDetailIsA422WithAGeneralText() {
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo(BASE_URL + "/api/v1/integration/patient-summary"))
-                .andRespond(withStatus(HttpStatus.valueOf(422))); // e.g. a meal without carbsG
+                .andRespond(withStatus(HttpStatus.valueOf(422)));
 
         assertThatThrownBy(() -> new AiClient(builder.build())
                 .patientSummary(new FastApiPatientSummaryRequest(List.of(), List.of(), List.of(), 70, 180)))
-                .isInstanceOf(AiServiceException.class)
-                .satisfies(e -> assertThat(((AiServiceException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+                .isInstanceOfSatisfying(AiServiceException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+                    assertThat(e.getMessage()).isEqualTo("The AI service could not process this request");
+                });
     }
 
     @Test
     void unreachableAiServiceIsA503() {
         // Port 9 ("discard") is closed on normal machines: the connection is refused at once.
         RestClient client = new AiClientConfig().aiRestClient(
-                new AiProperties("http://127.0.0.1:9", Duration.ofSeconds(1), Duration.ofSeconds(1)));
+                new AiProperties("http://127.0.0.1:9", Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)));
 
         assertThatThrownBy(() -> new AiClient(client).parseMultiple("glucose 130"))
                 .isInstanceOf(AiServiceException.class)
                 .hasMessage("The AI service is currently unavailable")
                 .satisfies(e -> assertThat(((AiServiceException) e).getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+    }
+
+    // ---------- analyses ----------
+
+    @ParameterizedTest
+    @EnumSource(AiAnalysis.class)
+    void eachAnalysisIsPostedToItsOwnAddressAndAnsweredUnchanged(AiAnalysis analysis) {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + analysis.path()))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("{\"rangeLow\":70.0,\"rangeHigh\":180.0}"))
+                .andRespond(withSuccess("{\"status\":\"SUCCESS\",\"trend\":\"STABLE\",\"confidence\":0.7}",
+                        MediaType.APPLICATION_JSON));
+
+        Map<String, Object> answer = new AiClient(builder.build()).patientAnalysis(analysis,
+                new FastApiPatientSummaryRequest(List.of(), List.of(), List.of(), 70, 180));
+
+        assertThat(answer).containsEntry("trend", "STABLE").containsEntry("confidence", 0.7);
+        server.verify();
+    }
+
+    @Test
+    void aShortExplanationOfThe422IsPassedOn() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + AiAnalysis.ANOMALY.path()))
+                .andRespond(withStatus(HttpStatus.valueOf(422)).contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"status":"ERROR","error":{"code":"INVALID_INPUT","message":"At least seven glucose \
+                                readings are required to generate six aggregated patient-history records for \
+                                personalized anomaly detection."}}"""));
+
+        assertThatThrownBy(() -> new AiClient(builder.build()).patientAnalysis(AiAnalysis.ANOMALY,
+                new FastApiPatientSummaryRequest(List.of(), List.of(), List.of(), 70, 180)))
+                .isInstanceOfSatisfying(AiServiceException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+                    assertThat(e.getMessage()).isEqualTo("At least seven glucose readings are required to generate six "
+                            + "aggregated patient-history records for personalized anomaly detection.");
+                });
+    }
+
+    @Test
+    void onlyAShortPlainDetailIsPassedOn() {
+        assertThat(AiClient.detail("{\"status\":\"ERROR\",\"error\":{\"code\":\"INVALID_INPUT\",\"message\":\"Too few.\"}}"))
+                .isEqualTo("Too few.");
+        assertThat(AiClient.detail("{\"detail\":\"Too few readings.\"}")).isEqualTo("Too few readings.");
+        // Pydantic's error list, long texts, control characters, other JSON or no JSON: the general text instead.
+        assertThat(AiClient.detail("{\"detail\":[{\"loc\":[\"body\",\"glucoseLogs\"],\"msg\":\"x\"}]}")).isNull();
+        assertThat(AiClient.detail("{\"detail\":\"" + "x".repeat(AiClient.MAX_DETAIL_LENGTH + 1) + "\"}")).isNull();
+        assertThat(AiClient.detail("{\"detail\":\"line1\\nTraceback ...\"}")).isNull();
+        assertThat(AiClient.detail("{\"detail\":\"  \"}")).isNull();
+        assertThat(AiClient.detail("{\"message\":\"x\"}")).isNull();
+        assertThat(AiClient.detail("<html>Bad Gateway</html>")).isNull();
+        assertThat(AiClient.detail(null)).isNull();
+    }
+
+    @Test
+    void unavailableAnswerIsA503AndOtherErrorsA502() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + AiAnalysis.PREDICTION.path()))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+        server.expect(requestTo(BASE_URL + AiAnalysis.PREDICTION.path()))
+                .andRespond(withServerError().body("{\"detail\":\"Patient-history prediction failed.\"}"));
+        AiClient client = new AiClient(builder.build());
+        FastApiPatientSummaryRequest request = new FastApiPatientSummaryRequest(List.of(), List.of(), List.of(), 70, 180);
+
+        assertThatThrownBy(() -> client.patientAnalysis(AiAnalysis.PREDICTION, request))
+                .isInstanceOfSatisfying(AiServiceException.class,
+                        e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThatThrownBy(() -> client.patientAnalysis(AiAnalysis.PREDICTION, request))
+                .isInstanceOfSatisfying(AiServiceException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(e.getMessage()).isEqualTo("The AI service returned an invalid response");
+                });
+    }
+
+    // ---------- voice ----------
+
+    @Test
+    void voiceIsSentAsMultipartThroughTheVoiceClient() {
+        RestClient.Builder general = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer generalServer = MockRestServiceServer.bindTo(general).build();
+        RestClient.Builder voice = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer voiceServer = MockRestServiceServer.bindTo(voice).build();
+        voiceServer.expect(requestTo(BASE_URL + "/api/v1/voice/parse"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Content-Type", startsWith("multipart/form-data")))
+                .andExpect(content().string(containsString("name=\"audio\"; filename=\"recording.m4a\"")))
+                .andExpect(content().string(containsString("Content-Type: audio/mp4")))
+                .andRespond(withSuccess("""
+                        {"status":"SUCCESS","input_type":"VOICE","transcript":"my glucose is 145","result_count":1,
+                         "results":[{"intent":"LOG_GLUCOSE","value":145.0,"unit":"mg/dL","status":"SUCCESS"}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        FastApiVoiceResult result = new AiClient(general.build(), voice.build())
+                .parseVoice(new byte[] { 1, 2, 3 }, "recording.m4a", MediaType.parseMediaType("audio/mp4"));
+
+        assertThat(result.transcript()).isEqualTo("my glucose is 145");
+        assertThat(result.results()).singleElement().satisfies(e -> assertThat(e.value()).isEqualTo(145.0));
+        voiceServer.verify();
+        generalServer.verify(); // nothing went through the client with the short timeout
+    }
+
+    @Test
+    void speechThatCouldNotBeRecognisedIsA422WithTheReason() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE_URL + "/api/v1/voice/parse"))
+                .andRespond(withStatus(HttpStatus.valueOf(422)).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"status\":\"ERROR\",\"error\":{\"code\":\"INVALID_INPUT\",\"message\":\"Transcript cannot be empty.\"}}"));
+
+        assertThatThrownBy(() -> new AiClient(builder.build())
+                .parseVoice(new byte[] { 1 }, "recording.wav", MediaType.parseMediaType("audio/wav")))
+                .isInstanceOfSatisfying(AiServiceException.class,
+                        e -> assertThat(e.getMessage()).isEqualTo("Transcript cannot be empty."));
     }
 }

@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -145,6 +146,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AiServiceException.class)
     public ProblemDetail handleAiService(AiServiceException ex) {
         return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+    }
+
+    /** A multipart upload above spring.servlet.multipart (the recording of /ai/voice is at most 10 MB). */
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        return handleExceptionInternal(ex,
+                ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, "The recording must be at most 10 MB"),
+                headers, HttpStatus.CONTENT_TOO_LARGE, request);
     }
 
     @ExceptionHandler(RequestTooLargeException.class)

@@ -102,7 +102,8 @@ class Scanner:
             self.accepted.setdefault(field, []).append(value)
         if status == 0:
             problem = "no answer (" + raw.decode(errors="replace")[:80] + ")"
-        elif status >= 500:
+        elif status >= 500 and not (status in (502, 503) and path.startswith("/ai/")):
+            # 502/503 on /ai/... are the documented answers when the AI service is down or has no model loaded
             problem = f"{status}"
         elif status >= 400 and "application/problem+json" not in ctype:
             if not (status == 400 and any(t in path for t in TOMCAT_HTML_OK)):
@@ -326,9 +327,11 @@ def scan(s, now, earlier, pid, pt, dt, at, target_id, rel_id, rel2_id):
     s.body_fields("ai-entries", "POST", f"/patients/{pid}/ai-entries", pt, entries)
     s.whole_bodies("ai-entries", "POST", f"/patients/{pid}/ai-entries", pt, entries)
     s.body_fields("ai parse", "POST", "/ai/parse", pt, {"text": "my glucose is 120"})
-    s.query("ai summary", f"/ai/patients/{pid}/summary", dt,
-            {"from": iso(now - timedelta(days=2)), "to": iso(now + timedelta(minutes=1)), "rangeLow": "70",
-             "rangeHigh": "180"})
+    for analysis in ("summary", "anomaly", "data-quality", "drift", "prediction"):
+        s.query("ai " + analysis, f"/ai/patients/{pid}/{analysis}", dt,
+                {"from": iso(now - timedelta(days=2)), "to": iso(now + timedelta(minutes=1)), "rangeLow": "70",
+                 "rangeHigh": "180"})
+    s.path_ids("ai prediction", "GET", "/ai/patients/{p}/prediction", dt, {"p": pid})
 
     # ---------- deletes last (path ids only) ----------
     for kind in valid:

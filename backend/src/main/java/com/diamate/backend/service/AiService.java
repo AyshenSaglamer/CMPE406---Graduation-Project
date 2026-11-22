@@ -10,11 +10,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.diamate.backend.ai.AiAnalysis;
 import com.diamate.backend.ai.AiClient;
 import com.diamate.backend.ai.FastApiParseResult;
 import com.diamate.backend.ai.FastApiPatientSummaryRequest;
+import com.diamate.backend.ai.FastApiVoiceResult;
 import com.diamate.backend.api.dto.response.AiParseResponse;
+import com.diamate.backend.api.dto.response.AiVoiceResponse;
 import com.diamate.backend.entity.ActivityLog;
 import com.diamate.backend.entity.GlucoseLog;
 import com.diamate.backend.entity.MealLog;
@@ -30,7 +34,7 @@ import com.diamate.backend.repository.MealLogRepository;
 @Service
 public class AiService {
 
-    /** A summary covers at most a month: the logs are sent to the AI service in one request. */
+    /** An analysis covers at most a month: the logs are sent to the AI service in one request. */
     static final Duration MAX_SUMMARY_RANGE = Duration.ofDays(31);
 
     /** Per log type; a month of CGM data is ~8 900 readings. More means the range is too long for one request. */
@@ -62,33 +66,54 @@ public class AiService {
 
     public AiParseResponse parse(String text) {
         FastApiParseResult result = aiClient.parseMultiple(text.trim());
-        List<AiParseResponse.Entry> entries = result.results() == null ? List.of()
-                : result.results().stream()
-                        .map(e -> new AiParseResponse.Entry(e.intent(), e.status(), e.value(), e.unit(), e.activity(),
-                                e.message()))
-                        .toList();
+        List<AiParseResponse.Entry> entries = entries(result.results());
         return new AiParseResponse(result.status(), entries.size(), entries, result.message());
     }
 
     /**
+     * Speech-to-text + NLP of a recording (Ayşen, ai-backend-integration): the same result as parse(), plus what
+     * Whisper heard (transcript). Nothing is saved; the app shows the result and saves it with /ai-entries, like
+     * typed text. The file is checked here first (the AI service accepts the same types and sizes).
+     */
+    public AiVoiceResponse parseVoice(MultipartFile audio) {
+        AudioFile file = AudioFile.check(audio);
+        FastApiVoiceResult result = aiClient.parseVoice(file.bytes(), file.filename(), file.contentType());
+        List<AiParseResponse.Entry> entries = entries(result.results());
+        return new AiVoiceResponse(result.status(), result.transcript(), entries.size(), entries, result.message());
+    }
+
+    /**
      * AI summary of a patient's glucose, meal and activity logs in [from, to) (Ayşen, ai-backend-integration).
-     *
-     * The summary is a report built from the glucose logs, so both the "reports" and the "glucose" permission are
-     * required: without either the patient is "not found" (404), like the log endpoints. Meals and activities are
-     * added only if the viewer may see them (each read is audited). Meals
-     * without carbs and activities without a duration are left out, because the AI service requires those values.
-     * The window is the one of the log lists (default: last 14 days) and may be at most 31 days long.
-     *
-     * Not @Transactional, like the log lists (see HealthDataAccess).
+     * Same as patientAnalysis(SUMMARY, ...).
      */
     public Map<String, Object> patientSummary(long viewerId, long patientId, Instant from, Instant to,
             double rangeLow, double rangeHigh) {
+        return patientAnalysis(AiAnalysis.SUMMARY, viewerId, patientId, from, to, rangeLow, rangeHigh);
+    }
+
+    /**
+     * One of the AI service's patient-history analyses (summary, anomaly, data quality, drift, prediction; Ayşen,
+     * ai-backend-integration) of the logs in [from, to). All of them get the same history:
+     *
+     * - Access: an analysis is a report built from the glucose logs, so both the "reports" and the "glucose"
+     *   permission are required; without either the patient is "not found" (404), like the log endpoints. Meals and
+     *   activities are added only if the viewer may see them. Every read is audited.
+     * - Window: the one of the log lists (default: last 14 days), at most 31 days, at most 10 000 logs per type.
+     * - At least 2 glucose readings (400). The AI service may need more for some analyses (anomaly 6, drift 10)
+     *   and then answers 422 with its own explanation, which is passed on.
+     * - Meals without carbs and activities without a duration are sent too (null): the AI service leaves the
+     *   unknown amount out instead of counting it as zero (ai-service 8220cc0).
+     *
+     * Not @Transactional, like the log lists (see HealthDataAccess).
+     */
+    public Map<String, Object> patientAnalysis(AiAnalysis analysis, long viewerId, long patientId, Instant from,
+            Instant to, double rangeLow, double rangeHigh) {
         access.checkCanRead(viewerId, patientId, PatientDataType.REPORTS);
         access.checkCanRead(viewerId, patientId, PatientDataType.GLUCOSE_LOGS);
         requireRange(rangeLow, rangeHigh);
         LogRules.Window window = LogRules.window(from, to, 0, 1, clock);
         if (Duration.between(window.from(), window.to()).compareTo(MAX_SUMMARY_RANGE) > 0) {
-            throw new InvalidFieldException("from", "A summary covers at most 31 days");
+            throw new InvalidFieldException("from", "An analysis covers at most 31 days");
         }
         Pageable limit = PageRequest.of(0, MAX_SUMMARY_RECORDS);
 
@@ -103,7 +128,6 @@ public class AiService {
         List<FastApiPatientSummaryRequest.Meal> meals = List.of();
         if (access.canRead(viewerId, patientId, PatientDataType.MEAL_LOGS)) {
             meals = upToLimit(mealLogRepository.findInRange(patientId, window.from(), window.to(), limit)).stream()
-                    .filter(m -> m.getCarbsG() != null)
                     .map(AiService::meal).toList();
         }
 
@@ -111,12 +135,19 @@ public class AiService {
         if (access.canRead(viewerId, patientId, PatientDataType.ACTIVITY_LOGS)) {
             activities = upToLimit(activityLogRepository.findInRange(patientId, window.from(), window.to(), limit))
                     .stream()
-                    .filter(a -> a.getDurationMinutes() != null)
                     .map(AiService::activity).toList();
         }
 
-        return aiClient.patientSummary(
+        return aiClient.patientAnalysis(analysis,
                 new FastApiPatientSummaryRequest(glucose, meals, activities, rangeLow, rangeHigh));
+    }
+
+    private static List<AiParseResponse.Entry> entries(List<FastApiParseResult.Entry> results) {
+        return results == null ? List.of()
+                : results.stream()
+                        .map(e -> new AiParseResponse.Entry(e.intent(), e.status(), e.value(), e.unit(), e.activity(),
+                                e.message()))
+                        .toList();
     }
 
     private static void requireRange(double rangeLow, double rangeHigh) {

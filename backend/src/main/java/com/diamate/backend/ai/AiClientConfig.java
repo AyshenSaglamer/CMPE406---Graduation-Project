@@ -1,5 +1,7 @@
 package com.diamate.backend.ai;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,9 +15,19 @@ public class AiClientConfig {
 
     @Bean
     public RestClient aiRestClient(AiProperties properties) {
+        return client(properties, properties.readTimeout());
+    }
+
+    /** Same service, longer read timeout: speech-to-text of a recording takes longer than parsing text. */
+    @Bean
+    public RestClient aiVoiceRestClient(AiProperties properties) {
+        return client(properties, properties.voiceReadTimeout());
+    }
+
+    private static RestClient client(AiProperties properties, Duration readTimeout) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
-        requestFactory.setReadTimeout(properties.readTimeout());
+        requestFactory.setReadTimeout(readTimeout);
         return RestClient.builder()
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory)
