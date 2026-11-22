@@ -44,7 +44,11 @@ public class AiService {
         this.activityLogService = activityLogService;
     }
 
+    /**
+     * Parses natural-language health logging text.
+     */
     public AiParseResponse parse(String text) {
+
         FastApiParseResult result =
                 aiClient.parseMultiple(text.trim());
 
@@ -71,10 +75,169 @@ public class AiService {
     }
 
     /**
-     * Builds an AI patient summary from health logs that Spring Boot
-     * has already authorized the current viewer to read.
+     * Builds an AI patient summary from authorized
+     * glucose, meal, and activity history.
      */
     public Map<String, Object> patientSummary(
+            long viewerId,
+            long patientId,
+            Instant from,
+            Instant to,
+            double rangeLow,
+            double rangeHigh) {
+
+        FastApiPatientSummaryRequest request =
+                buildPatientHistoryRequest(
+                        viewerId,
+                        patientId,
+                        from,
+                        to,
+                        rangeLow,
+                        rangeHigh);
+
+        return aiClient.patientSummary(request);
+    }
+
+    /**
+     * Builds a personalized glucose anomaly analysis from
+     * authorized patient health history.
+     *
+     * The analysis describes statistical unusualness relative
+     * to the patient's own historical pattern. It does not
+     * represent diagnosis, clinical risk, treatment advice,
+     * or medication guidance.
+     */
+    public Map<String, Object> patientAnomaly(
+            long viewerId,
+            long patientId,
+            Instant from,
+            Instant to,
+            double rangeLow,
+            double rangeHigh) {
+
+        FastApiPatientSummaryRequest request =
+                buildPatientHistoryRequest(
+                        viewerId,
+                        patientId,
+                        from,
+                        to,
+                        rangeLow,
+                        rangeHigh);
+
+        return aiClient.patientAnomaly(request);
+    }
+
+    /**
+     * Builds a patient-history data-quality analysis from
+     * authorized glucose, meal, and activity history.
+     *
+     * The analysis checks engineering data-quality properties
+     * such as missing values, duplicate records, invalid
+     * timestamps, and large logging gaps.
+     *
+     * This is a technical data-quality analysis and does not
+     * represent medical status, diagnosis, clinical risk,
+     * treatment advice, or medication guidance.
+     */
+    public Map<String, Object> patientDataQuality(
+            long viewerId,
+            long patientId,
+            Instant from,
+            Instant to,
+            double rangeLow,
+            double rangeHigh) {
+
+        FastApiPatientSummaryRequest request =
+                buildPatientHistoryRequest(
+                        viewerId,
+                        patientId,
+                        from,
+                        to,
+                        rangeLow,
+                        rangeHigh);
+
+        return aiClient.patientDataQuality(request);
+    }
+
+    /**
+     * Builds a model-input drift analysis from authorized
+     * patient glucose, meal, and activity history.
+     *
+     * FastAPI compares an older reference period with newer
+     * patient-history records to detect statistical changes
+     * in the model-input feature distribution.
+     *
+     * Drift is an engineering model-monitoring signal only.
+     * It does not represent diagnosis, clinical deterioration,
+     * medical risk, treatment advice, or medication guidance.
+     */
+    public Map<String, Object> patientDrift(
+            long viewerId,
+            long patientId,
+            Instant from,
+            Instant to,
+            double rangeLow,
+            double rangeHigh) {
+
+        FastApiPatientSummaryRequest request =
+                buildPatientHistoryRequest(
+                        viewerId,
+                        patientId,
+                        from,
+                        to,
+                        rangeLow,
+                        rangeHigh);
+
+        return aiClient.patientDrift(request);
+    }
+
+    /**
+     * Builds an experimental XGBoost glucose-trend prediction
+     * from authorized patient glucose, meal, and activity
+     * history.
+     *
+     * FastAPI converts the authorized health history into the
+     * shared machine-learning representation and applies the
+     * saved XGBoost model.
+     *
+     * The response may include the predicted trend, class
+     * probabilities, confidence, uncertainty, and explainable
+     * AI information.
+     *
+     * These outputs describe experimental model behaviour
+     * only. They do not represent clinical probability,
+     * diagnosis, medical risk, treatment advice, or
+     * medication guidance.
+     */
+    public Map<String, Object> patientPrediction(
+            long viewerId,
+            long patientId,
+            Instant from,
+            Instant to,
+            double rangeLow,
+            double rangeHigh) {
+
+        FastApiPatientSummaryRequest request =
+                buildPatientHistoryRequest(
+                        viewerId,
+                        patientId,
+                        from,
+                        to,
+                        rangeLow,
+                        rangeHigh);
+
+        return aiClient.patientPrediction(request);
+    }
+
+    /**
+     * Collects authorized patient history and builds the
+     * request sent to FastAPI.
+     *
+     * Summary, anomaly, data-quality, drift, and prediction
+     * analysis use the same authorized health-history
+     * representation.
+     */
+    private FastApiPatientSummaryRequest buildPatientHistoryRequest(
             long viewerId,
             long patientId,
             Instant from,
@@ -103,17 +266,17 @@ public class AiService {
                         from,
                         to);
 
-        FastApiPatientSummaryRequest request =
-                new FastApiPatientSummaryRequest(
-                        glucoseLogs,
-                        mealLogs,
-                        activityLogs,
-                        rangeLow,
-                        rangeHigh);
-
-        return aiClient.patientSummary(request);
+        return new FastApiPatientSummaryRequest(
+                glucoseLogs,
+                mealLogs,
+                activityLogs,
+                rangeLow,
+                rangeHigh);
     }
 
+    /**
+     * Loads all authorized glucose logs using pagination.
+     */
     private List<GlucoseLogResponse> loadAllGlucoseLogs(
             long viewerId,
             long patientId,
@@ -126,6 +289,7 @@ public class AiService {
         int page = 0;
 
         while (true) {
+
             PageResponse<GlucoseLogResponse> response =
                     glucoseLogService.list(
                             viewerId,
@@ -147,6 +311,9 @@ public class AiService {
         return result;
     }
 
+    /**
+     * Loads all authorized meal logs using pagination.
+     */
     private List<MealLogResponse> loadAllMealLogs(
             long viewerId,
             long patientId,
@@ -159,6 +326,7 @@ public class AiService {
         int page = 0;
 
         while (true) {
+
             PageResponse<MealLogResponse> response =
                     mealLogService.list(
                             viewerId,
@@ -180,6 +348,9 @@ public class AiService {
         return result;
     }
 
+    /**
+     * Loads all authorized activity logs using pagination.
+     */
     private List<ActivityLogResponse> loadAllActivityLogs(
             long viewerId,
             long patientId,
@@ -192,6 +363,7 @@ public class AiService {
         int page = 0;
 
         while (true) {
+
             PageResponse<ActivityLogResponse> response =
                     activityLogService.list(
                             viewerId,
