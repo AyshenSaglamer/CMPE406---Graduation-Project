@@ -12,6 +12,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
+# Build the deterministic synthetic XGBoost model used by
+# DiaMate's development/demo prediction pipeline.
+#
+# This model is for software demonstration only.
+# It is not clinically validated and must not be used for
+# diagnosis, treatment, medication decisions, or dosing.
+RUN python scripts/train_demo_model.py
+
 EXPOSE 8000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
