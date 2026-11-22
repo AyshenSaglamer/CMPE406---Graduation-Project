@@ -41,3 +41,13 @@ backend.zip
 # Database package: generated data and the research dataset are shared separately (too large for Git)
 /Database/data/
 /Dataset/
+
+# Python / FastAPI AI service
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Generated AI/ML model artifacts
+ai-service/ml/models/*.joblib
