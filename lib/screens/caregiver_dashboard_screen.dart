@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../data/alert_store.dart';
 import '../models/family_member.dart';
+import '../navigation/session_navigation.dart';
+import '../services/api_exception.dart';
 import 'add_family_member_screen.dart';
-import 'role_selection_screen.dart';
+import 'alerts_screen.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
   const CaregiverDashboardScreen({super.key});
@@ -17,6 +20,56 @@ class _CaregiverDashboardScreenState
   final List<FamilyMember> familyMembers = [];
 
   int selectedIndex = 0;
+
+  /// OPEN alerts of the patients who allow alerts (from the backend).
+  /// null while loading or after an error.
+  int? openAlertCount;
+  String? alertCountError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAlertCount();
+  }
+
+  Future<void> _loadAlertCount() async {
+    setState(() {
+      openAlertCount = null;
+      alertCountError = null;
+    });
+
+    try {
+      final count = await alertStore.openCareTeamAlertCount();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        openAlertCount = count;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        alertCountError = e.message;
+      });
+    }
+  }
+
+  Future<void> _openAlerts() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertsScreen()),
+    );
+
+    // Alerts may have been seen or resolved there.
+    if (mounted) {
+      _loadAlertCount();
+    }
+  }
 
   // ------------------------------------------------------------
   // ADD FAMILY MEMBER
@@ -91,13 +144,7 @@ class _CaregiverDashboardScreenState
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(
-                    builder: (_) => const RoleSelectionScreen(),
-                  ),
-                  (route) => false,
-                );
+                logoutAndReturnToStart(context);
               },
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFFE85D75),
@@ -412,58 +459,95 @@ class _CaregiverDashboardScreenState
   // ============================================================
 
   Widget _buildFamilyInsight() {
+    final count = openAlertCount;
+    final hasOpen = (count ?? 0) > 0;
+    final color = hasOpen
+        ? const Color(0xFFE85D75)
+        : const Color(0xFF35B779);
+
+    final String title;
+    final String subtitle;
+
+    if (alertCountError != null) {
+      title = 'Alerts could not be loaded.';
+      subtitle = 'Tap to try again.';
+    } else if (count == null) {
+      title = 'Checking for alerts...';
+      subtitle = 'Glucose alerts of the people you care for.';
+    } else if (count == 0) {
+      title = 'Everything looks up to date.';
+      subtitle = 'No new alerts need your attention.';
+    } else {
+      title = count == 1
+          ? '1 alert needs your attention.'
+          : '$count alerts need your attention.';
+      subtitle = 'Tap to see and handle them.';
+    }
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF8EE),
-                borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: alertCountError != null ? _loadAlertCount : _openAlerts,
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  hasOpen
+                      ? Icons.notifications_active_outlined
+                      : Icons.check_circle_outline_rounded,
+                  color: color,
+                  size: 27,
+                ),
               ),
-              child: const Icon(
-                Icons.check_circle_outline_rounded,
-                color: Color(0xFF35B779),
-                size: 27,
-              ),
-            ),
 
-            const SizedBox(width: 13),
+              const SizedBox(width: 13),
 
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Family Status',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF718096),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Family Status',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF718096),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Everything looks up to date.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: hasOpen ? color : null,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'No new alerts need your attention.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF718096),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF718096),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xFF9AA8B7),
+              ),
+            ],
+          ),
         ),
       ),
     );

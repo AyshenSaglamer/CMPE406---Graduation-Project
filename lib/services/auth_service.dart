@@ -44,6 +44,30 @@ class AuthService {
     );
   }
 
+  /// Registers and then logs in with the same credentials (register does not
+  /// return a token). Every role, doctors included, can log in right away.
+  Future<AppUser> registerAndLogin({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required DateTime dateOfBirth,
+    required String gender,
+    required UserRole role,
+  }) async {
+    await register(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      password: password,
+      dateOfBirth: dateOfBirth,
+      gender: gender,
+      role: role,
+    );
+
+    return login(email: email, password: password);
+  }
+
   Future<AppUser> login({
     required String email,
     required String password,

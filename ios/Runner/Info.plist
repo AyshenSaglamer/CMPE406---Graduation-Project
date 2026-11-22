@@ -26,6 +26,17 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Lets the app reach the DiaMate backend over plain HTTP on localhost
+		     (simulator) and on the local network (real iPhone, via
+		     --dart-define=API_BASE_URL=http://<mac-lan-ip>:8080).
+		     Public internet hosts still need HTTPS. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DiaMate connects to its server on your local network to sync your health data.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

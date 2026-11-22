@@ -52,6 +52,19 @@ class ApiClient {
     );
   }
 
+  Future<dynamic> patch(
+    String path, {
+    Object? body,
+    bool auth = true,
+  }) {
+    return _send(
+      'PATCH',
+      path,
+      body: body,
+      auth: auth,
+    );
+  }
+
   Future<dynamic> delete(
     String path, {
     bool auth = true,

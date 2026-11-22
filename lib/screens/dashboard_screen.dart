@@ -464,9 +464,6 @@ class _HomeTab extends StatelessWidget {
             ],
           ),
         ),
-        _HeaderIconButton(icon: Icons.search_rounded, onTap: () {}),
-        const SizedBox(width: 8),
-        _HeaderIconButton(icon: Icons.notifications_none_rounded, onTap: () {}),
       ],
     );
   }
@@ -927,28 +924,6 @@ class _ReminderMiniRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _HeaderIconButton({required this.icon, required this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(15),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(15),
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Icon(icon, size: 21, color: const Color(0xFF273142)),
-        ),
       ),
     );
   }

@@ -1,6 +1,10 @@
 
 import 'package:flutter/material.dart';
-import 'role_selection_screen.dart';
+
+import '../data/alert_store.dart';
+import '../navigation/session_navigation.dart';
+import '../services/api_exception.dart';
+import 'alerts_screen.dart';
 
 class DoctorDashboardScreen extends StatefulWidget {
   const DoctorDashboardScreen({super.key});
@@ -44,10 +48,60 @@ class _DoctorDashboardScreenState
     ),
   ];
 
+  /// OPEN alerts of the patients who allow alerts (from the backend).
+  /// null while loading or after an error.
+  int? openAlertCount;
+  String? alertCountError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAlertCount();
+  }
+
   @override
   void dispose() {
     searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAlertCount() async {
+    setState(() {
+      openAlertCount = null;
+      alertCountError = null;
+    });
+
+    try {
+      final count = await alertStore.openCareTeamAlertCount();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        openAlertCount = count;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        alertCountError = e.message;
+      });
+    }
+  }
+
+  Future<void> _openAlerts() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertsScreen()),
+    );
+
+    // Alerts may have been seen or resolved there.
+    if (mounted) {
+      _loadAlertCount();
+    }
   }
 
   Color get primaryColor => const Color(0xFF168AF7);
@@ -92,14 +146,7 @@ class _DoctorDashboardScreenState
           TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const RoleSelectionScreen(),
-                ),
-                (route) => false,
-              );
+              logoutAndReturnToStart(context);
             },
             style: TextButton.styleFrom(
               foregroundColor:
@@ -255,7 +302,7 @@ class _DoctorDashboardScreenState
 
           const SizedBox(height: 10),
 
-          _buildAlertsCard(highCount, lowCount),
+          _buildAlertsCard(),
         ],
       ),
     );
@@ -420,16 +467,49 @@ class _DoctorDashboardScreenState
     );
   }
 
-  Widget _buildAlertsCard(int highCount, int lowCount) {
-    final alertCount = highCount + lowCount;
+  String get _alertCountText {
+    if (alertCountError != null) {
+      return 'Could not load alerts. Tap to try again.';
+    }
+
+    final count = openAlertCount;
+
+    if (count == null) {
+      return 'Checking for alerts...';
+    }
+
+    if (count == 0) {
+      return 'No open alerts. Tap to see past alerts.';
+    }
+
+    return count == 1
+        ? '1 open alert needs your attention.'
+        : '$count open alerts need your attention.';
+  }
+
+  Widget _buildAlertsCard() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: alertCountError != null ? _loadAlertCount : _openAlerts,
+        child: _buildAlertsCardContent(),
+      ),
+    );
+  }
+
+  Widget _buildAlertsCardContent() {
+    final hasOpen = (openAlertCount ?? 0) > 0;
 
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: const Color(0xFFE9EEF5),
+          color: hasOpen
+              ? const Color(0xFFE85D75)
+              : const Color(0xFFE9EEF5),
         ),
       ),
       child: Row(
@@ -461,12 +541,14 @@ class _DoctorDashboardScreenState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  alertCount == 0
-                      ? 'No alerts in the current sample data.'
-                      : '$alertCount readings outside the configured range.',
-                  style: const TextStyle(
+                  _alertCountText,
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF718096),
+                    fontWeight:
+                        hasOpen ? FontWeight.w700 : FontWeight.w400,
+                    color: hasOpen
+                        ? const Color(0xFFE85D75)
+                        : const Color(0xFF718096),
                   ),
                 ),
               ],

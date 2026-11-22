@@ -125,7 +125,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       fieldErrors = {};
     });
     try {
-      await authService.register(
+      final user = await authService.registerAndLogin(
         firstName: firstName,
         lastName: lastName,
         email: email,
@@ -133,11 +133,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         dateOfBirth: selectedDateOfBirth!,
         gender: selectedGender!,
         role: widget.role,
-      );
-      // Register does not return a token, so log in with the same credentials.
-      final user = await authService.login(
-        email: email,
-        password: password,
       );
       if (!mounted) return;
       _showMessage('Account created successfully.');
