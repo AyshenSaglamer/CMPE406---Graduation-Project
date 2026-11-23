@@ -1,38 +1,89 @@
+# Full DiaMate stack: Nginx (HTTPS) -> Spring Boot backend -> PostgreSQL, plus the FastAPI AI service.
+#
+#   cp .env.example .env                 # set POSTGRES_PASSWORD and JWT_SECRET
+#   ./nginx/make-dev-cert.sh             # self-signed certificate for local testing (nginx/ssl/, not in Git)
+#   docker compose up -d --build
+#   curl -k https://localhost:8443/actuator/health
+#
+# Only Nginx is reachable from outside. The backend, the AI service and the database are on the compose network
+# only (expose, no ports), so nothing can skip Nginx/TLS or reach the database directly.
+# For backend/docker-compose.yml (database only, for running the backend from the IDE) see backend/README.md.
+
 services:
-  web:
-    image: nginx:alpine
+  nginx:
+    image: nginx:1.27-alpine
     ports:
-      - "8081:80"
-      - "8443:443"
+      # HTTP only redirects to HTTPS (see nginx/default.conf.template).
+      - "${HTTP_PORT:-8081}:80"
+      - "${HTTPS_PORT:-8443}:443"
+    environment:
+      # The redirect from HTTP must point at the host's HTTPS port, not at 443 inside the container.
+      HTTPS_PORT: ${HTTPS_PORT:-8443}
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      # The official image runs envsubst on /etc/nginx/templates/*.template (only for variables that are set).
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/diamate
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: diamate
-      JWT_SECRET: ${JWT_SECRET}
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-diamate}
+      POSTGRES_USER: ${POSTGRES_USER:-diamate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # Container-to-container traffic on the private compose network.
+      POSTGRES_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 64)}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-1h}
+      AI_SERVICE_BASE_URL: http://ai-service:8000
     expose:
       - "8080"
     depends_on:
-      - database
+      database:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./ai-service
+    environment:
+      WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-base}
+    expose:
+      - "8000"
+    restart: unless-stopped
 
   database:
     image: postgres:17
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: diamate
-      POSTGRES_DB: diamate
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-diamate}
+      POSTGRES_USER: ${POSTGRES_USER:-diamate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    # No ports: only the backend connects. To look inside: docker compose exec database psql -U diamate diamate
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+      # Baseline schema (Flyway version 1) on the first start of an empty volume, the same scripts and order as the
+      # Testcontainers tests (PostgresIntegrationTest). Flyway then applies V2, V3, ... when the backend starts.
+      - ./Database/sql/01_extensions_roles.sql:/docker-entrypoint-initdb.d/00_01_extensions_roles.sql:ro
+      - ./Database/sql/02_research_schema.sql:/docker-entrypoint-initdb.d/01_02_research_schema.sql:ro
+      - ./Database/sql/04_research_keys_indexes.sql:/docker-entrypoint-initdb.d/02_04_research_keys_indexes.sql:ro
+      - ./Database/sql/06_app_schema.sql:/docker-entrypoint-initdb.d/03_06_app_schema.sql:ro
+      - ./Database/sql/06b_app_column_comments.sql:/docker-entrypoint-initdb.d/04_06b_app_column_comments.sql:ro
+      - ./Database/sql/07_app_functions_views.sql:/docker-entrypoint-initdb.d/05_07_app_functions_views.sql:ro
+      - ./Database/sql/08_reference_seed.sql:/docker-entrypoint-initdb.d/06_08_reference_seed.sql:ro
+      - ./Database/sql/10_grants.sql:/docker-entrypoint-initdb.d/07_10_grants.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
+  pgdata:
