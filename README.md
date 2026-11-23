@@ -392,7 +392,9 @@ DiaMate/
 │   └── tests/
 │
 └── frontend/
-    └── Flutter application (currently on the frontend branch)
+    ├── lib/                 Flutter application (patient, caregiver, clinician)
+    ├── test/
+    └── pubspec.yaml
 ```
 
 The exact structure can evolve as the project is integrated.
@@ -502,6 +504,26 @@ Health check:
 ```bash
 curl http://127.0.0.1:8000/health
 ```
+
+## Running the Flutter App
+
+The Flutter app lives in `frontend/` (merged from the `frontend` branch, which stays Nilsu's working branch).
+
+```bash
+cd frontend
+flutter pub get
+flutter run                     # default backend: http://localhost:8080 (Android emulator: http://10.0.2.2:8080)
+flutter test
+```
+
+The default address is a backend started on its own (`backend/README.md`). The full Docker Compose stack exposes no port `8080`; the app reaches it only through Nginx:
+
+```bash
+flutter run --dart-define=API_BASE_URL=https://localhost:8443          # iOS simulator, macOS
+flutter run --dart-define=API_BASE_URL=https://10.0.2.2:8443           # Android emulator
+```
+
+The local stack uses the self-signed certificate from `nginx/make-dev-cert.sh` (valid for `localhost`, `127.0.0.1` and `10.0.2.2`), which the app rejects until the simulator or emulator trusts it: drag `nginx/ssl/server.crt` onto the iOS simulator, or install it under Android *Settings → Security → Encryption & credentials → Install a certificate*. On a server with a real CA certificate nothing has to be installed.
 
 ---
 
