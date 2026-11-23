@@ -457,13 +457,13 @@ The project is designed to run as a containerized multi-service application.
 From the repository root:
 
 ```bash
-cp .env.example .env          # set POSTGRES_PASSWORD and JWT_SECRET (openssl rand -base64 64)
+cp .env.example .env          # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET (openssl rand -base64 64)
 ./nginx/make-dev-cert.sh      # self-signed certificate for local testing (nginx/ssl/, not in Git)
 docker compose up -d --build
 curl -k https://localhost:8443/actuator/health
 ```
 
-Only Nginx is reachable from outside: `https://localhost:8443` (port `8081` only redirects to HTTPS). The backend, the AI service and the database have no host ports. Login and registration are rate limited per IP (10 per minute, burst 5; `AUTH_RATE_LIMIT`, `AUTH_RATE_BURST` in `.env`). Security details: `backend/docs/SECURITY.md`. An empty database is created from `Database/sql` on its first start; the backend's Flyway migrations are applied after that.
+Only Nginx is reachable from outside: `https://localhost:8443` (port `8081` only redirects to HTTPS). The backend, the AI service and the database have no host ports. Login and registration are rate limited per IP (10 per minute, burst 5; `AUTH_RATE_LIMIT`, `AUTH_RATE_BURST` in `.env`). Security details: `backend/docs/SECURITY.md`. An empty database is created from `Database/sql` on its first start. A short-lived `migrate` service then applies the Flyway migrations with the database owner account and exits; the backend itself connects as `diamate_app`, which can read and write data but cannot change the schema or the audit log.
 
 The containerized architecture can coordinate:
 

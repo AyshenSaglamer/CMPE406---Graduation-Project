@@ -1,12 +1,16 @@
 # Full DiaMate stack: Nginx (HTTPS) -> Spring Boot backend -> PostgreSQL, plus the FastAPI AI service.
 #
-#   cp .env.example .env                 # set POSTGRES_PASSWORD and JWT_SECRET
+#   cp .env.example .env                 # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET
 #   ./nginx/make-dev-cert.sh             # self-signed certificate for local testing (nginx/ssl/, not in Git)
 #   docker compose up -d --build
 #   curl -k https://localhost:8443/actuator/health
 #
 # Only Nginx is reachable from outside. The backend, the AI service and the database are on the compose network
 # only (expose, no ports), so nothing can skip Nginx/TLS or reach the database directly.
+#
+# Two database accounts (least privilege): the owner (POSTGRES_USER) is used only by the short-lived migrate service
+# that applies the Flyway migrations and then exits; the backend connects as diamate_app (APP_DB_PASSWORD), which can
+# read and write data but cannot change the schema, alter audit_logs or turn off its append-only trigger.
 # For backend/docker-compose.yml (database only, for running the backend from the IDE) see backend/README.md.
 
 services:
@@ -37,21 +41,45 @@ services:
       POSTGRES_HOST: database
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-diamate}
-      POSTGRES_USER: ${POSTGRES_USER:-diamate}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # The application role (Database/sql/10_grants.sql): data only, no DDL. It never gets the owner's password.
+      POSTGRES_USER: diamate_app
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
       # Container-to-container traffic on the private compose network.
       POSTGRES_SSLMODE: disable
+      # Migrations are applied by the migrate service with the owner account; diamate_app could not run them anyway.
+      SPRING_FLYWAY_ENABLED: "false"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 64)}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-1h}
       AI_SERVICE_BASE_URL: http://ai-service:8000
     expose:
       - "8080"
     depends_on:
-      database:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       ai-service:
         condition: service_started
     restart: unless-stopped
+
+  # Applies the Flyway migrations (backend/src/main/resources/db/migration) as the database owner, then exits. Same
+  # Flyway version and baseline settings as the backend's own (spring.flyway in application.yml), so a database that
+  # the backend migrated before (e.g. Neon) and one migrated here have the same history.
+  migrate:
+    image: flyway/flyway:12.4.0
+    command: migrate
+    environment:
+      FLYWAY_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-diamate}
+      FLYWAY_USER: ${POSTGRES_USER:-diamate}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_BASELINE_ON_MIGRATE: "true"
+      FLYWAY_BASELINE_VERSION: "1"
+      FLYWAY_BASELINE_DESCRIPTION: Database SQL package (Database/sql)
+    volumes:
+      - ./backend/src/main/resources/db/migration:/flyway/sql:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
 
   ai-service:
     build:
@@ -68,11 +96,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-diamate}
       POSTGRES_USER: ${POSTGRES_USER:-diamate}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # Read once by Database/docker/08_app_role_login.sql to let diamate_app log in.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
     # No ports: only the backend connects. To look inside: docker compose exec database psql -U diamate diamate
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Baseline schema (Flyway version 1) on the first start of an empty volume, the same scripts and order as the
-      # Testcontainers tests (PostgresIntegrationTest). Flyway then applies V2, V3, ... when the backend starts.
+      # Testcontainers tests (PostgresIntegrationTest). The migrate service then applies V2, V3, ...
       - ./Database/sql/01_extensions_roles.sql:/docker-entrypoint-initdb.d/00_01_extensions_roles.sql:ro
       - ./Database/sql/02_research_schema.sql:/docker-entrypoint-initdb.d/01_02_research_schema.sql:ro
       - ./Database/sql/04_research_keys_indexes.sql:/docker-entrypoint-initdb.d/02_04_research_keys_indexes.sql:ro
@@ -81,6 +111,7 @@ services:
       - ./Database/sql/07_app_functions_views.sql:/docker-entrypoint-initdb.d/05_07_app_functions_views.sql:ro
       - ./Database/sql/08_reference_seed.sql:/docker-entrypoint-initdb.d/06_08_reference_seed.sql:ro
       - ./Database/sql/10_grants.sql:/docker-entrypoint-initdb.d/07_10_grants.sql:ro
+      - ./Database/docker/08_app_role_login.sql:/docker-entrypoint-initdb.d/08_app_role_login.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

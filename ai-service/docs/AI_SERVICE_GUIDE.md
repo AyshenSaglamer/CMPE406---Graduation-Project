@@ -1260,7 +1260,7 @@ docker compose up -d ai-service
 The project can also start the complete Docker Compose environment. It needs a `.env` file (database password and JWT key) and a TLS certificate for Nginx first:
 
 ```bash
-cp .env.example .env          # set POSTGRES_PASSWORD and JWT_SECRET (openssl rand -base64 64)
+cp .env.example .env          # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET (openssl rand -base64 64)
 ./nginx/make-dev-cert.sh      # self-signed certificate for local testing (nginx/ssl/, not in Git)
 docker compose up -d --build
 curl -k https://localhost:8443/actuator/health

@@ -150,7 +150,7 @@ Kayıtlar `audit_logs` tablosuna yazılır. Her satırda işlemi yapan kullanıc
 
 **IP adresi:** Nginx `X-Forwarded-For` başlığını istemcinin gönderdiği değerin üzerine yazar. Bu sayede istemci sahte bir IP gönderse bile o IP denetim kaydına geçmez (23 Kasım'da sahte `10.9.9.9` ile denendi).
 
-**Değiştirilemezlik:** `audit_logs` yalnız eklemeye açıktır. İki trigger (`trg_audit_logs_row`, `trg_audit_logs_trunc`; `Database/sql/06_app_schema.sql`) `UPDATE`, `DELETE` ve `TRUNCATE`'i reddeder. Tek istisna, silinen bir kullanıcının satırlardan ayrılmasıdır (`user_id → NULL`). Trigger veritabanı sahibi dahil herkese uygulanır. Ayrıca `10_grants.sql`, `diamate_app` rolünden bu yetkileri alır. Kalan risk: tablonun sahibi trigger'ı kapatabilir. Bugün backend sahibi olan kullanıcıyla bağlanıyor (bkz. [11](#11-açık-kalanlar), S-A).
+**Değiştirilemezlik:** `audit_logs` yalnız eklemeye açıktır. İki trigger (`trg_audit_logs_row`, `trg_audit_logs_trunc`; `Database/sql/06_app_schema.sql`) `UPDATE`, `DELETE` ve `TRUNCATE`'i reddeder. Tek istisna, silinen bir kullanıcının satırlardan ayrılmasıdır (`user_id → NULL`). Trigger veritabanı sahibi dahil herkese uygulanır. Ayrıca `10_grants.sql`, `diamate_app` rolünden bu yetkileri alır. Trigger'ı yalnız tablonun sahibi kapatabilir. Tam stack'te backend `diamate_app` ile bağlandığı için bunu yapamaz (bölüm 8, "Veritabanı hesapları").
 
 `/ai/parse` ve `/ai/voice` denetime yazılmaz: hasta verisi okumazlar ve bir şey kaydetmezler. Kaydedilen öneri (`ai-entries`) normal bir sağlık kaydıdır; `source = AI_ASSISTANT` alanı onun yapay zekâdan geldiğini gösterir.
 
@@ -204,8 +204,21 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 
 **Docker Compose** (`docker-compose.yml`)
 - Host'a yalnız Nginx açılır. Backend, AI servisi ve PostgreSQL yalnız Docker ağında çalışır.
-- `POSTGRES_PASSWORD` ve `JWT_SECRET` `.env`'den gelir. Verilmezse compose çalışmaz (`${VAR:?}`).
-- Boş veritabanı ilk açılışta `Database/sql` betikleriyle kurulur.
+- `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` ve `JWT_SECRET` `.env`'den gelir. Verilmezse compose çalışmaz (`${VAR:?}`).
+- Boş veritabanı ilk açılışta `Database/sql` betikleriyle kurulur; ardından `Database/docker/08_app_role_login.sql`, `diamate_app` rolüne `APP_DB_PASSWORD` ile giriş izni verir.
+
+**Veritabanı hesapları (en az yetki)**
+
+| Hesap | Kim kullanır | Ne yapabilir |
+|---|---|---|
+| Sahip (`POSTGRES_USER`, `POSTGRES_PASSWORD`) | Yalnız `migrate` servisi (`flyway/flyway:12.4.0`): migration'ları uygular ve kapanır | Her şey (şema, roller, trigger'lar) |
+| `diamate_app` (`APP_DB_PASSWORD`) | Çalışan backend (`SPRING_FLYWAY_ENABLED=false`) | `public` tablolarında `SELECT/INSERT/UPDATE/DELETE`, `research` için yalnız `SELECT`, fonksiyon çağırma. `audit_logs` için yalnız `INSERT` ve `SELECT` |
+
+- **Backend sahibin şifresini hiç bilmez.** Backend ele geçirilse bile tablo silinemez veya değiştirilemez, rol oluşturulamaz, `audit_logs` güncellenemez/silinemez ve trigger'ı kapatılamaz.
+- **Migration geçmişi:** `afterMigrate__revoke_app_access_to_flyway_history.sql` callback'i her migration'dan sonra `flyway_schema_history` üzerindeki bütün yetkileri `diamate_app`'ten alır. Bu callback olmasaydı `10_grants.sql`'deki varsayılan yetkiler o tabloyu da kapsardı. Callback rol yoksa bir şey yapmaz.
+- **Kapsam:** Bu ayrım yalnız tam stack'te (compose) geçerlidir. IDE ile ortak Neon veritabanına bağlanırken backend hâlâ `.env`'deki tek kullanıcıyla bağlanır ve migration'ları kendisi uygular (bkz. S-A).
+- **Eski volume:** Bu değişiklikten önce oluşturulmuş bir veritabanı volume'unda rol bir kez elle açılmalıdır: `docker compose exec database psql -U diamate -d diamate -c "ALTER ROLE diamate_app LOGIN PASSWORD '<APP_DB_PASSWORD>'"`.
+- **Doğrulama (23 Kasım, boş veritabanıyla tam stack):** Backend'in bütün bağlantıları `diamate_app` ile açık. Bütün migration'ları sahip hesabı uyguladı. Kayıt, giriş, glukoz POST/PUT/DELETE, AI özeti ve erişim geçmişi çalışıyor; denetim kayıtları yazılıyor. `diamate_app` ile `DROP TABLE`, `CREATE TABLE`, `ALTER TABLE`, trigger kapatma, `audit_logs` üzerinde `UPDATE`/`DELETE`/`TRUNCATE`, `CREATE ROLE` ve `flyway_schema_history`'yi okuma/silme reddedildi.
 - **Backend imajı:** İki aşamalı derleme; çalışma aşamasında yalnız JRE var. Uygulama root olmayan `diamate` kullanıcısıyla çalışır, jar salt okunurdur ve imajın içinde `.env` dosyası yoktur.
 
 **Gizli bilgiler**
@@ -221,7 +234,7 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 | A02 Cryptographic Failures | BCrypt; HS256 ve en az 32 baytlık anahtar; TLS 1.2+ ve HSTS | 2, 8 |
 | A03 Injection | Parametreli sorgu; katı JSON; tip ve uzunluk sınırları | 7 |
 | A04 Insecure Design | Uygulama yalnız backend'le konuşur; AI ve veritabanı ağ içinde; hasta onayıyla paylaşım | 1, 4 |
-| A05 Security Misconfiguration | Gizli bilgiler `.env`'de ve zorunlu; actuator yalnız `health`, bileşen detayı yok; `server_tokens off`; kapalı portlar | 8 |
+| A05 Security Misconfiguration | Gizli bilgiler `.env`'de ve zorunlu; backend veritabanına en az yetkili `diamate_app` ile bağlanır; actuator yalnız `health`, bileşen detayı yok; `server_tokens off`; kapalı portlar | 8 |
 | A06 Vulnerable Components | Spring Boot 4.1.1, Java 21; bağımlılık sürümleri sabit (`pom.xml`, `requirements.txt`) | 11 |
 | A07 Identification & Authentication Failures | Hesap kilidi ve IP başına giriş hız sınırı; aynı hata mesajı; pasif hesabın token'ı anında geçersiz | 2, 8 |
 | A08 Software & Data Integrity | `audit_logs` trigger ile yalnız eklemeye açık; aynı JSON alanı iki kez → `400`; salt okunur jar, root olmayan kullanıcı; CI testleri çalıştırır | 6, 7, 8, 10 |
@@ -244,7 +257,7 @@ Elle güvenlik testi listesi: `BACKEND_REVIEW.md` §12.8 ve Postman'deki "Securi
 
 | # | Konu | Risk | Öneri | Sahibi |
 |---|---|---|---|---|
-| S-A | Backend veritabanına sahibi olan kullanıcıyla bağlanıyor | En az yetki ilkesi uygulanmıyor: backend ele geçirilirse şema değiştirilebilir, `audit_logs` trigger'ı kapatılabilir | Migration'lar için ayrı kullanıcı (Flyway), uygulama için `diamate_app` (`ALTER ROLE diamate_app LOGIN PASSWORD ...`) | Melih |
+| S-A | ~~Backend veritabanına sahibi olan kullanıcıyla bağlanıyor~~ **Tam stack'te kapatıldı (23 Kasım):** backend `diamate_app` ile bağlanıyor, migration'ları ayrı `migrate` servisi uyguluyor (bölüm 8). Kalan: ortak Neon veritabanında backend hâlâ tek kullanıcıyla bağlanıyor | Neon'daki kullanıcı ele geçirilirse şema değiştirilebilir | Neon'da da `diamate_app`'e giriş izni verilsin; backend `.env`'de onunla, migration'lar sahip hesabıyla ayrı çalıştırılsın | Melih |
 | ~~S-B~~ | ~~Giriş için IP başına hız sınırı yok~~ | — | **Kapatıldı (23 Kasım):** Nginx `limit_req`, bölüm 8 | Melih |
 | S-C | Refresh token ve sunucu tarafında logout yok (B-6) | Çalınan token ömrü (1 saat) boyunca geçerli kalır | Kısa ömürlü access token + iptal edilebilir refresh token | Sonra |
 | S-D | Ortak geliştirme `JWT_SECRET`'i | Anahtarı bilen biri ortak veritabanındaki herhangi bir kullanıcı için token üretebilir | Üretimde anahtar yalnız sunucuda; sızıntı şüphesinde değiştirilir | Takım |
