@@ -1261,7 +1261,7 @@ The project can also start the complete Docker Compose environment. It needs a `
 
 ```bash
 cp .env.example .env          # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET (openssl rand -base64 64)
-./nginx/make-dev-cert.sh      # self-signed certificate for local testing (nginx/ssl/, not in Git)
+./nginx/make-dev-cert.sh      # local dev CA + server certificate (nginx/ssl/, not in Git)
 docker compose up -d --build
 curl -k https://localhost:8443/actuator/health
 ```

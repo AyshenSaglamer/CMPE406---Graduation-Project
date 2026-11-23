@@ -366,7 +366,7 @@ DiaMate/
 │
 ├── nginx/
 │   ├── default.conf.template   HTTPS reverse proxy in front of the backend
-│   └── make-dev-cert.sh        self-signed certificate for local testing
+│   └── make-dev-cert.sh        local dev CA + server certificate for testing
 │
 ├── backend/
 │   ├── src/
@@ -460,7 +460,7 @@ From the repository root:
 
 ```bash
 cp .env.example .env          # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET (openssl rand -base64 64)
-./nginx/make-dev-cert.sh      # self-signed certificate for local testing (nginx/ssl/, not in Git)
+./nginx/make-dev-cert.sh      # local dev CA + server certificate (nginx/ssl/, not in Git)
 docker compose up -d --build
 curl -k https://localhost:8443/actuator/health
 ```
@@ -523,7 +523,15 @@ flutter run --dart-define=API_BASE_URL=https://localhost:8443          # iOS sim
 flutter run --dart-define=API_BASE_URL=https://10.0.2.2:8443           # Android emulator
 ```
 
-The local stack uses the self-signed certificate from `nginx/make-dev-cert.sh` (valid for `localhost`, `127.0.0.1` and `10.0.2.2`), which the app rejects until the simulator or emulator trusts it: drag `nginx/ssl/server.crt` onto the iOS simulator, or install it under Android *Settings → Security → Encryption & credentials → Install a certificate*. On a server with a real CA certificate nothing has to be installed.
+The local stack's certificate comes from `nginx/make-dev-cert.sh`: a small local CA (`nginx/ssl/ca.crt`) and a server certificate it signs (valid for `localhost`, `127.0.0.1` and `10.0.2.2`, with the `serverAuth` usage iOS requires). The app rejects it until the simulator or emulator trusts the CA once:
+
+```bash
+xcrun simctl keychain booted add-root-cert nginx/ssl/ca.crt     # iOS simulator
+```
+
+On the Android emulator install `nginx/ssl/ca.crt` under *Settings → Security → Encryption & credentials → Install a certificate → CA certificate*. On a server with a real CA certificate nothing has to be installed.
+
+> **Folder names with parentheses:** Flutter 3.50 cannot build native code (`flutter test`, `flutter build ios`) when the project path contains `(` or `)`, e.g. `~/Desktop/DiaMate(GitHub)/…`; it stops with `Null check operator used on a null value` in `parseOtoolArchitectureSections`. Clone or copy the repository to a path without parentheses.
 
 ---
 

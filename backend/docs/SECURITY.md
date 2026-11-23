@@ -226,7 +226,7 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 **Gizli bilgiler**
 - `.env`, `.env.*` (`.env.example` hariç), `ssl/`, `*.key` ve `*.pem` Git'e girmez (`.gitignore`). Docker build context'ine de girmez (`.dockerignore`).
 - Repoda yalnız yer tutucu değerler vardır (`change-me`). 23 Kasım'da iki reponun (GP ve takım reposu) bütün dallarının geçmişi bilinen kalıplarla tarandı ve gerçek bir anahtar ya da şifre bulunmadı. Taranan kalıplar: özel anahtar, AWS/GitHub/OpenAI token'ları, Neon şifresi, şifre içeren veritabanı adresi, 16+ karakterlik `SECRET`/`PASSWORD` değerleri. Bu tarama kalıp tabanlıdır, tam bir gizli bilgi tarayıcısı değildir.
-- Geliştirme sertifikası `nginx/make-dev-cert.sh` ile üretilir. Üretimde gerçek bir CA sertifikası aynı dosya adlarıyla konur.
+- Geliştirme sertifikası `nginx/make-dev-cert.sh` ile üretilir: yerel küçük bir CA (`ca.crt`) ve onun imzaladığı sunucu sertifikası (`serverAuth`, CA bayrağı yok, 1 yıl). Telefon/simülatör yalnız CA'ya bir kez güvenir. iOS, `serverAuth` içermeyen sunucu sertifikasını reddettiği için önceki kendinden imzalı sertifikayla uygulama bağlanamıyordu (23 Kasım'da simülatörde bulundu). Üretimde gerçek bir CA sertifikası aynı dosya adlarıyla (`server.crt`, `server.key`) konur.
 
 ## 9. OWASP Top 10 eşlemesi
 
