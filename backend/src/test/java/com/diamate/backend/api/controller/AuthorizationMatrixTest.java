@@ -39,6 +39,7 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import com.diamate.backend.api.dto.response.AiEntriesResponse;
+import com.diamate.backend.api.dto.response.ReminderResponse;
 import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
@@ -61,6 +62,7 @@ import com.diamate.backend.service.GlucoseLogService;
 import com.diamate.backend.service.InsulinLogService;
 import com.diamate.backend.service.MealLogService;
 import com.diamate.backend.service.PatientService;
+import com.diamate.backend.service.ReminderService;
 import com.diamate.backend.service.UserService;
 
 /**
@@ -103,6 +105,14 @@ class AuthorizationMatrixTest {
         RULES.put("GET " + LOGS + "alerts", EVERYONE);
         RULES.put("GET " + LOGS + "alerts/{alertId}", EVERYONE);
         RULES.put("PATCH " + LOGS + "alerts/{alertId}", EVERYONE);
+        // Reminders: read like the logs (fn_can_access "medications"), written only by the patient.
+        RULES.put("GET " + LOGS + "reminders", EVERYONE);
+        RULES.put("GET " + LOGS + "reminders/{reminderId}", EVERYONE);
+        RULES.put("POST " + LOGS + "reminders", PATIENT);
+        RULES.put("PUT " + LOGS + "reminders/{reminderId}", PATIENT);
+        RULES.put("DELETE " + LOGS + "reminders/{reminderId}", PATIENT);
+        RULES.put("POST " + LOGS + "reminders/{reminderId}/events", PATIENT);
+        RULES.put("GET " + LOGS + "reminder-events", EVERYONE);
         RULES.put("POST " + LOGS + "ai-entries", PATIENT);
         RULES.put("POST /api/v1/ai/parse", PATIENT);
         RULES.put("POST /api/v1/ai/voice", PATIENT);
@@ -138,6 +148,9 @@ class AuthorizationMatrixTest {
             Map.entry("meal-logs", "{\"mealType\":\"LUNCH\",\"eatenAt\":\"2026-10-05T08:30:00Z\",\"carbsG\":40}"),
             Map.entry("activity-logs", "{\"activityType\":\"walking\",\"startedAt\":\"2026-10-05T08:30:00Z\"}"),
             Map.entry("alerts", "{\"status\":\"ACKNOWLEDGED\"}"),
+            Map.entry("reminders", "{\"medicationName\":\"Metformin\",\"scheduledTime\":\"08:00\",\"daysOfWeek\":[\"MONDAY\"]}"),
+            Map.entry("POST " + LOGS + "reminders/{reminderId}/events",
+                    "{\"scheduledFor\":\"2026-10-05T05:00:00Z\",\"status\":\"TAKEN\"}"),
             Map.entry("ai-entries", "{\"entries\":[{\"intent\":\"LOG_GLUCOSE\",\"value\":120}]}"),
             Map.entry("POST /api/v1/ai/parse", "{\"text\":\"my glucose is 120\"}"),
             Map.entry("PATCH /api/v1/admin/users/{userId}/status", "{\"active\":false}"),
@@ -175,6 +188,7 @@ class AuthorizationMatrixTest {
     @MockitoBean private AiEntryService aiEntryService;
     @MockitoBean private CareRelationshipService careRelationshipService;
     @MockitoBean private AuditLogService auditLogService;
+    @MockitoBean private ReminderService reminderService;
     @MockitoBean private UserRepository userRepository;
 
     @BeforeEach
@@ -188,6 +202,9 @@ class AuthorizationMatrixTest {
         when(mealLogService.create(anyLong(), anyLong(), any())).thenReturn(CreateResult.existing(null));
         when(activityLogService.create(anyLong(), anyLong(), any())).thenReturn(CreateResult.existing(null));
         when(aiEntryService.save(anyLong(), anyLong(), any())).thenReturn(new AiEntriesResponse(0, List.of()));
+        when(reminderService.create(anyLong(), anyLong(), any())).thenReturn(new ReminderResponse(1, 5, null, null,
+                null, null, null, List.of(), "UTC", true, 0, null, null, null));
+        when(reminderService.reportEvent(anyLong(), anyLong(), anyLong(), any())).thenReturn(CreateResult.existing(null));
     }
 
     @Test

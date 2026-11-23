@@ -5,6 +5,7 @@ import '../data/glucose_store.dart';
 import '../data/insulin_store.dart';
 import '../data/meal_store.dart';
 import '../data/offline_queue.dart';
+import '../data/reminder_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
 import '../services/auth_service.dart';
@@ -723,72 +724,7 @@ class _HomeTab extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Today',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF32552A),
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Tuesday, September 8',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF587151)),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  '3 reminders',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF4F6848),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _ReminderMiniRow(
-            time: '08:00',
-            title: 'Blood glucose measurement',
-            activeColor: const Color(0xFFE95D76),
-          ),
-          const SizedBox(height: 8),
-          _ReminderMiniRow(
-            time: '12:30',
-            title: 'Insulin',
-            activeColor: const Color(0xFF765BD4),
-          ),
-          const SizedBox(height: 8),
-          _ReminderMiniRow(
-            time: '20:00',
-            title: 'Evening blood glucose',
-            activeColor: const Color(0xFF168AF7),
-          ),
-        ],
-      ),
+      child: const _TodayReminders(),
     );
   }
 
@@ -1107,6 +1043,148 @@ class _RecentActivityCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The home screen's "Today" card: today's date and today's reminders from
+/// the backend (GET /patients/{id}/reminders), earliest first.
+class _TodayReminders extends StatefulWidget {
+  const _TodayReminders();
+
+  @override
+  State<_TodayReminders> createState() => _TodayRemindersState();
+}
+
+class _TodayRemindersState extends State<_TodayReminders> {
+  static const _weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  static const _months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  List<(Reminder, DateTime)>? today;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final reminders = await reminderStore.list();
+      final now = DateTime.now();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        today = [
+          for (final r in reminders)
+            if (r.occurrenceOn(now) case final at?) (r, at),
+        ]..sort((a, b) => a.$2.compareTo(b.$2));
+      });
+    } on ApiException {
+      if (mounted) {
+        setState(() => today = const []);
+      }
+    }
+  }
+
+  static Color _colorOf(String type) => switch (type) {
+        Reminder.medication => const Color(0xFF765BD4),
+        Reminder.meal => const Color(0xFFF0A126),
+        Reminder.appointment => const Color(0xFF168AF7),
+        Reminder.other => const Color(0xFF5F6E7D),
+        _ => const Color(0xFFE95D76),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final list = today;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Today',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF32552A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_weekdays[now.weekday - 1]}, ${_months[now.month - 1]} ${now.day}',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF587151)),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.70),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                list == null
+                    ? '…'
+                    : list.length == 1
+                        ? '1 reminder'
+                        : '${list.length} reminders',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4F6848),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (list != null && list.isEmpty)
+          const Text(
+            'No reminders today. Add one from the Reminders tab.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF587151)),
+          )
+        else if (list != null)
+          for (final (i, (reminder, _)) in list.take(4).indexed) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _ReminderMiniRow(
+              time: reminder.timeText,
+              title: reminder.title,
+              activeColor: _colorOf(reminder.type),
+            ),
+          ],
+      ],
     );
   }
 }

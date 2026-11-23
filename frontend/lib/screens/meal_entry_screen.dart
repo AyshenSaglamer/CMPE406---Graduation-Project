@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/food_recognition.dart';
+import '../data/log_store.dart';
 import '../data/meal_store.dart';
 import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
@@ -11,11 +12,19 @@ import '../widgets/date_time_tile.dart';
 import 'food_camera_screen.dart';
 
 class MealEntryScreen extends StatefulWidget {
-  const MealEntryScreen({super.key, this.photoPicker, this.recognizer});
+  const MealEntryScreen({
+    super.key,
+    this.photoPicker,
+    this.recognizer,
+    this.store,
+  });
 
   /// Passed on to the meal photo screen (tests use fakes).
   final PhotoPicker? photoPicker;
   final FoodRecognizer? recognizer;
+
+  /// Defaults to [mealStore].
+  final LogStore<MealRecord>? store;
 
   @override
   State<MealEntryScreen> createState() => _MealEntryScreenState();
@@ -25,10 +34,16 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
   final mealDescriptionController = TextEditingController();
   final carbsController = TextEditingController();
 
-  /// The description holds foods the patient confirmed from a photo; the
-  /// meal is then saved with source AI_ASSISTANT (the backend does not take
-  /// AI_PHOTO from the app yet).
+  /// The description holds a food the patient confirmed from a photo: the
+  /// meal is saved with source AI_PHOTO and [aiConfidence].
   bool fromPhoto = false;
+
+  /// The photo model's confidence for the confirmed food (the lowest one if
+  /// several photos were used), sent only with AI_PHOTO.
+  double? aiConfidence;
+
+  /// The carbs field holds the photo's rough estimate (not typed).
+  bool carbsEstimated = false;
 
   Future<void> _addFromPhoto() async {
     final result = await Navigator.push<FoodPhotoResult>(
@@ -46,14 +61,35 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
     }
 
     final current = mealDescriptionController.text.trim();
+    final estimate = result.carbsEstimate;
+    final fillCarbs = estimate != null && carbsController.text.trim().isEmpty;
 
     _changed(() {
       mealDescriptionController.text =
           current.isEmpty ? result.description : '$current, ${result.description}';
-      fromPhoto = fromPhoto || result.fromRecognition;
+
+      final confidence = result.aiConfidence;
+      if (confidence != null) {
+        fromPhoto = true;
+        aiConfidence = aiConfidence == null || confidence < aiConfidence!
+            ? confidence
+            : aiConfidence;
+      }
+
+      if (fillCarbs) {
+        carbsController.text = estimate == estimate.roundToDouble()
+            ? estimate.toStringAsFixed(0)
+            : estimate.toStringAsFixed(1);
+        carbsEstimated = true;
+      }
     });
 
-    _showMessage('Foods added. Check the meal type, time and carbs, then save.');
+    _showMessage(
+      fillCarbs
+          ? 'Foods added with a rough carb estimate. Check the amount, meal '
+              'type and time, then save.'
+          : 'Foods added. Check the meal type, time and carbs, then save.',
+    );
   }
 
   String selectedMealType = 'Breakfast';
@@ -118,12 +154,13 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
     final bool savedOffline;
 
     try {
-      savedOffline = await mealStore.create({
+      savedOffline = await (widget.store ?? mealStore).create({
         'mealType': mealTypeOptions[selectedMealType],
         'eatenAt': eatenAt.toUtc().toIso8601String(),
         'description': description,
         'carbsG': ?carbs,
-        'source': fromPhoto ? 'AI_ASSISTANT' : 'MANUAL',
+        'source': fromPhoto ? 'AI_PHOTO' : 'MANUAL',
+        if (fromPhoto) 'aiConfidence': ?aiConfidence,
         'clientUuid': clientUuid,
       }) == null;
     } on ApiException catch (e) {
@@ -495,8 +532,15 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Optional',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  carbsEstimated
+                      ? 'Rough estimate from the photo: check it'
+                      : 'Optional',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: carbsEstimated
+                        ? const Color(0xFFCA821B)
+                        : Colors.grey.shade500,
+                  ),
                 ),
               ],
             ),
@@ -506,7 +550,10 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             width: 105,
             child: TextField(
               controller: carbsController,
-              onChanged: (_) => clientUuid = newClientUuid(),
+              onChanged: (_) => setState(() {
+                clientUuid = newClientUuid();
+                carbsEstimated = false;
+              }),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),

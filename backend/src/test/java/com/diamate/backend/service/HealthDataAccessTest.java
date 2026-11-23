@@ -66,7 +66,8 @@ class HealthDataAccessTest {
                 PatientDataType.MEAL_LOGS, "meals",
                 PatientDataType.ACTIVITY_LOGS, "activity",
                 PatientDataType.ALERTS, "alerts",
-                PatientDataType.REPORTS, "reports");
+                PatientDataType.REPORTS, "reports",
+                PatientDataType.REMINDERS, "medications");
 
         Map<PatientDataType, String> actual = Arrays.stream(PatientDataType.values())
                 .collect(Collectors.toMap(type -> type, PatientDataType::permission));

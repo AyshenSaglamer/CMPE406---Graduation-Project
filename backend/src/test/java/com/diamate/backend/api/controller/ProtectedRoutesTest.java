@@ -39,6 +39,7 @@ import com.diamate.backend.service.GlucoseLogService;
 import com.diamate.backend.service.InsulinLogService;
 import com.diamate.backend.service.MealLogService;
 import com.diamate.backend.service.PatientService;
+import com.diamate.backend.service.ReminderService;
 import com.diamate.backend.service.UserService;
 
 /**
@@ -57,9 +58,9 @@ class ProtectedRoutesTest {
             "POST /api/v1/auth/login",
             "GET /api/v1/health");
 
-    // 48 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
+    // 56 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
     // endpoint inventory in docs/BACKEND_REVIEW.md, the README and AuthorizationMatrixTest.
-    private static final int ENDPOINT_COUNT = 49;
+    private static final int ENDPOINT_COUNT = 56;
 
     @Autowired
     private MockMvc mockMvc;
@@ -108,6 +109,9 @@ class ProtectedRoutesTest {
     private AuditLogService auditLogService;
 
     @MockitoBean
+    private ReminderService reminderService;
+
+    @MockitoBean
     private UserRepository userRepository;
 
     @Test
@@ -131,7 +135,7 @@ class ProtectedRoutesTest {
                 .isEqualTo(PUBLIC_ENDPOINTS);
         // A protected endpoint is refused before the controller: no service was called.
         verifyNoInteractions(userService, patientService, glucoseLogService, insulinLogService, mealLogService,
-                activityLogService, aiService, alertService, aiEntryService);
+                activityLogService, aiService, alertService, aiEntryService, reminderService);
     }
 
     /** "METHOD /path" for every controller method; Spring's /error endpoint is left out (it is not an API). */
