@@ -577,7 +577,13 @@ python -m pytest -v
 
 # 🔄 Continuous Integration
 
-The AI service uses **GitHub Actions** to automatically install dependencies and run automated tests when relevant changes are pushed or submitted through pull requests.
+Each part of the project has its own **GitHub Actions** workflow that installs dependencies and runs the automated tests when relevant changes are pushed or submitted through pull requests:
+
+| Workflow | Runs | On |
+|---|---|---|
+| `backend-ci.yml` | Backend unit, web and database tests (Java 21, PostgreSQL 17 via Testcontainers) | Push to `main`/`backend`, pull requests touching `backend/` or `Database/` |
+| `ai-service-ci.yml` | AI service tests (`pytest`) | Push to `ai`, pull requests touching `ai-service/` |
+| `frontend-ci.yml` | Flutter analyzer (errors and warnings fail, infos do not) and widget tests (Flutter 3.50) | Push to `main`, pull requests touching `frontend/` |
 
 ```text
 Push / Pull Request

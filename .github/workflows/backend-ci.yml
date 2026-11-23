@@ -2,7 +2,7 @@
 #
 #   Unit and web tests, plus the database tests against PostgreSQL 17 in Docker (Testcontainers; the schema is built
 #   from Database/sql + Flyway, like a real install). The AI service has its own workflow (ai-service-ci.yml on the
-#   ai branch); the Flutter app lives on the frontend branch.
+#   ai branch); the Flutter app in frontend/ has frontend-ci.yml.
 #
 # The Postman collection is not run here: it needs the demo accounts, and the demo seed needs the research dataset
 # files, which are not in the repository (see backend/README.md).
