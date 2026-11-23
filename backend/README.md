@@ -61,6 +61,7 @@ Sonuç: `public` şemasında 30 uygulama tablosu, `research` şemasında 14 veri
 | V7 | `alerts.resolved_by` eklendi: uyarıyı kimin çözdüğü (ilk ele alan `acknowledged_by`'da zaten vardı). Boş olabilir; eski uyarılarda değer yok (2. hafta, 5. gün) |
 | V8 | `fn_can_access` artık hastanın hesabının da aktif olmasını istiyor: admin bir hasta hesabını durdurunca bakım ekibi o hastanın verisini okuyamaz (önceden care-team listesinden çıkıyordu ama id ile doğrudan okunabiliyordu; 3. hafta, OWASP A01). Yalnız fonksiyon değişti, satır değişmedi |
 | V9 | `food_catalog`'a fotoğraf modelinin 24 Türk yemeği eklendi (lahmacun, mantı, simit …): yalnız ad ve görünen ad. Besin değerleri **boş** (`nutrition_source = 'not_available'`), çünkü henüz doğrulanmış bir kaynak yok. Var olan satırlara dokunulmaz (`ON CONFLICT DO NOTHING`) |
+| V10 | `food_catalog`'a Food-101'in 101 yemeği, kaba besin tahminleriyle (`Dataset/unified/food_classes.csv` ile aynı değerler, `is_verified = false`). Önceden bu satırları yalnızca research CSV yüklemesi sonrası `08_reference_seed.sql` ekliyordu; tam Docker yığınında ve veritabanı testlerinde bu yükleme yok, bu yüzden `/ai/food` hiçbir yemek için besin değeri döndürmüyordu. Satırları zaten olan veritabanı (yerel kurulum, Neon) değişmez |
 
 Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik için yeni sürüm dosyası eklenir.
 
@@ -94,7 +95,7 @@ cd ../food-vision-service && pip install -r requirements.txt && uvicorn app:app 
 mvn test        # birim + web katmanı testleri; Docker açıksa veritabanı testleri de
 ```
 
-Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V9. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
+Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V10. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
 
 `ProtectedRoutesTest` uygulamadaki tüm endpoint'leri Spring'in kendi listesinden bulur ve her birini token'sız çağırır. Yalnızca `register`, `login` ve `health` 401 dışında bir cevap verebilir. Endpoint sayısı değişirse test kırılır: o zaman testteki sayı, aşağıdaki tablo ve `docs/BACKEND_REVIEW.md` birlikte güncellenir.
 

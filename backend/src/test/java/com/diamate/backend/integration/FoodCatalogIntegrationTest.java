@@ -11,9 +11,10 @@ import com.diamate.backend.entity.FoodCatalogItem;
 import com.diamate.backend.repository.FoodCatalogRepository;
 
 /**
- * food_catalog on a real database: the entity matches the table (Hibernate validates it at startup) and V9 adds the
- * 24 Turkish dishes of the photo model without nutrition values. The Food-101 rows need the research CSV load, which
- * the test database does not have.
+ * food_catalog on a real database: the entity matches the table (Hibernate validates it at startup), V9 adds the 24
+ * Turkish dishes of the photo model without nutrition values and V10 the 101 Food-101 foods with their rough
+ * estimates. The test database has no research CSV load (like the Docker stack), so every Food-101 row here comes
+ * from V10, not from 08_reference_seed.sql.
  */
 class FoodCatalogIntegrationTest extends PostgresIntegrationTest {
 
@@ -36,5 +37,22 @@ class FoodCatalogIntegrationTest extends PostgresIntegrationTest {
                 "enginar", "et_sote", "gozleme", "hamsi", "hunkar_begendi", "icli_kofte", "ispanak", "izmir_kofte",
                 "karniyarik", "kebap", "kisir", "kuru_fasulye", "lahmacun", "lokum", "manti", "mucver",
                 "pirinc_pilavi", "simit", "taze_fasulye", "yaprak_sarma"))).hasSize(24);
+    }
+
+    @Test
+    void v10AddsTheFood101FoodsWithRoughEstimates() {
+        assertThat(foodCatalogRepository.count()).isEqualTo(125); // every class of the photo model
+
+        FoodCatalogItem pizza = foodCatalogRepository.findByNameIn(List.of("pizza")).getFirst();
+        assertThat(pizza.getDisplayName()).isEqualTo("Pizza");
+        assertThat(pizza.getCarbsGPer100g()).isNotNull().isPositive();
+        assertThat(pizza.getDefaultServingG()).isNotNull().isPositive();
+        assertThat(pizza.getKcalPer100g()).isNotNull().isPositive();
+        assertThat(pizza.isVerified()).isFalse();
+
+        assertThat(foodCatalogRepository.findAll())
+                .filteredOn(item -> item.getCarbsGPer100g() != null)
+                .hasSize(101)
+                .noneMatch(FoodCatalogItem::isVerified);
     }
 }
