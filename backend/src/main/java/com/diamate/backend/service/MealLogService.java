@@ -12,6 +12,7 @@ import com.diamate.backend.api.dto.response.MealLogResponse;
 import com.diamate.backend.api.dto.response.PageResponse;
 import com.diamate.backend.entity.MealLog;
 import com.diamate.backend.entity.MealSource;
+import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.InsulinLogRepository;
 import com.diamate.backend.repository.MealLogRepository;
@@ -46,7 +47,11 @@ public class MealLogService {
             return CreateResult.existing(MealLogResponse.from(existing.get()));
         }
 
-        MealLog log = new MealLog(patientId, request.clientUuid(), LogRules.source(request.source(), MealSource.class));
+        MealSource source = LogRules.mealSource(request.source(), MealSource.class);
+        if (request.aiConfidence() != null && source != MealSource.AI_PHOTO) {
+            throw new InvalidFieldException("aiConfidence", "AI confidence can only be sent with source AI_PHOTO");
+        }
+        MealLog log = new MealLog(patientId, request.clientUuid(), source, request.aiConfidence());
         apply(log, request);
         return CreateResult.created(MealLogResponse.from(LogRules.saveNew(repository, log)));
     }
@@ -67,6 +72,7 @@ public class MealLogService {
         return MealLogResponse.from(find(patientId, logId));
     }
 
+    /** source and aiConfidence of the request are ignored here: they are set once, when the meal is created. */
     @Transactional
     public MealLogResponse update(long viewerId, long patientId, long logId, MealLogRequest request) {
         access.checkCanWrite(viewerId, patientId);

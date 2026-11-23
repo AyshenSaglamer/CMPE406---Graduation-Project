@@ -400,7 +400,7 @@ class HealthLogWebTest {
                         null, MEASURED, null, InsulinSource.MANUAL, null, null, MEASURED, MEASURED)));
         when(mealLogService.create(eq(PATIENT_ID), eq(PATIENT_ID), any())).thenReturn(CreateResult.created(
                 new MealLogResponse(2L, PATIENT_ID, MealType.LUNCH, MEASURED, null, new BigDecimal("45.0"), null, null,
-                        null, MealSource.MANUAL, null, null, MEASURED, MEASURED)));
+                        null, MealSource.MANUAL, null, null, null, MEASURED, MEASURED)));
         when(activityLogService.create(eq(PATIENT_ID), eq(PATIENT_ID), any())).thenReturn(CreateResult.created(
                 new ActivityLogResponse(3L, PATIENT_ID, "walking", MEASURED, new BigDecimal("30.0"), null, null, null,
                         null, ActivitySource.MANUAL, null, null, MEASURED, MEASURED)));

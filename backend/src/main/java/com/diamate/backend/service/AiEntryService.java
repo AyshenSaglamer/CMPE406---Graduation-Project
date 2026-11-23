@@ -19,6 +19,7 @@ import com.diamate.backend.api.dto.request.ActivityLogRequest;
 import com.diamate.backend.api.dto.request.AiEntriesRequest;
 import com.diamate.backend.api.dto.request.AiEntriesRequest.Entry;
 import com.diamate.backend.api.dto.request.EntrySource;
+import com.diamate.backend.api.dto.request.MealEntrySource;
 import com.diamate.backend.api.dto.request.GlucoseLogRequest;
 import com.diamate.backend.api.dto.request.InsulinLogRequest;
 import com.diamate.backend.api.dto.request.MealLogRequest;
@@ -113,7 +114,7 @@ public class AiEntryService {
                 requireUnit(entry, MEAL_UNITS, "Carbohydrates must be in grams");
                 MealType mealType = entry.mealType() != null ? entry.mealType() : MealType.OTHER;
                 MealLogRequest log = valid(new MealLogRequest(mealType, at, null, entry.value(), null, null, null,
-                        null, EntrySource.AI_ASSISTANT, entry.clientUuid()));
+                        null, MealEntrySource.AI_ASSISTANT, null, entry.clientUuid()));
                 yield saved(entry, mealLogService.create(viewerId, patientId, log), MealLogResponse::id);
             }
             case LOG_ACTIVITY -> {

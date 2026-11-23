@@ -13,8 +13,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
 /**
- * Maps meal_logs. Not mapped yet: photo_url and ai_confidence (photo recognition comes later) and the
- * meal_log_items table (individual foods of a meal).
+ * Maps meal_logs. Not mapped: photo_url (the backend does not store meal photos) and the meal_log_items table
+ * (individual foods of a meal).
  */
 @Entity
 @Table(name = "meal_logs")
@@ -47,13 +47,22 @@ public class MealLog extends PatientLog {
     @Column(nullable = false, length = 20, updatable = false)
     private MealSource source;
 
+    /** The photo model's confidence for an AI_PHOTO meal (0..1), null otherwise. Set once, like source. */
+    @Column(name = "ai_confidence", precision = 4, scale = 3, updatable = false)
+    private BigDecimal aiConfidence;
+
     protected MealLog() {
         // required by JPA
     }
 
     public MealLog(long patientId, UUID clientUuid, MealSource source) {
+        this(patientId, clientUuid, source, null);
+    }
+
+    public MealLog(long patientId, UUID clientUuid, MealSource source, BigDecimal aiConfidence) {
         super(patientId, clientUuid);
         this.source = source;
+        this.aiConfidence = aiConfidence;
     }
 
     public void update(MealType mealType, Instant eatenAt, String description, BigDecimal carbsG,
@@ -98,5 +107,9 @@ public class MealLog extends PatientLog {
 
     public MealSource getSource() {
         return source;
+    }
+
+    public BigDecimal getAiConfidence() {
+        return aiConfidence;
     }
 }

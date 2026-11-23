@@ -30,6 +30,7 @@ import com.diamate.backend.api.dto.request.AiIntent;
 import com.diamate.backend.api.dto.request.EntrySource;
 import com.diamate.backend.api.dto.request.GlucoseLogRequest;
 import com.diamate.backend.api.dto.request.InsulinLogRequest;
+import com.diamate.backend.api.dto.request.MealEntrySource;
 import com.diamate.backend.api.dto.request.MealLogRequest;
 import com.diamate.backend.api.dto.response.ActivityLogResponse;
 import com.diamate.backend.api.dto.response.AiEntriesResponse;
@@ -127,7 +128,7 @@ class AiEntryServiceTest {
         verify(mealLogService).create(eq(PATIENT), eq(PATIENT), meal.capture());
         assertThat(meal.getValue().carbsG()).isEqualByComparingTo("45");
         assertThat(meal.getValue().mealType()).isEqualTo(MealType.OTHER); // the assistant does not say which meal
-        assertThat(meal.getValue().source()).isEqualTo(EntrySource.AI_ASSISTANT);
+        assertThat(meal.getValue().source()).isEqualTo(MealEntrySource.AI_ASSISTANT);
     }
 
     @Test
@@ -275,7 +276,7 @@ class AiEntryServiceTest {
 
     private static MealLogResponse meal(long id) {
         return new MealLogResponse(id, PATIENT, MealType.OTHER, NOW, null, new BigDecimal("45"), null, null, null,
-                MealSource.AI_ASSISTANT, null, null, NOW, NOW);
+                MealSource.AI_ASSISTANT, null, null, null, NOW, NOW);
     }
 
     private static ActivityLogResponse activity(long id) {

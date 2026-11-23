@@ -2,6 +2,7 @@ package com.diamate.backend.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,6 +39,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import com.diamate.backend.api.dto.request.ActivityLogRequest;
 import com.diamate.backend.api.dto.request.InsulinLogRequest;
+import com.diamate.backend.api.dto.request.MealEntrySource;
 import com.diamate.backend.api.dto.request.MealLogRequest;
 import com.diamate.backend.api.dto.response.ActivityLogResponse;
 import com.diamate.backend.api.dto.response.InsulinLogResponse;
@@ -61,6 +64,7 @@ import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.ActivityLogService;
 import com.diamate.backend.service.InsulinLogService;
+import com.diamate.backend.service.CreateResult;
 import com.diamate.backend.service.MealLogService;
 
 /**
@@ -292,6 +296,41 @@ class LogEndpointsWebTest {
     }
 
     @Test
+    void aiPhotoIsAMealSourceOnlyAndItsConfidenceIsChecked() throws Exception {
+        as(post(MEAL_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"mealType\":\"LUNCH\",\"eatenAt\":\"2026-10-05T08:30:00Z\",\"source\":\"AI_PHOTO\",\"aiConfidence\":1.5}"),
+                PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.aiConfidence").value("AI confidence must be between 0 and 1"));
+        as(post(MEAL_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"mealType\":\"LUNCH\",\"eatenAt\":\"2026-10-05T08:30:00Z\",\"source\":\"AI_PHOTO\",\"aiConfidence\":0.9123}"),
+                PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.aiConfidence").value("AI confidence can have at most 3 decimal places"));
+        // Only a meal can come from a photo: the other logs do not know the value.
+        as(post(INSULIN_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"doseUnits\":4,\"administeredAt\":\"2026-10-05T08:30:00Z\",\"source\":\"AI_PHOTO\"}"), PATIENT_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.source").exists());
+        verifyNoInteractions(insulinLogService, mealLogService);
+    }
+
+    @Test
+    void aPhotoMealIsPassedOnWithItsConfidence() throws Exception {
+        when(mealLogService.create(eq(PATIENT_ID), eq(PATIENT_ID), any(MealLogRequest.class)))
+                .thenReturn(CreateResult.created(meal(21L)));
+
+        as(post(MEAL_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"mealType\":\"DINNER\",\"eatenAt\":\"2026-10-05T08:30:00Z\",\"description\":\"Lahmacun\","
+                        + "\"carbsG\":60,\"source\":\"AI_PHOTO\",\"aiConfidence\":0.912}"), PATIENT_ID)
+                .andExpect(status().isCreated());
+
+        verify(mealLogService).create(eq(PATIENT_ID), eq(PATIENT_ID), argThat(request ->
+                request.source() == MealEntrySource.AI_PHOTO
+                        && request.aiConfidence().compareTo(new BigDecimal("0.912")) == 0));
+    }
+
+    @Test
     void nonNumericLogIdIs400() throws Exception {
         as(get(INSULIN_URL + "/abc", PATIENT_ID), PATIENT_ID)
                 .andExpect(status().isBadRequest())
@@ -308,7 +347,7 @@ class LogEndpointsWebTest {
 
     private static MealLogResponse meal(long id) {
         return new MealLogResponse(id, PATIENT_ID, MealType.LUNCH, AT, "lentil soup", new BigDecimal("45.0"), null, null,
-                null, MealSource.MANUAL, null, null, AT, AT);
+                null, MealSource.MANUAL, null, null, null, AT, AT);
     }
 
     private static ActivityLogResponse activity(long id) {

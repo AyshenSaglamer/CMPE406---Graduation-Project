@@ -50,7 +50,15 @@ public record MealLogRequest(
         @Size(max = 1000, message = "Notes must be at most 1000 characters")
         String notes,
 
-        EntrySource source,
+        // MANUAL (default), AI_ASSISTANT or AI_PHOTO. Kept on PUT: where a log came from never changes.
+        MealEntrySource source,
+
+        // Only with source AI_PHOTO: the photo model's confidence (0..1) for the food the patient confirmed, as
+        // returned by POST /api/v1/ai/food. Optional there; kept on PUT, like source.
+        @DecimalMin(value = "0", message = "AI confidence must be between 0 and 1")
+        @DecimalMax(value = "1", message = "AI confidence must be between 0 and 1")
+        @Digits(integer = 1, fraction = 3, message = "AI confidence can have at most 3 decimal places")
+        BigDecimal aiConfidence,
 
         UUID clientUuid) {
 }

@@ -564,6 +564,14 @@
     {
       "key": "foodDrToken",
       "value": ""
+    },
+    {
+      "key": "foodPatientId",
+      "value": ""
+    },
+    {
+      "key": "foodEatenAt",
+      "value": ""
     }
   ],
   "item": [
@@ -16432,7 +16440,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-                  "pm.collectionVariables.set('foodToken', pm.response.json().accessToken);"
+                  "pm.collectionVariables.set('foodToken', pm.response.json().accessToken);",
+                  "pm.collectionVariables.set('foodPatientId', pm.response.json().user.id);"
                 ]
               }
             }
@@ -16738,6 +16747,102 @@
                   "pm.test('Status code is 413', () => pm.response.to.have.status(413));",
                   "pm.test('problem+json', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));",
                   "pm.test('says 5 MB', () => pm.expect(pm.response.json().detail).to.eql('The image must be at most 5 MB'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Save the confirmed photo meal (AI_PHOTO, aiConfidence) -> 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{foodPatientId}}/meal-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mealType\":\"DINNER\",\"eatenAt\":\"{{foodEatenAt}}\",\"description\":\"Lahmacun\",\"carbsG\":60,\"source\":\"AI_PHOTO\",\"aiConfidence\":0.912}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{foodToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('foodEatenAt', new Date(Date.now() - 600000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('source and confidence kept', () => { const b = pm.response.json(); pm.expect(b.source).to.eql('AI_PHOTO'); pm.expect(b.aiConfidence).to.eql(0.912); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "aiConfidence without AI_PHOTO -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/patients/{{foodPatientId}}/meal-logs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mealType\":\"DINNER\",\"eatenAt\":\"{{foodEatenAt}}\",\"carbsG\":60,\"aiConfidence\":0.9}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{foodToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('foodEatenAt', new Date(Date.now() - 600000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.aiConfidence', () => pm.expect(pm.response.json().errors.aiConfidence).to.eql('AI confidence can only be sent with source AI_PHOTO'));"
                 ]
               }
             }

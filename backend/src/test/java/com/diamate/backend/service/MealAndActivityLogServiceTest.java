@@ -27,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.diamate.backend.api.dto.request.ActivityLogRequest;
 import com.diamate.backend.api.dto.request.EntrySource;
+import com.diamate.backend.api.dto.request.MealEntrySource;
 import com.diamate.backend.api.dto.request.MealLogRequest;
 import com.diamate.backend.api.dto.response.ActivityLogResponse;
 import com.diamate.backend.api.dto.response.MealLogResponse;
@@ -36,6 +37,7 @@ import com.diamate.backend.entity.ActivitySource;
 import com.diamate.backend.entity.MealLog;
 import com.diamate.backend.entity.MealSource;
 import com.diamate.backend.entity.MealType;
+import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.ActivityLogRepository;
 import com.diamate.backend.repository.InsulinLogRepository;
@@ -101,12 +103,42 @@ class MealAndActivityLogServiceTest {
         when(mealRepository.saveAndFlush(any(MealLog.class))).thenAnswer(invocation -> withId(invocation.getArgument(0)));
 
         MealLogResponse meal = mealService.create(PATIENT, PATIENT, new MealLogRequest(MealType.LUNCH, EARLIER,
-                " lentil soup ", new BigDecimal("45.5"), null, null, null, null, EntrySource.AI_ASSISTANT, null)).log();
+                " lentil soup ", new BigDecimal("45.5"), null, null, null, null, MealEntrySource.AI_ASSISTANT, null, null)).log();
 
         assertThat(meal.mealType()).isEqualTo(MealType.LUNCH);
         assertThat(meal.description()).isEqualTo("lentil soup");
         assertThat(meal.carbsG()).isEqualByComparingTo("45.5");
         assertThat(meal.source()).isEqualTo(MealSource.AI_ASSISTANT);
+    }
+
+    @Test
+    void aPhotoMealKeepsTheModelsConfidence() {
+        when(mealRepository.saveAndFlush(any(MealLog.class))).thenAnswer(invocation -> withId(invocation.getArgument(0)));
+
+        MealLogResponse meal = mealService.create(PATIENT, PATIENT, new MealLogRequest(MealType.DINNER, EARLIER,
+                "Lahmacun", new BigDecimal("60"), null, null, null, null, MealEntrySource.AI_PHOTO,
+                new BigDecimal("0.912"), null)).log();
+        MealLogResponse withoutConfidence = mealService.create(PATIENT, PATIENT, new MealLogRequest(MealType.LUNCH,
+                EARLIER, "Pizza", null, null, null, null, null, MealEntrySource.AI_PHOTO, null, null)).log();
+
+        assertThat(meal.source()).isEqualTo(MealSource.AI_PHOTO);
+        assertThat(meal.aiConfidence()).isEqualByComparingTo("0.912");
+        assertThat(withoutConfidence.source()).isEqualTo(MealSource.AI_PHOTO);
+        assertThat(withoutConfidence.aiConfidence()).isNull();
+    }
+
+    @Test
+    void aiConfidenceWithoutAPhotoIsRefused() {
+        for (MealEntrySource source : new MealEntrySource[] { null, MealEntrySource.MANUAL,
+                MealEntrySource.AI_ASSISTANT }) {
+            assertThatThrownBy(() -> mealService.create(PATIENT, PATIENT, new MealLogRequest(MealType.LUNCH, EARLIER,
+                    null, new BigDecimal("40"), null, null, null, null, source, new BigDecimal("0.8"), null)))
+                    .isInstanceOfSatisfying(InvalidFieldException.class, e -> {
+                        assertThat(e.getField()).isEqualTo("aiConfidence");
+                        assertThat(e.getMessage()).isEqualTo("AI confidence can only be sent with source AI_PHOTO");
+                    });
+        }
+        verify(mealRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -160,7 +192,7 @@ class MealAndActivityLogServiceTest {
         when(mealRepository.saveAndFlush(existing)).thenReturn(existing);
 
         MealLogResponse updated = mealService.update(PATIENT, PATIENT, 300L, new MealLogRequest(MealType.DINNER, EARLIER,
-                " pasta ", new BigDecimal("80"), new BigDecimal("650"), null, null, null, EntrySource.AI_ASSISTANT, null));
+                " pasta ", new BigDecimal("80"), new BigDecimal("650"), null, null, null, MealEntrySource.AI_ASSISTANT, null, null));
 
         assertThat(updated.mealType()).isEqualTo(MealType.DINNER);
         assertThat(updated.description()).isEqualTo("pasta");

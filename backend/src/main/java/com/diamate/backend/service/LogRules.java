@@ -12,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.diamate.backend.api.dto.request.EntrySource;
+import com.diamate.backend.api.dto.request.MealEntrySource;
 import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.ResourceConflictException;
 import com.diamate.backend.repository.LogRepository;
@@ -98,6 +99,11 @@ final class LogRules {
     /** The app's EntrySource (MANUAL / AI_ASSISTANT) as the table's own source enum, which has the same names. */
     static <E extends Enum<E>> E source(EntrySource source, Class<E> type) {
         return Enum.valueOf(type, (source == null ? EntrySource.MANUAL : source).name());
+    }
+
+    /** Same for meals, whose app-side source also has AI_PHOTO (MealEntrySource). */
+    static <E extends Enum<E>> E mealSource(MealEntrySource source, Class<E> type) {
+        return Enum.valueOf(type, (source == null ? MealEntrySource.MANUAL : source).name());
     }
 
     /**
