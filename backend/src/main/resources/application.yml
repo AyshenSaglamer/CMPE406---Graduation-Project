@@ -1,0 +1,90 @@
+spring:
+  application:
+    name: diamate-backend
+
+  # Reads the local .env file (the same one Docker Compose uses) as extra properties.
+  # "optional:" lets the app start without it (e.g. in production, where real
+  # environment variables are provided instead). Environment variables always win.
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    # jdbc:postgresql://<host>:<port>/<database>
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5434}/${POSTGRES_DB:diamate}?sslmode=${POSTGRES_SSLMODE:prefer}
+    # No defaults for credentials: if they are missing, startup fails loudly.
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+
+  # Schema changes after the Database SQL package are versioned migrations in src/main/resources/db/migration.
+  # The existing schema (installed by Database/install_mac.sh) counts as version 1; Flyway applies V2, V3, ... on startup.
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: Database SQL package (Database/sql)
+
+  servlet:
+    multipart:
+      # Only POST /api/v1/ai/voice takes a file (a recording of at most 10 MB; RequestSizeLimitFilter lets only that
+      # address be larger than 1 MB). Parts are read only when an endpoint asks for them (resolve-lazily), so a
+      # multipart request to any other address is not read into memory or onto disk.
+      max-file-size: 10MB
+      max-request-size: 11MB
+      resolve-lazily: true
+
+  jackson:
+    deserialization:
+      # 120.7 sent for a whole-number field (e.g. glucoseValue) is a 400 error instead of being silently cut to 120.
+      accept-float-as-int: false
+    mapper:
+      # A value of the wrong JSON type is a 400 instead of being converted: {"active": 0} must not switch an account
+      # off, "canViewMeals": -1 must not mean true, "glucoseValue": "120" is not a number (QA scan, week 3).
+      allow-coercion-of-scalars: false
+    datatype:
+      enum:
+        # "source": 0 must not mean the first constant (MANUAL): enum values are sent by name only.
+        fail-on-numbers-for-enums: true
+    read:
+      # {"glucoseValue":120,"glucoseValue":600} is a 400 instead of "the last one wins": a proxy or log that reads the
+      # first value and the backend that reads the second would otherwise disagree about what was sent.
+      strict-duplicate-detection: true
+
+  jpa:
+    hibernate:
+      # Hibernate only checks that entities match existing tables; it never changes the schema.
+      ddl-auto: validate
+    # Close the database session when the service layer is done, not after the HTTP response is written.
+    open-in-view: false
+    properties:
+      hibernate:
+        # Read/write timestamps in UTC regardless of the server's local time zone (DB columns are timestamptz).
+        jdbc.time_zone: UTC
+
+server:
+  # Behind Nginx (team docker-compose) the client's IP arrives in X-Forwarded-For. Tomcat uses that header only when
+  # the request comes from an internal-network proxy (10.x, 172.16-31.x, 192.168.x, 127.x), so a client on the
+  # internet cannot fake its IP with it. Without this, every audit log row would show Nginx's IP.
+  forward-headers-strategy: native
+
+diamate:
+  jwt:
+    # No default: without JWT_SECRET the application refuses to start.
+    secret: ${JWT_SECRET}
+    expiration: ${JWT_EXPIRATION:1h}
+    issuer: diamate-backend
+  # The team's FastAPI AI service (ai-service). The app never calls it directly; the backend does.
+  ai:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    connect-timeout: 2s
+    read-timeout: 10s
+    voice-read-timeout: 60s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # Public answer is only {"status":"UP"} (or DOWN, e.g. when the database is unreachable).
+      # The component list (db, disk space, ssl, ...) is internal information.
+      show-components: never

@@ -1,0 +1,56 @@
+# Environment variables / secrets
+.env
+.env.*
+
+# Spring Boot / Maven
+backend/target/
+target/
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# SSL private keys / certificates
+ssl/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Archives
+backend.zip
+backend/target/
+target/
+.DS_Store
+.idea/
+.vscode/
+*.log
+ssl/
+*.key
+*.pem
+*.p12
+*.pfx
+backend.zip
+/.metadata/
+
+# Database package: generated data and the research dataset are shared separately (too large for Git)
+/Database/data/
+/Dataset/
+
+# Python / FastAPI
+ai-service/venv/
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+ai-service/.pytest_cache/
+ai-service/*.pyc
+
+# DiaMate AI trained model artifacts
+ai-service/ml/models/*.joblib
+
+# Templates with placeholder values are versioned (the .env.* rule above would hide them)
+!.env.example

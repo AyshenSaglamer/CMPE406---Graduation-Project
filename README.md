@@ -302,6 +302,7 @@ For detailed AI documentation, see:
 
 ```text
 ai-service/README.md
+ai-service/docs/AI_SERVICE_GUIDE.md
 ```
 
 ---
@@ -359,16 +360,27 @@ A simplified repository layout is:
 DiaMate/
 │
 ├── README.md
-├── docker-compose.yml
+├── docker-compose.yml      full stack: Nginx + backend + AI service + PostgreSQL
+├── .env.example            copy to .env (database password, JWT key); .env is never committed
+├── .github/workflows/      backend CI and AI service CI
+│
+├── nginx/
+│   ├── default.conf.template   HTTPS reverse proxy in front of the backend
+│   └── make-dev-cert.sh        self-signed certificate for local testing
 │
 ├── backend/
 │   ├── src/
 │   ├── pom.xml
 │   └── Dockerfile
 │
+├── Database/
+│   ├── sql/                PostgreSQL schema package (used for the database's first start)
+│   └── docs/
+│
 ├── ai-service/
 │   ├── main.py
 │   ├── README.md
+│   ├── docs/AI_SERVICE_GUIDE.md
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── models/
@@ -380,7 +392,7 @@ DiaMate/
 │   └── tests/
 │
 └── frontend/
-    └── Flutter application
+    └── Flutter application (currently on the frontend branch)
 ```
 
 The exact structure can evolve as the project is integrated.
@@ -445,8 +457,13 @@ The project is designed to run as a containerized multi-service application.
 From the repository root:
 
 ```bash
+cp .env.example .env          # set POSTGRES_PASSWORD and JWT_SECRET (openssl rand -base64 64)
+./nginx/make-dev-cert.sh      # self-signed certificate for local testing (nginx/ssl/, not in Git)
 docker compose up -d --build
+curl -k https://localhost:8443/actuator/health
 ```
+
+Only Nginx is reachable from outside: `https://localhost:8443` (port `8081` only redirects to HTTPS). The backend, the AI service and the database have no host ports. An empty database is created from `Database/sql` on its first start; the backend's Flyway migrations are applied after that.
 
 The containerized architecture can coordinate:
 

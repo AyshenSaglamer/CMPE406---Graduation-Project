@@ -1,0 +1,30 @@
+package com.diamate.backend.repository;
+
+import java.time.Instant;
+import java.util.Optional;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.diamate.backend.entity.GlucoseLog;
+
+// Deleted rows are already hidden by @SQLRestriction on the entity; no query needs "deleted_at IS NULL".
+public interface GlucoseLogRepository extends LogRepository<GlucoseLog> {
+
+    // patient_id + time range: uses the index ix_glucose_logs_patient_time. "id desc" keeps the order stable
+    // between pages when two readings have the same time. One read-only transaction for the page query and the
+    // count query (the service's read methods have none, see HealthDataAccess).
+    @Transactional(readOnly = true)
+    @Query("""
+            select g from GlucoseLog g
+            where g.patientId = :patientId and g.measurementTime >= :from and g.measurementTime < :to
+            order by g.measurementTime desc, g.id desc""")
+    Page<GlucoseLog> findInRange(@Param("patientId") long patientId, @Param("from") Instant from,
+            @Param("to") Instant to, Pageable pageable);
+
+    // Both ids are required, so a log id from another patient is "not found".
+    Optional<GlucoseLog> findByIdAndPatientId(long id, long patientId);
+}

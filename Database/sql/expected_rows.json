@@ -1,0 +1,16 @@
+{
+ "patients": 166,
+ "records": 179,
+ "glucose_readings": 648177,
+ "meals": 10842,
+ "meal_items": 10788,
+ "insulin_doses": 531711,
+ "oral_medications": 3259,
+ "activity": 546899,
+ "ketones": 58,
+ "timeline": 702610,
+ "sources": 6,
+ "brfss_survey": 253680,
+ "food_classes": 101,
+ "food_images": 101000
+}
