@@ -19,6 +19,9 @@ services:
     environment:
       # The redirect from HTTP must point at the host's HTTPS port, not at 443 inside the container.
       HTTPS_PORT: ${HTTPS_PORT:-8443}
+      # Rate limit for /api/v1/auth/ (login, register) per client IP; see nginx/default.conf.template.
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-10r/m}
+      AUTH_RATE_BURST: ${AUTH_RATE_BURST:-5}
     volumes:
       # The official image runs envsubst on /etc/nginx/templates/*.template (only for variables that are set).
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro

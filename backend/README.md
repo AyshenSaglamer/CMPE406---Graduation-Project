@@ -318,7 +318,7 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 - **Başlıklar:** Spring Security varsayılanları açık: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`.
 - **Doğum tarihi:** En az 16 yaş ve en fazla 120 yıl önce (daha eskisi yazım hatası sayılır; 400 + `errors.dateOfBirth`).
 - **Çıkış (logout):** Şimdilik yalnızca uygulama tarafında yapılır; uygulama token'ı siler. Sunucu token'ı geri çekemez, bu yüzden token süresi dolana kadar (en fazla 1 saat) geçerli kalır. Hesap pasife alınırsa ya da rolü değişirse token hemen 401 alır. Refresh token ve sunucu tarafında logout 2. haftada yapılmayacak, sonraya bırakıldı (karar: 12 Ekim 2026).
-- **Kapsam dışı (sonraki işler):** Refresh token ve sunucu tarafında logout, IP bazlı hız sınırı (Nginx; önerilen ayar `docs/BACKEND_REVIEW.md` bölüm 12'de), 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (admin onayı kaldırıldı, bkz. "Doktor hesabı"). OWASP Top 10 değerlendirmesi ve kabul edilen riskler: `docs/BACKEND_REVIEW.md` bölüm 15.
+- **Kapsam dışı (sonraki işler):** Refresh token ve sunucu tarafında logout, 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (admin onayı kaldırıldı, bkz. "Doktor hesabı"). OWASP Top 10 değerlendirmesi ve kabul edilen riskler: `docs/BACKEND_REVIEW.md` bölüm 15; güncel özet ve açık kalanlar `docs/SECURITY.md`. Giriş ve kayıt için IP başına hız sınırı tam stack'teki Nginx'te (23 Kasım; `SECURITY.md` bölüm 8).
 
 ## Paket yapısı
 
@@ -340,3 +340,5 @@ com.diamate.backend
 Veritabanı şeması ve eşleme notları: `../Database/docs/BACKEND_NOTES.md`, `../Database/docs/DATA_DICTIONARY.md`.
 
 Mimari, auth/JWT akışı, endpoint envanteri, test kapsamı ve açık bulgular (2. hafta, 1. gün incelemesi): `docs/BACKEND_REVIEW.md`.
+
+Güncel güvenlik durumu (kimlik doğrulama, yetki, paylaşım, AI, denetim kaydı, hata yönetimi, Nginx/Docker, OWASP eşlemesi ve açık kalanlar): `docs/SECURITY.md`.

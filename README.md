@@ -463,7 +463,7 @@ docker compose up -d --build
 curl -k https://localhost:8443/actuator/health
 ```
 
-Only Nginx is reachable from outside: `https://localhost:8443` (port `8081` only redirects to HTTPS). The backend, the AI service and the database have no host ports. An empty database is created from `Database/sql` on its first start; the backend's Flyway migrations are applied after that.
+Only Nginx is reachable from outside: `https://localhost:8443` (port `8081` only redirects to HTTPS). The backend, the AI service and the database have no host ports. Login and registration are rate limited per IP (10 per minute, burst 5; `AUTH_RATE_LIMIT`, `AUTH_RATE_BURST` in `.env`). Security details: `backend/docs/SECURITY.md`. An empty database is created from `Database/sql` on its first start; the backend's Flyway migrations are applied after that.
 
 The containerized architecture can coordinate:
 

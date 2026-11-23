@@ -12,6 +12,8 @@
 
 Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayılar ve bulguların durumu 6. günün sonuna göre güncellendi.
 
+> **Güncel güvenlik durumu `SECURITY.md`'dedir (23 Kasım, final checklist).** Bu dokümanın güvenlik bölümleri (12, 14, 15) o günün kaydıdır. Örneğin 12.6'daki takım compose, Nginx ve giriş hız sınırı önerileri 23 Kasım'da uygulandı, B-9 doktor onayı 17 Kasım'da kaldırıldı. İkisi çelişirse `SECURITY.md` geçerlidir.
+
 ## 0. Özet
 
 | Ölçü | Değer |
