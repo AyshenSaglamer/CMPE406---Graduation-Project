@@ -18,10 +18,10 @@ Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayı
 
 | Ölçü | Değer |
 |---|---|
-| Endpoint | **48**: yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
-| Otomatik test | **411**, hepsi geçiyor (`mvn test`; 7'si Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
+| Endpoint | **49**: yemek fotoğrafı 1 (23 Kasım'da, `POST /ai/food`, bölüm 17), yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
+| Otomatik test | **448**, hepsi geçiyor (`mvn test`; 8'i Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 23 Kasım'da 448 (yemek fotoğrafı 37 test). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
 | Postman | 18 klasörde **465** istek ve 711 assertion; yerel veritabanında ve gerçek FastAPI ile hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66), "Time-limited sharing" (20), "Audit log" (31), "OWASP Top 10" (73), "AI analyses and voice" (36). 1. günde 7 klasör, 105 istek |
-| Şema sürümü | Flyway V8 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı) |
+| Şema sürümü | Flyway V9 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı; V9 23 Kasım'da: fotoğraf modelinin 24 Türk yemeği `food_catalog`'a) |
 | Takım reposu | `backend` dalı GP ile aynı kodu taşıyor (yalnız `README.md` farklı). `backend`, `frontend` ve `ai` dalları henüz `main`'e merge edilmedi |
 
 **Öne çıkan bulgular** (ayrıntı: [bölüm 5](#5-bulgular)):
@@ -642,7 +642,7 @@ Rol seviyesi `@PreAuthorize` ile korunur. Tablodaki ✓ yalnızca rol kontrolün
 | Kayıtlar: `GET` liste ve tek kayıt (×4 tür) | ✓ (kendisi) | ✓ (ilgili izin) | ✓ (ilgili izin) | ✓ → 404 |
 | Kayıtlar: `POST`, `PUT`, `DELETE` (×4 tür) | ✓ (kendisi) | 403 | 403 | 403 |
 | `GET …/alerts`, `GET …/alerts/{id}`, `PATCH …/alerts/{id}` | ✓ (kendisi) | ✓ (`alerts` izni) | ✓ (`alerts` izni) | ✓ → 404 |
-| `POST /ai/parse`, `POST /patients/{id}/ai-entries` | ✓ (kendisi) | 403 | 403 | 403 |
+| `POST /ai/parse`, `POST /ai/voice`, `POST /ai/food`, `POST /patients/{id}/ai-entries` | ✓ (kendisi) | 403 | 403 | 403 |
 | `GET /care-team/patients`, `GET /care-team/alerts` | 403 | ✓ | ✓ | 403 |
 | `GET /admin/users`, `PATCH /admin/users/{id}/status` | 403 | 403 | 403 | ✓ |
 
@@ -927,4 +927,30 @@ Ayşen'in takım reposundaki `ai-backend-integration` dalı (`670de93`, `a2c61e3
 **Doğrulama:** `mvn test` **411/411** (36 yeni). Gerçek FastAPI (`8220cc0`) ve yerel veritabanıyla uçtan uca 20/20: beş analiz 200 (tahmin 503: eğitilmiş model `ml/models/*.joblib` Git'te değil), az veride servisin 422 açıklaması iletiliyor, erişim kuralları, 31 gün sınırı, ses için 400/403/413/415. Tarama 6409 istek, 0 bulgu (yeni analizler dahil; `/ai/` adreslerinde 502/503 belgelenmiş cevap). Postman 465 istek, 711 assertion, 0 hata.
 
 **Ayşen için:** (1) Yerel imajda Whisper modeli yok, container modeli Hugging Face'ten indirmeye çalışıyor ve ses isteği 500 dönüyor (backend bunu 502'ye çeviriyor). Model imaja konmalı ya da ilk açılışta indirilmeli. (2) Tahmin için eğitilmiş XGBoost modeli imajda yok (503). (3) Doktor geçersiz bir multipart gönderirse 403 yerine 400 alır, çünkü dosya alanı rol kontrolünden önce okunur; geçerli bir yüklemede 403 alır (güvenlik açığı değil).
+
+## 17. 3. hafta: yemek fotoğrafı köprüsü (Food Vision)
+
+Ayşenur'un `feature/food-vision` dalı (`9742f8f`, 23 Kasım) YOLO'nun yanına `POST /predict-food` ekledi: Food-101 + TurkishFoods-25 ile eğitilmiş ResNet50, 125 sınıf, test doğruluğu %77 (`reports/foodvision_test_results.json`). 16 Kasım raporundaki F-1 (model yemeğe özel değil) bununla kapandı. Backend'e bu uçla bağlanan `POST /api/v1/ai/food` eklendi (F-3: uygulama fotoğrafı servise değil backend'e gönderir). `food-vision-service` GP'de bu commit'le eşitlendi; ona yalnız `Dockerfile`, `.dockerignore` ve compose'daki `food-vision` servisi eklendi.
+
+| Konu | Karar | Neden |
+|---|---|---|
+| Rol | Yalnız `PATIENT` | Öğünü hasta kaydeder; `/ai/voice` ile aynı kural |
+| Hangi uç | Yalnız `/predict-food` | `/upload-image` her fotoğrafı diske yazıyor (F-2); `/predict-food` bellekte çalışıyor |
+| Fotoğraf kontrolü | Backend'de, servise gitmeden: ilk baytlardan tür (JPG/PNG/WEBP), boş değil, ≤ 5 MB, JPG/PNG başlığında ≤ 50 MP | Ad ve bildirilen tür güvenilmez; F-7 (decompression bomb) servise ulaşmadan durur. WEBP başlığını Java okuyamıyor, onu Pillow'un kendi sınırı korur |
+| Boyut | `RequestSizeLimitFilter`'da `/ai/food` için 6 MB; Nginx 11 MB (değişmedi) | 1 MB sınırı fotoğrafı keserdi |
+| Cevap | En fazla 3 tahmin, güvene göre sıralı; `food_catalog`'dan görünen ad, 100 g'daki kalori/karbonhidrat, porsiyon ve porsiyondaki karbonhidrat; `lowConfidence` (< %50); `requiresConfirmation: true`; `note` | Tahmin yanlış olabilir ve değerler kaba tahmin: hasta onaylamadan hiçbir şey kaydedilmez, doz hesabında kullanılmaz |
+| Türk yemekleri | V9: 24 satır, yalnız ad; besin değeri `null` | Doğrulanmış kaynak yok; uydurma bir sayı göstermektense karbonhidratı hastaya sormak daha güvenli |
+| Servis cevabı | Kontrol ediliyor: en az bir tahmin, güven 0–1, sınıf adı `[a-z0-9_]{1,100}`; uymazsa 502 | Servisin beklenmeyen bir çıktısı uygulamaya geçmesin |
+| Hatalar | Servis kapalı/yavaş → 503; servisin 400/413/422'si → 422 (kısa açıklamasıyla); 500 ve diğerleri → 502 | `/ai/voice` ile aynı mantık |
+| Süreler | Bağlantı 2 sn, cevap 30 sn (`diamate.food-vision`) | ResNet50 CPU'da ~1 sn; ilk istek daha yavaş olabilir |
+| Compose | `food-vision` servisi, yalnız `expose: 8001`; backend onu beklemez | Ağırlık dosyası yoksa servis açılmaz ama yığının geri kalanı çalışır, `/ai/food` 503 |
+
+**Testler (37 yeni, toplam 448/448):** `FoodVisionClientTest` (gerçek cevap biçimi, multipart alan adı, 400/413/500/503, kapalı servis, 12 bozuk cevap), `FoodRecognitionServiceTest` (katalog eşleşmesi, katalogda olmayan sınıf, sıralama ve 3 sınır, düşük güven, içerikten tür, sabit ad, PDF/GIF/metin/WAV, boş, 5 MB, 100 MP başlık, kesik başlık), `AiFoodWebTest` (rol, alan adı, 415, hata biçimleri), `RequestSizeLimitFilterTest` (6 MB, chunked), `FoodCatalogIntegrationTest` (V9 gerçek PostgreSQL'de, entity tabloyla uyumlu), yetki matrisi ve `ProtectedRoutesTest` (49 endpoint).
+
+**Kalanlar:**
+
+- **Ağırlık dosyası:** `best_resnet50_foodvision.pth` Git'te yok (`.gitignore: *.pth`). Ayşenur'dan alınıp `food-vision-service/models/`'e konmalı; yoksa servis açılmaz.
+- **Ayşenur için:** `/upload-image` hâlâ diske yazıyor (F-2). `/predict-food` `async def` içinde senkron model çalıştırıyor, aynı anda gelen istekler sırayla bekliyor (F-4). `requirements.txt` sürümsüz ve `torch`/`torchvision`'ı açıkça listelemiyor (F-6). Servisin testi yok.
+- **Öğün kaydı:** Fotoğraftan gelen öğün şimdilik `source: MANUAL` ile kaydediliyor. `meal_logs.source = 'AI_PHOTO'` ve `ai_confidence` kolonları var ama API'den henüz yazılamıyor.
+- **Türk yemeklerinin besin değerleri:** V9'da boş; doğrulanmış bir kaynakla doldurulabilir.
 

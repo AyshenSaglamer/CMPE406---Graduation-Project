@@ -60,6 +60,7 @@ Sonuç: `public` şemasında 30 uygulama tablosu, `research` şemasında 14 veri
 | V6 | `activity_logs.source` CHECK kuralına `AI_ASSISTANT` eklendi; aktivite de diğer kayıt türleri gibi Dia'dan geldiğini saklar. Kural yalnızca genişledi, mevcut satırlar etkilenmedi (2. hafta, 4. gün) |
 | V7 | `alerts.resolved_by` eklendi: uyarıyı kimin çözdüğü (ilk ele alan `acknowledged_by`'da zaten vardı). Boş olabilir; eski uyarılarda değer yok (2. hafta, 5. gün) |
 | V8 | `fn_can_access` artık hastanın hesabının da aktif olmasını istiyor: admin bir hasta hesabını durdurunca bakım ekibi o hastanın verisini okuyamaz (önceden care-team listesinden çıkıyordu ama id ile doğrudan okunabiliyordu; 3. hafta, OWASP A01). Yalnız fonksiyon değişti, satır değişmedi |
+| V9 | `food_catalog`'a fotoğraf modelinin 24 Türk yemeği eklendi (lahmacun, mantı, simit …): yalnız ad ve görünen ad. Besin değerleri **boş** (`nutrition_source = 'not_available'`), çünkü henüz doğrulanmış bir kaynak yok. Var olan satırlara dokunulmaz (`ON CONFLICT DO NOTHING`) |
 
 Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik için yeni sürüm dosyası eklenir.
 
@@ -81,13 +82,19 @@ Kontrol: `curl http://localhost:8080/api/v1/health` → `"status":"UP"`, `curl h
 
 `/api/v1/ai/parse`, takımın FastAPI servisine (`ai-service`) bağlanır. Adres `.env` içindeki `AI_SERVICE_BASE_URL` değişkeninden okunur (varsayılan `http://localhost:8000`). Servis çalışmıyorsa backend yine açılır; yalnızca bu endpoint **503** döner.
 
+`/api/v1/ai/food` (yemek fotoğrafı) Ayşenur'un `food-vision-service`'ine bağlanır: `FOOD_VISION_BASE_URL` (varsayılan `http://localhost:8001`). Yerelde çalıştırmak için `../food-vision-service/models/best_resnet50_foodvision.pth` gerekir (Git'te yok, Ayşenur'dan alınır):
+
+```bash
+cd ../food-vision-service && pip install -r requirements.txt && uvicorn app:app --port 8001
+```
+
 ## 4. Testler
 
 ```bash
 mvn test        # birim + web katmanı testleri; Docker açıksa veritabanı testleri de
 ```
 
-Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V8. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
+Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V9. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
 
 `ProtectedRoutesTest` uygulamadaki tüm endpoint'leri Spring'in kendi listesinden bulur ve her birini token'sız çağırır. Yalnızca `register`, `login` ve `health` 401 dışında bir cevap verebilir. Endpoint sayısı değişirse test kırılır: o zaman testteki sayı, aşağıdaki tablo ve `docs/BACKEND_REVIEW.md` birlikte güncellenir.
 
@@ -160,6 +167,7 @@ docker run --env-file .env -p 8080:8080 diamate-backend
 | GET | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | Tek uyarı |
 | PATCH | `/api/v1/patients/{patientId}/alerts/{alertId}` | hasta ya da uyarı izni olan doktor/bakıcı | `{"status":"ACKNOWLEDGED"}` ya da `{"status":"RESOLVED"}` |
 | POST | `/api/v1/ai/parse` | `PATIENT` | `{text}` → yapay zekâ servisinin anladığı kayıtlar. **Hiçbir şey kaydetmez** (bkz. aşağıda) |
+| POST | `/api/v1/ai/food` | `PATIENT` | `multipart/form-data`, alan `image`: JPG, PNG ya da WEBP yemek fotoğrafı, en fazla **5 MB** ve 50 megapiksel. Modelin en iyi 3 tahminini yaklaşık besin değerleriyle döner: `{model, lowConfidence, requiresConfirmation, predictions: [{food, displayName, confidence, foodCatalogId, kcalPer100g, carbsGPer100g, typicalServingG, carbsGPerServing, nutritionVerified}], note}`. **Hiçbir şey kaydetmez, fotoğrafı saklamaz.** Hatalı dosya → 400 `errors.image`, 5 MB'tan büyük → 413, servisin kullanamadığı görüntü → 422, servis kapalı → 503 |
 | POST | `/api/v1/ai/voice` | `PATIENT` | `multipart/form-data`, alan `audio`: WAV, MP3, M4A, WEBM ya da OGG, en fazla **10 MB**. Konuşmayı metne çevirir (Whisper) ve `/ai/parse` gibi anlar: `{status, transcript, resultCount, results, message}`. **Hiçbir şey kaydetmez**; kayıt yine `ai-entries` ile. Hatalı dosya → 400 `errors.audio`, 10 MB'tan büyük → 413, JSON gövde → 415, anlaşılmayan konuşma → 422 |
 | GET | `/api/v1/ai/patients/{patientId}/summary` | hasta + `reports` ve `glucose` izni olan doktor/bakıcı | Yapay zekâ özeti (istatistik, örüntüler, içgörüler; Ayşen). `from`/`to` (varsayılan son 14 gün, en fazla 31 gün), `rangeLow`/`rangeHigh` (varsayılan 70/180, 10–600). Öğün ve aktivite yalnızca izin varsa eklenir; karbonhidratı bilinmeyen öğün ve süresi bilinmeyen aktivite `null` ile gönderilir (servis sıfır saymaz). 2'den az glukoz → 400, servisin işleyemediği istek → 422 (servisin açıklamasıyla), servis hatası → 502/503 |
 | GET | `/api/v1/ai/patients/{patientId}/anomaly`, `/data-quality`, `/drift`, `/prediction` | özetle aynı | Ayşen'in hasta geçmişi analizleri, özetle aynı parametre ve kurallarla: **anomaly** (hastanın kendi örüntüsüne göre olağan dışı değerler; en az 7 okuma), **data-quality** (eksik değer, tekrar, geçersiz zaman, uzun boşluk), **drift** (yeni verinin eski döneme göre değişimi, model izleme; en az 10 kayıt), **prediction** (deneysel XGBoost glukoz eğilimi, olasılık ve açıklama). Cevap yapay zekâ servisinin JSON'u, değiştirilmeden. Teşhis ya da tedavi önerisi değildir. Az veri → 422, model yüklü değil → 503 |
@@ -294,6 +302,20 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 
 **Docker:** Docker Compose içinde backend'e `AI_SERVICE_BASE_URL=http://ai-service:8000` verilir; yerelde varsayılan `http://localhost:8000`'dir.
 
+### Yemek fotoğrafı (Food Vision)
+
+`POST /api/v1/ai/food` fotoğraftaki yemeği tahmin eder (Ayşenur'un ResNet50 modeli: Food-101'in 101 sınıfı + 24 Türk yemeği, test kümesinde doğruluk %77). Akış Flutter → backend → `food-vision-service` (`POST /predict-food`) şeklindedir; uygulama servise doğrudan bağlanmaz.
+
+1. **Fotoğraf kontrolü (backend):** Türüne dosyanın ilk baytları karar verir (JPG, PNG, WEBP), adı ya da bildirilen türü değil. Boş dosya, 5 MB'tan büyük dosya ve başlığında 50 megapikselden büyük resim bildiren JPG/PNG gönderilmeden reddedilir. Bu sonuncusu, küçük bir dosyanın açılınca gigabaytlarca bellek istemesini ("decompression bomb") önler. Servise istemcinin dosya adı değil `meal.jpg` / `meal.png` / `meal.webp` gider.
+2. **Tahmin:** Modelin tahminleri güvene göre sıralanır, en fazla 3 tanesi döner. En iyi tahmin %50'nin altındaysa `lowConfidence: true` olur; uygulama o zaman ilk tahmini önermek yerine hastaya seçtirmeli.
+3. **Besin değerleri:** Her tahmin `food_catalog`'daki adla eşleşir. Food-101 yemeklerinde 100 g'daki kalori ve karbonhidrat ile tipik porsiyon vardır; `carbsGPerServing` = karbonhidrat × porsiyon / 100. Bunlar **kaba tahminlerdir** (`nutritionVerified: false`). 24 Türk yemeğinde (V9) ad var, besin değeri yok (`null`): uygulama karbonhidratı hastaya sormalı.
+4. **Kayıt:** Backend hiçbir şey kaydetmez. Hasta yemeği ve miktarı onaylayınca (gerekirse düzeltince) uygulama öğünü `POST /patients/{id}/meal-logs` ile kaydeder.
+
+- **Fotoğraf saklanmaz:** Backend fotoğrafı yalnız bellekte tutar. Servisin `/predict-food` ucu da diske yazmaz. Servisin eski `/upload-image` (YOLO) ucu her fotoğrafı diske yazdığı için (F-2) backend onu kullanmaz.
+- **Hatalar:** Servis kapalı ya da yanıt vermiyor → **503**. Servis görüntüyü kullanamadı (bozuk dosya, kendi sınırları) → **422**, servisin kısa açıklamasıyla. Servis hata verdi ya da beklenmeyen bir cevap döndü (boş tahmin listesi, 0–1 dışında güven, `pizza` / `cig_kofte` biçiminde olmayan sınıf adı) → **502**.
+- **Ayar:** `FOOD_VISION_BASE_URL`; bağlantı için 2 sn, cevap için 30 sn beklenir (`diamate.food-vision` in `application.yml`). Docker Compose'da `http://food-vision:8001`.
+- **İnsülin için değil:** Cevaptaki `note` alanı bunu hastaya söyler. Değerler hiçbir zaman doz hesabında kullanılmamalı.
+
 ### Güvenlik
 
 - **Giriş kilidi:** Aynı hesaba üst üste **5** hatalı şifre girilirse hesap **15 dakika** kilitlenir. Kilitliyken doğru şifre de kabul edilmez; cevap **429** + `Retry-After` olur. Başarılı giriş sayacı sıfırlar. Kilit yalnızca yeni girişleri durdurur; daha önce alınmış bir token süresi dolana kadar çalışmaya devam eder. Hatalı denemeler veritabanında tek bir `UPDATE ... + 1` ile sayıldığı için paralel denemeler birbirinin sayısını ezemez.
@@ -310,7 +332,7 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 - **Sunucunun belirlediği alanlar** (`id`, `patientId`, `enteredBy`, `createdAt`, `deletedAt` …) istek gövdesinde gelirse yok sayılır; hasta id'si URL'den alınıp token'la karşılaştırılır. `source` yalnızca `MANUAL` ya da `AI_ASSISTANT` olabilir (`CGM`, `PUMP` … → 400).
 - **Sayılar:** Jackson bir sayıyı en fazla 1000 karakter okur. `ai-entries`'te `value` en fazla 100000 ve 3 ondalık olabilir (5. gün, S-1: `1e999999999` gibi kısa bir sayı dönüşüm sırasında milyar basamaklı bir metne dönüşüp belleği tüketebiliyordu).
 - **Sayfa:** `page × size` 2³¹'i geçemez (**400** `errors.page`); önceden çok büyük bir `page` 500 veriyordu (5. gün, S-2).
-- **İstek boyutu:** 1 MB'tan büyük gövde okunmadan **413** ile reddedilir. Bu kontrol filtre zincirinin en başında, Spring Security'den önce çalışır; `Content-Length` olmayan isteklerde baytlar okunurken sayılır. Tek istisna `POST /api/v1/ai/voice`: ses kaydı için 11 MB (10 MB dosya + multipart başlıkları; `spring.servlet.multipart` de 10/11 MB). Multipart parçaları yalnızca bu endpoint istediğinde okunur (`resolve-lazily`), başka adrese gönderilen multipart istek belleğe ya da diske alınmaz. Ses dosyasının türüne uzantı karar verir; yapay zekâ servisine istemcinin dosya adı değil `recording.<uzantı>` gider.
+- **İstek boyutu:** 1 MB'tan büyük gövde okunmadan **413** ile reddedilir. Bu kontrol filtre zincirinin en başında, Spring Security'den önce çalışır; `Content-Length` olmayan isteklerde baytlar okunurken sayılır. İki istisna var: `POST /api/v1/ai/voice` ses kaydı için 11 MB (10 MB dosya + multipart başlıkları; `spring.servlet.multipart` de 10/11 MB), `POST /api/v1/ai/food` yemek fotoğrafı için 6 MB (5 MB fotoğraf + başlıklar). Multipart parçaları yalnızca bu iki endpoint istediğinde okunur (`resolve-lazily`), başka adrese gönderilen multipart istek belleğe ya da diske alınmaz. Ses dosyasının türüne uzantı karar verir; yapay zekâ servisine istemcinin dosya adı değil `recording.<uzantı>` gider.
 - **Denetim kaydı (`audit_logs`):** `REGISTER` (rol ve hesabın aktif açılıp açılmadığı), `LOGIN`, `LOGIN_FAILED` (sebebiyle: `UNKNOWN_EMAIL`, `WRONG_PASSWORD`, `ACCOUNT_LOCKED`, `ACCOUNT_DISABLED`), `ACCOUNT_LOCKED`, `VIEW_PATIENT_DATA`, `HEALTH_LOG_UPDATED` / `HEALTH_LOG_DELETED` (hangi kayıt, kim; eski ya da yeni değer **yazılmaz**), `ALERT_STATUS_CHANGED`, `CARE_*` (davet, kabul, ret, izin, iptal), `ACCOUNT_STATUS_CHANGED`, `ACCESS_DENIED` (giriş yapmış birinin rolü yüzünden aldığı 403: metot ve adres, sorgu dizesi olmadan) ve `AUDIT_LOG_VIEWED` (admin'in denetim kaydını okuması) olayları yazılır. Değişiklik ile denetim satırı aynı transaction'dadır. Tablo yalnızca eklemeye açıktır: `UPDATE`, `DELETE` ve `TRUNCATE`'i veritabanındaki bir trigger reddeder (gerçek veritabanında denendi). Hasta kendi erişim geçmişini `GET /patients/{id}/access-log` ile, admin tüm kayıtları `GET /admin/audit-logs` ile görür. `VIEW_PATIENT_DATA`, bir hastanın verisini **başka biri** okuduğunda (doktor, bakıcı ya da reddedilen bir deneme) hangi veri türünün okunduğu (`entity_type`) ve sonucuyla (`success`) birlikte kaydedilir. Her kayıtta IP adresi ve User-Agent bulunur. Nginx arkasında gerçek istemci IP'si `X-Forwarded-For` başlığından alınır (`server.forward-headers-strategy: native`). Tomcat bu başlığa yalnızca iç ağdaki bir proxy'den gelirse güvenir, internetten gelen sahte bir başlık dikkate alınmaz. Şifre, token ve sağlık verisi **asla** yazılmaz. Bilinmeyen bir e-postayla yapılan denemede yazılan e-posta da saklanmaz, çünkü kullanıcılar bazen şifrelerini e-posta alanına yazar.
 - **Kayıt kuralları:**
   - **Ad ve soyad:** Her dilden harf; aralarında boşluk, kesme işareti (`'` ve `’`), tire ve nokta olabilir (`Ayşe Nur`, `O'Brien`, `Jean-Luc`). Rakam, sembol ve emoji kabul edilmez.

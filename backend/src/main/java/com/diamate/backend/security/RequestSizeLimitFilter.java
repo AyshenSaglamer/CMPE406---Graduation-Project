@@ -26,8 +26,9 @@ import tools.jackson.databind.ObjectMapper;
  * With a Content-Length header the request is refused at once. Without it (chunked upload) the size is only
  * known while reading, so the bytes are counted and reading stops after 1 MB.
  *
- * One exception: POST /api/v1/ai/voice carries a recording of up to 10 MB, so it may be 11 MB (the file plus the
- * multipart headers). Its multipart parts are read by Tomcat with the same limits (spring.servlet.multipart).
+ * Two exceptions, both multipart uploads read by Tomcat (spring.servlet.multipart): POST /api/v1/ai/voice carries a
+ * recording of up to 10 MB, so it may be 11 MB (the file plus the multipart headers), and POST /api/v1/ai/food a meal
+ * photo of up to 5 MB, so it may be 6 MB.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
@@ -38,6 +39,9 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     static final String VOICE_PATH = "/api/v1/ai/voice";
     static final long MAX_VOICE_BYTES = 11L * 1024 * 1024;
     static final String VOICE_TOO_LARGE = "The recording must be at most 10 MB";
+    static final String FOOD_PATH = "/api/v1/ai/food";
+    static final long MAX_FOOD_BYTES = 6L * 1024 * 1024;
+    static final String FOOD_TOO_LARGE = "The image must be at most 5 MB";
 
     private final ObjectMapper objectMapper;
 
@@ -48,9 +52,16 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        boolean voice = "POST".equals(request.getMethod()) && VOICE_PATH.equals(request.getRequestURI());
-        long limit = voice ? MAX_VOICE_BYTES : MAX_BODY_BYTES;
-        String message = voice ? VOICE_TOO_LARGE : TOO_LARGE;
+        boolean post = "POST".equals(request.getMethod());
+        long limit = MAX_BODY_BYTES;
+        String message = TOO_LARGE;
+        if (post && VOICE_PATH.equals(request.getRequestURI())) {
+            limit = MAX_VOICE_BYTES;
+            message = VOICE_TOO_LARGE;
+        } else if (post && FOOD_PATH.equals(request.getRequestURI())) {
+            limit = MAX_FOOD_BYTES;
+            message = FOOD_TOO_LARGE;
+        }
         long declaredLength = request.getContentLengthLong(); // -1 when the client did not send Content-Length
         if (declaredLength > limit) {
             ProblemJson.write(objectMapper, request, response, HttpStatus.CONTENT_TOO_LARGE, message);
@@ -59,7 +70,7 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
         chain.doFilter(declaredLength < 0 ? new SizeLimitedRequest(request, limit, message) : request, response);
     }
 
-    /** Gives the application a body stream that throws RequestTooLargeException (413) after 1 MB. */
+    /** Gives the application a body stream that throws RequestTooLargeException (413) after the limit. */
     private static final class SizeLimitedRequest extends HttpServletRequestWrapper {
 
         private final long limit;

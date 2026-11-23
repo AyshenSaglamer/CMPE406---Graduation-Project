@@ -115,6 +115,7 @@ Bitiş tarihi geçer                                      →  erişim kendiliğ
 |---|---|---|
 | `POST /ai/parse` (metin → kayıt önerisi, kaydetmez) | `PATIENT` | Yok (yalnız gönderilen metin) |
 | `POST /ai/voice` (ses → kayıt önerisi, kaydetmez) | `PATIENT` | Yok |
+| `POST /ai/food` (yemek fotoğrafı → tahmin + yaklaşık besin değeri, kaydetmez) | `PATIENT` | Yok (yalnız gönderilen fotoğraf ve `food_catalog`) |
 | `POST /patients/{id}/ai-entries` (onaylanan öneriyi kaydeder) | `PATIENT` (kendisi) | Kayıt yazma kuralları |
 | `GET /ai/patients/{id}/summary`, `anomaly`, `data-quality`, `drift`, `prediction` | Herkes (rol) | `reports` + `glucose` izni, yoksa `404`; her okuma denetime yazılır |
 
@@ -123,9 +124,10 @@ Bitiş tarihi geçer                                      →  erişim kendiliğ
 - **İç bilgi sızmaz:** AI servisinin hata gövdesi, stack trace'i ve iç adresi hiçbir zaman kullanıcıya gönderilmez.
 - **Gönderilen veri sınırlı:** En fazla 31 günlük pencere ve tür başına en fazla 10 000 kayıt gönderilir. Öğün ve aktivite yalnız izleyenin görme izni varsa eklenir.
 - **Ses dosyası:** Boş olamaz, en fazla 10 MB. Tür dosya uzantısından belirlenir (`.wav`, `.mp3`, `.m4a`, `.webm`, `.ogg`); bildirilen MIME türü açıkça başka bir şeyse (resim, PDF) reddedilir. Hepsinde `400` ve `errors.audio` döner. AI servisine dosya her zaman sabit bir adla gönderilir, kullanıcının verdiği ad kullanılmaz.
+- **Yemek fotoğrafı (`food-vision-service`):** Fotoğraf backend'de kontrol edilir. Türüne ilk baytlar karar verir (JPG/PNG/WEBP), adı ya da bildirilen türü değil. Boş dosya, 5 MB'tan büyük dosya ve başlığında 50 megapikselden büyük resim bildiren JPG/PNG (decompression bomb) servise gönderilmeden `400` + `errors.image` alır. Servise sabit bir ad gider. Fotoğraf backend'de yalnız bellekte tutulur, servisin `/predict-food` ucu da diske yazmaz. Servisin eski `/upload-image` ucu her fotoğrafı diske yazıyor (F-2), backend onu çağırmaz. Servisin cevabı da kontrol edilir (en az bir tahmin, güven 0–1, sınıf adı `[a-z0-9_]`); uymazsa `502`. Bağlantı için 2 sn, cevap için 30 sn beklenir; servis kapalıysa `503`. Tahminler hastaya onaylatılır, besin değerleri kaba tahmindir ve cevaptaki `note` doz hesabında kullanılmamalarını söyler.
 - **Tıbbi sınır:** AI çıktıları teşhis ya da doz önerisi değildir. Bu sorumluluk AI servisinin dokümanındadır (`ai-service/docs/AI_SERVICE_GUIDE.md`, "AI Safety").
 
-Testler: `AiClientTest`, `AiServiceTest`, `AiVoiceWebTest`, `AiEntryWebTest` ve `AuthorizationMatrixTest`'teki AI satırları. Uçtan uca (23 Kasım, tam stack): beş analiz `200`; AI servisi durdurulunca `503`; gerçek bir ses kaydı 2 sn'de doğru çözümlendi.
+Testler: `AiClientTest`, `AiServiceTest`, `AiVoiceWebTest`, `AiEntryWebTest`, `FoodVisionClientTest`, `FoodRecognitionServiceTest`, `AiFoodWebTest`, `FoodCatalogIntegrationTest` ve `AuthorizationMatrixTest`'teki AI satırları. Uçtan uca (23 Kasım, tam stack): beş analiz `200`; AI servisi durdurulunca `503`; gerçek bir ses kaydı 2 sn'de doğru çözümlendi.
 
 ## 6. Denetim kaydı (audit log)
 
@@ -262,7 +264,8 @@ Elle güvenlik testi listesi: `BACKEND_REVIEW.md` §12.8 ve Postman'deki "Securi
 | S-C | Refresh token ve sunucu tarafında logout yok (B-6) | Çalınan token ömrü (1 saat) boyunca geçerli kalır | Kısa ömürlü access token + iptal edilebilir refresh token | Sonra |
 | S-D | Ortak geliştirme `JWT_SECRET`'i | Anahtarı bilen biri ortak veritabanındaki herhangi bir kullanıcı için token üretebilir | Üretimde anahtar yalnız sunucuda; sızıntı şüphesinde değiştirilir | Takım |
 | S-E | Doktor kimliği doğrulanmıyor (onay 17 Kasım'da kaldırıldı) | Biri kendini doktor gibi tanıtıp hastadan davet isteyebilir | Uygulamada "doğrulanmamış hesap" uyarısı, ileride lisans doğrulaması veya admin onayı | Takım |
-| S-F | AI servisinin kendi kimlik doğrulaması yok | Ağ dışına açılırsa herkes doğrudan çağırabilir | Ağ içinde kalsın; gerekirse backend ile AI servisi arasında paylaşılan bir anahtar | Ayşen + Melih |
+| S-F | AI servisinin ve `food-vision-service`'in kendi kimlik doğrulaması yok | Ağ dışına açılırsa herkes doğrudan çağırabilir | Ağ içinde kalsın (ikisi de compose'da yalnız `expose`); gerekirse backend ile servisler arasında paylaşılan bir anahtar | Ayşen + Ayşenur + Melih |
+| S-M | `food-vision-service`: `/upload-image` fotoğrafları diske yazıyor (F-2); `/predict-food` `async def` içinde senkron model çalıştırıyor, aynı anda gelen istekler sırayla bekliyor (F-4); sürümler sabit değil (F-6) | Backend `/upload-image`'ı kullanmıyor, risk servise doğrudan erişilirse doğar. F-4 yükte gecikme yapar | `/upload-image` kaldırılsın ya da diske yazmasın; uç `def` olsun; `requirements.txt` sabitlensin | Ayşenur |
 | S-G | AI servisi bozuk ses dosyasında `500` veriyor | Backend bunu `502` olarak iletiyor; kullanıcı neyin yanlış olduğunu öğrenemiyor | AI servisi geçersiz ses için `422` dönsün | Ayşen |
 | S-H | AI CI `main` push'unda çalışmıyor | `main`'e doğrudan gelen bir AI değişikliği testsiz kalabilir | `ai-service-ci.yml` → `branches: [ai, main]` | Ayşen |
 | S-I | Docker Desktop (macOS) istemcinin gerçek IP'sini göstermiyor | Yerel testte denetim kaydında `192.168.65.1` görünüyor | Linux sunucuda sorun yok; yalnız bilgi | — |

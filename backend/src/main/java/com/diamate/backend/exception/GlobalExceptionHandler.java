@@ -148,7 +148,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
     }
 
-    /** A multipart upload above spring.servlet.multipart (the recording of /ai/voice is at most 10 MB). */
+    @ExceptionHandler(FoodVisionException.class)
+    public ProblemDetail handleFoodVision(FoodVisionException ex) {
+        return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+    }
+
+    /**
+     * A multipart upload above spring.servlet.multipart (10 MB). Only /ai/voice can get here: RequestSizeLimitFilter
+     * already refuses a larger /ai/food upload (photo at most 5 MB) and every other address over 1 MB.
+     */
     @Override
     protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {

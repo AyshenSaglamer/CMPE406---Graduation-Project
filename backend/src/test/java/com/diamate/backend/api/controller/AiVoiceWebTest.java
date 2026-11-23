@@ -45,6 +45,7 @@ import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AiService;
+import com.diamate.backend.service.FoodRecognitionService;
 
 /**
  * POST /api/v1/ai/voice: a recording as multipart/form-data, only for patients. The checks of the file are in
@@ -75,6 +76,9 @@ class AiVoiceWebTest {
 
     @MockitoBean
     private AiService aiService;
+
+    @MockitoBean
+    private FoodRecognitionService foodRecognitionService;
 
     @MockitoBean
     private UserRepository userRepository;

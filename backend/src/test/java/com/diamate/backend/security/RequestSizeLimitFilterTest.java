@@ -90,6 +90,47 @@ class RequestSizeLimitFilterTest {
     }
 
     @Test
+    void aMealPhotoMayBe6MbButNotMore() throws Exception {
+        MockHttpServletRequest photo = new MockHttpServletRequest("POST", RequestSizeLimitFilter.FOOD_PATH);
+        photo.setContent(new byte[(int) RequestSizeLimitFilter.MAX_FOOD_BYTES]);
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(photo, new MockHttpServletResponse(), chain);
+        assertThat(chain.getRequest()).isSameAs(photo);
+
+        MockHttpServletRequest tooLong = new MockHttpServletRequest("POST", RequestSizeLimitFilter.FOOD_PATH);
+        tooLong.setContent(new byte[(int) RequestSizeLimitFilter.MAX_FOOD_BYTES + 1]);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(tooLong, response, new MockFilterChain());
+        assertThat(response.getStatus()).isEqualTo(413);
+        assertThat(response.getContentAsString()).contains("\"detail\":\"The image must be at most 5 MB\"");
+
+        // The photo limit is not the recording limit: 7 MB to the photo address is refused.
+        MockHttpServletRequest sevenMb = new MockHttpServletRequest("POST", RequestSizeLimitFilter.FOOD_PATH);
+        sevenMb.setContent(new byte[7 * 1024 * 1024]);
+        MockHttpServletResponse refused = new MockHttpServletResponse();
+        filter.doFilter(sevenMb, refused, new MockFilterChain());
+        assertThat(refused.getStatus()).isEqualTo(413);
+    }
+
+    @Test
+    void chunkedMealPhotoIsCutAfter6Mb() throws Exception {
+        MockHttpServletRequest request = new ChunkedRequest(new byte[(int) RequestSizeLimitFilter.MAX_FOOD_BYTES + 10]);
+        request.setMethod("POST");
+        request.setRequestURI(RequestSizeLimitFilter.FOOD_PATH);
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        ServletRequest seenByApplication = chain.getRequest();
+        byte[] buffer = new byte[65536];
+        assertThatThrownBy(() -> {
+            while (seenByApplication.getInputStream().read(buffer, 0, buffer.length) >= 0) {
+                // keep reading
+            }
+        }).isInstanceOf(RequestTooLargeException.class).hasMessage("The image must be at most 5 MB");
+    }
+
+    @Test
     void chunkedVoiceUploadIsCutAfter11Mb() throws Exception {
         MockHttpServletRequest request = new ChunkedRequest(new byte[(int) RequestSizeLimitFilter.MAX_VOICE_BYTES + 10]);
         request.setMethod("POST");

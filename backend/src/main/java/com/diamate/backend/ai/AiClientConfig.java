@@ -8,9 +8,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-/** The HTTP client used to call the AI service, with its address and timeouts from AiProperties. */
+/**
+ * The HTTP clients used to call the AI service (AiProperties) and the food photo service (FoodVisionProperties), with
+ * their addresses and timeouts.
+ */
 @Configuration
-@EnableConfigurationProperties(AiProperties.class)
+@EnableConfigurationProperties({ AiProperties.class, FoodVisionProperties.class })
 public class AiClientConfig {
 
     @Bean
@@ -24,12 +27,21 @@ public class AiClientConfig {
         return client(properties, properties.voiceReadTimeout());
     }
 
+    @Bean
+    public RestClient foodVisionRestClient(FoodVisionProperties properties) {
+        return client(properties.baseUrl(), properties.connectTimeout(), properties.readTimeout());
+    }
+
     private static RestClient client(AiProperties properties, Duration readTimeout) {
+        return client(properties.baseUrl(), properties.connectTimeout(), readTimeout);
+    }
+
+    private static RestClient client(String baseUrl, Duration connectTimeout, Duration readTimeout) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(properties.connectTimeout());
+        requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
         return RestClient.builder()
-                .baseUrl(properties.baseUrl())
+                .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .build();
     }

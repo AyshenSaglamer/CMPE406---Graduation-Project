@@ -68,6 +68,7 @@ import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.ActivityLogService;
 import com.diamate.backend.service.AiService;
+import com.diamate.backend.service.FoodRecognitionService;
 import com.diamate.backend.service.CreateResult;
 import com.diamate.backend.service.GlucoseLogService;
 import com.diamate.backend.service.InsulinLogService;
@@ -117,6 +118,9 @@ class HealthLogWebTest {
 
     @MockitoBean
     private AiService aiService;
+
+    @MockitoBean
+    private FoodRecognitionService foodRecognitionService;
 
     @MockitoBean
     private UserRepository userRepository;

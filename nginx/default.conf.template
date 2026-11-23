@@ -33,7 +33,8 @@ server {
     ssl_session_timeout 1h;
 
     # Nginx's default is 1 MB. POST /api/v1/ai/voice takes a recording of up to 10 MB (spring.servlet.multipart:
-    # 10 MB file, 11 MB request); everything else is limited to 1 MB by the backend's RequestSizeLimitFilter.
+    # 10 MB file, 11 MB request) and POST /api/v1/ai/food a meal photo of up to 5 MB; the backend's
+    # RequestSizeLimitFilter keeps the photo to 6 MB and everything else to 1 MB.
     client_max_body_size 11m;
 
     # Browsers must use HTTPS for this host from now on. Set here (not only by Spring Security) so Nginx's own

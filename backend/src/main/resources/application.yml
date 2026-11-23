@@ -24,9 +24,10 @@ spring:
 
   servlet:
     multipart:
-      # Only POST /api/v1/ai/voice takes a file (a recording of at most 10 MB; RequestSizeLimitFilter lets only that
-      # address be larger than 1 MB). Parts are read only when an endpoint asks for them (resolve-lazily), so a
-      # multipart request to any other address is not read into memory or onto disk.
+      # Only POST /api/v1/ai/voice (a recording of at most 10 MB) and POST /api/v1/ai/food (a photo of at most 5 MB)
+      # take a file; RequestSizeLimitFilter lets only these two addresses be larger than 1 MB. Parts are read only
+      # when an endpoint asks for them (resolve-lazily), so a multipart request to any other address is not read
+      # into memory or onto disk.
       max-file-size: 10MB
       max-request-size: 11MB
       resolve-lazily: true
@@ -77,6 +78,11 @@ diamate:
     connect-timeout: 2s
     read-timeout: 10s
     voice-read-timeout: 60s
+  # Ayşenur's food photo service (food-vision-service, ResNet50). Like the AI service, only the backend calls it.
+  food-vision:
+    base-url: ${FOOD_VISION_BASE_URL:http://localhost:8001}
+    connect-timeout: 2s
+    read-timeout: 30s
 
 management:
   endpoints:

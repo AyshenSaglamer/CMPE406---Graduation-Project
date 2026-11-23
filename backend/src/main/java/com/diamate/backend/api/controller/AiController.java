@@ -22,14 +22,16 @@ import com.diamate.backend.ai.AiAnalysis;
 import com.diamate.backend.api.dto.request.AiParseRequest;
 import com.diamate.backend.api.dto.response.AiParseResponse;
 import com.diamate.backend.api.dto.response.AiVoiceResponse;
+import com.diamate.backend.api.dto.response.FoodRecognitionResponse;
 import com.diamate.backend.security.CurrentUser;
 import com.diamate.backend.service.AiService;
+import com.diamate.backend.service.FoodRecognitionService;
 
 import jakarta.validation.Valid;
 
 /**
- * AI assistant (Dia) and the patient-history analyses. The app talks only to the backend; the backend calls the
- * FastAPI AI service. Nothing here saves data.
+ * AI assistant (Dia), meal photo recognition and the patient-history analyses. The app talks only to the backend; the
+ * backend calls the FastAPI AI service and the food photo service. Nothing here saves data.
  *
  * The analyses (summary, anomaly, data-quality, drift, prediction) share their rules (AiService.patientAnalysis):
  * the patient, or a care team member with the "reports" and "glucose" permissions; from / to optional (default: last
@@ -41,9 +43,11 @@ import jakarta.validation.Valid;
 public class AiController {
 
     private final AiService aiService;
+    private final FoodRecognitionService foodRecognitionService;
 
-    public AiController(AiService aiService) {
+    public AiController(AiService aiService, FoodRecognitionService foodRecognitionService) {
         this.aiService = aiService;
+        this.foodRecognitionService = foodRecognitionService;
     }
 
     /** Body: {"text": "..."}. What the assistant understood; nothing is saved. */
@@ -61,6 +65,17 @@ public class AiController {
     @PreAuthorize("hasRole('PATIENT')")
     public AiVoiceResponse voice(@RequestPart("audio") MultipartFile audio) {
         return aiService.parseVoice(audio);
+    }
+
+    /**
+     * multipart/form-data with a field "image": a JPG, PNG or WEBP meal photo of at most 5 MB. Answers the photo
+     * model's best guesses with approximate nutrition; nothing is saved and the photo is not stored. The app lets the
+     * patient confirm or correct the food and saves the meal with the meal log endpoint.
+     */
+    @PostMapping(value = "/food", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('PATIENT')")
+    public FoodRecognitionResponse food(@RequestPart("image") MultipartFile image) {
+        return foodRecognitionService.recognize(image);
     }
 
     @GetMapping("/patients/{patientId}/summary")

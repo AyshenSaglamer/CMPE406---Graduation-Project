@@ -1,0 +1,11 @@
+{
+    "model": "ResNet50",
+    "num_classes": 125,
+    "validation_accuracy": 72.51,
+    "overall_test_accuracy": 77.09,
+    "food101_test_accuracy": 76.73,
+    "turkishfoods25_test_accuracy": 85.09,
+    "total_test_images": 26397,
+    "food101_test_images": 25250,
+    "turkishfoods25_test_images": 1147
+}

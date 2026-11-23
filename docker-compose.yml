@@ -1,11 +1,11 @@
-# Full DiaMate stack: Nginx (HTTPS) -> Spring Boot backend -> PostgreSQL, plus the FastAPI AI service.
+# Full DiaMate stack: Nginx (HTTPS) -> Spring Boot backend -> PostgreSQL, plus the FastAPI AI and food photo services.
 #
 #   cp .env.example .env                 # set POSTGRES_PASSWORD, APP_DB_PASSWORD and JWT_SECRET
 #   ./nginx/make-dev-cert.sh             # self-signed certificate for local testing (nginx/ssl/, not in Git)
 #   docker compose up -d --build
 #   curl -k https://localhost:8443/actuator/health
 #
-# Only Nginx is reachable from outside. The backend, the AI service and the database are on the compose network
+# Only Nginx is reachable from outside. The backend, the AI services and the database are on the compose network
 # only (expose, no ports), so nothing can skip Nginx/TLS or reach the database directly.
 #
 # Two database accounts (least privilege): the owner (POSTGRES_USER) is used only by the short-lived migrate service
@@ -51,6 +51,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 64)}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-1h}
       AI_SERVICE_BASE_URL: http://ai-service:8000
+      FOOD_VISION_BASE_URL: http://food-vision:8001
     expose:
       - "8080"
     depends_on:
@@ -88,6 +89,16 @@ services:
       WHISPER_MODEL_SIZE: ${WHISPER_MODEL_SIZE:-base}
     expose:
       - "8000"
+    restart: unless-stopped
+
+  # Ayşenur's food photo service (ResNet50, POST /predict-food), called only by the backend (POST /api/v1/ai/food).
+  # Needs food-vision-service/models/best_resnet50_foodvision.pth (not in Git) at build time. The backend does not
+  # wait for it: without it the rest of the stack still works and /api/v1/ai/food answers 503.
+  food-vision:
+    build:
+      context: ./food-vision-service
+    expose:
+      - "8001"
     restart: unless-stopped
 
   database:
