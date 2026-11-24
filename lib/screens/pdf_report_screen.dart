@@ -8,6 +8,7 @@ import '../data/health_report.dart';
 import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../services/report_pdf.dart';
+import '../widgets/ai_chat_button.dart';
 
 /// What happened to an exported file.
 enum ExportOutcome { shared, downloaded, cancelled }
@@ -212,6 +213,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         title: const Text('Health Report'),

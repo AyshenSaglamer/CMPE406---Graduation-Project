@@ -47,22 +47,33 @@ Future<PickedPhoto?> pickMealPhoto(ImageSource source) async {
 
 /// What the patient chose in the camera screen, put into the meal form.
 class FoodPhotoResult {
-  /// "Pizza", "Banana (2)", plus anything typed by hand.
+  /// The confirmed guess (if any) first, then anything typed by hand.
   final List<String> foods;
 
-  /// At least one food came from the recognition (not only typed).
-  final bool fromRecognition;
+  /// The model's guess the patient confirmed, null if they only typed.
+  final FoodPrediction? confirmed;
 
-  const FoodPhotoResult({required this.foods, required this.fromRecognition});
+  const FoodPhotoResult({required this.foods, this.confirmed});
 
-  /// "Pizza, Banana (2), Salad"
+  /// A food came from the recognition: the meal is saved as AI_PHOTO.
+  bool get fromRecognition => confirmed != null;
+
+  /// For the meal log's aiConfidence (0..1, at most 3 decimals).
+  double? get aiConfidence => confirmed == null
+      ? null
+      : double.parse(confirmed!.confidence.toStringAsFixed(3));
+
+  /// Rough carbs of a typical serving of the confirmed food, null if unknown.
+  double? get carbsEstimate => confirmed?.carbsGPerServing;
+
+  /// "Pizza, Salad"
   String get description => foods.join(', ');
 }
 
-/// Photo of a meal -> foods recognised by food-vision -> the patient ticks
-/// what they really ate and adds what was missed -> back to the meal form,
-/// where meal type, time and carbs are filled in and the meal is saved.
-/// Nothing is saved here.
+/// Photo of a meal -> the model's guesses (at most 3, for the whole plate)
+/// -> the patient picks the right one or none and adds what was missed ->
+/// back to the meal form, where meal type, time and carbs are checked and the
+/// meal is saved. Nothing is saved here.
 class FoodCameraScreen extends StatefulWidget {
   const FoodCameraScreen({super.key, this.picker, this.recognizer});
 
@@ -85,8 +96,13 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
   _Stage stage = _Stage.choose;
   PickedPhoto? photo;
 
-  List<FoodDetection> detections = [];
-  final Set<String> selected = {};
+  List<FoodPrediction> predictions = [];
+
+  /// The guess the patient picked ([FoodPrediction.food]), or null.
+  String? selected;
+
+  /// The backend's note on the numbers (shown under the guesses).
+  String? recognitionNote;
 
   /// Foods typed by hand, kept in the order added.
   final List<String> manual = [];
@@ -155,14 +171,16 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       }
 
       setState(() {
-        detections = found;
-        selected
-          ..clear()
-          ..addAll(found.where((d) => d.isLikely).map((d) => d.name));
+        predictions = found.predictions;
+        selected = found.suggested?.food;
+        recognitionNote = found.note;
         stage = _Stage.results;
-        notice = found.isEmpty
+        notice = found.predictions.isEmpty
             ? 'No food was recognised in this photo. Add what you ate below.'
-            : null;
+            : found.lowConfidence
+                ? 'DiaMate is not sure about this photo. Pick the right food '
+                    'if it is listed, or add it below.'
+                : null;
       });
     } on FoodRecognitionUnavailable {
       if (!mounted) {
@@ -170,7 +188,8 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       }
 
       setState(() {
-        detections = [];
+        predictions = [];
+        selected = null;
         stage = _Stage.results;
         notice = 'Food recognition is not connected yet. Add what you see in '
             'the photo below.';
@@ -181,7 +200,8 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       }
 
       setState(() {
-        detections = [];
+        predictions = [];
+        selected = null;
         stage = _Stage.results;
         notice = e.message;
         noticeIsError = true;
@@ -203,11 +223,20 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
     });
   }
 
+  FoodPrediction? get _confirmed {
+    for (final p in predictions) {
+      if (p.food == selected) {
+        return p;
+      }
+    }
+    return null;
+  }
+
   List<String> get _chosenFoods => [
-        for (final d in detections)
-          if (selected.contains(d.name))
-            d.count > 1 ? '${d.label} (${d.count})' : d.label,
-        ...manual,
+        if (_confirmed != null) _confirmed!.displayName,
+        ...manual.where(
+          (m) => m.toLowerCase() != _confirmed?.displayName.toLowerCase(),
+        ),
       ];
 
   void _useFoods() {
@@ -218,10 +247,7 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
 
     Navigator.pop(
       context,
-      FoodPhotoResult(
-        foods: foods,
-        fromRecognition: detections.any((d) => selected.contains(d.name)),
-      ),
+      FoodPhotoResult(foods: foods, confirmed: _confirmed),
     );
   }
 
@@ -290,8 +316,9 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
         ),
         const SizedBox(height: 18),
         const Text(
-          'The photo is only used to recognise the food. Check the '
-          'suggestions: carbohydrates are not estimated from the photo.',
+          'The photo is only used to recognise the food and is not stored. '
+          'Carbohydrate values are rough estimates: check them, and do not '
+          'use them to calculate an insulin dose.',
           style: TextStyle(fontSize: 11, height: 1.4, color: _muted),
         ),
       ],
@@ -367,33 +394,50 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
         ),
         const SizedBox(height: 16),
       ],
-      if (detections.isNotEmpty) ...[
+      if (predictions.isNotEmpty) ...[
         const Text(
           'Is this what you ate?',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 4),
         const Text(
-          'Untick anything that is wrong.',
+          'Pick the right one, or none if all are wrong.',
           style: TextStyle(fontSize: 12, color: _muted),
         ),
         const SizedBox(height: 8),
-        for (final d in detections)
+        for (final p in predictions)
           Card(
             margin: const EdgeInsets.only(bottom: 8),
-            child: CheckboxListTile(
-              value: selected.contains(d.name),
-              activeColor: _orange,
-              onChanged: (on) => setState(() {
-                on == true ? selected.add(d.name) : selected.remove(d.name);
+            child: ListTile(
+              onTap: () => setState(() {
+                // Tapping the picked one again un-picks it.
+                selected = selected == p.food ? null : p.food;
               }),
+              leading: Icon(
+                selected == p.food
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected == p.food ? _orange : _muted,
+              ),
               title: Text(
-                d.count > 1 ? '${d.label} (${d.count})' : d.label,
+                p.displayName,
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              subtitle: Text('${d.confidenceText} sure'),
+              subtitle: Text(
+                [
+                  '${p.confidenceText} sure',
+                  if (p.carbsText != null) p.carbsText!,
+                ].join(' · '),
+              ),
             ),
           ),
+        if (recognitionNote != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            recognitionNote!,
+            style: const TextStyle(fontSize: 11, height: 1.4, color: _muted),
+          ),
+        ],
         const SizedBox(height: 12),
       ],
       const Text(
@@ -451,8 +495,9 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
               onPressed: () => setState(() {
                 stage = _Stage.choose;
                 photo = null;
-                detections = [];
-                selected.clear();
+                predictions = [];
+                selected = null;
+                recognitionNote = null;
                 notice = null;
               }),
               icon: const Icon(Icons.replay_rounded),
