@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/offline_queue.dart';
 import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
+import '../widgets/ai_chat_button.dart';
 
 /// The logs saved on this phone while there was no connection
 /// ([offlineQueue]), with "Sync now". They are also sent automatically
@@ -119,6 +120,7 @@ class _OfflineModeScreenState extends State<OfflineModeScreen> {
     final waiting = logs.where((l) => l.error == null).length;
 
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         title: const Text('Offline Mode'),

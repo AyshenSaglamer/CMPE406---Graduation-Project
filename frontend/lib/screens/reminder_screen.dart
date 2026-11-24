@@ -257,14 +257,6 @@ class _ReminderScreenState extends State<ReminderScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Add reminder',
-        onPressed: isLoading || loadError != null ? null : _addReminder,
-        backgroundColor: const Color(0xFF168AF7),
-        foregroundColor: Colors.white,
-        elevation: 3,
-        child: const Icon(Icons.add_rounded),
-      ),
     );
   }
 
@@ -322,11 +314,13 @@ class _ReminderScreenState extends State<ReminderScreen> {
               ),
             ),
           ),
-          TextButton.icon(
-            onPressed: _addReminder,
-            icon: const Icon(Icons.add_rounded, size: 19),
-            label: const Text('Add'),
-          ),
+          // An empty list has its own Create Reminder button.
+          if (reminders.isNotEmpty)
+            TextButton.icon(
+              onPressed: _addReminder,
+              icon: const Icon(Icons.add_rounded, size: 19),
+              label: const Text('Add'),
+            ),
         ],
       ),
       const SizedBox(height: 8),

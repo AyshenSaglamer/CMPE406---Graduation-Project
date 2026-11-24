@@ -22,6 +22,7 @@ import 'offline_mode_screen.dart';
 import 'patient_alerts_screen.dart';
 import 'pdf_report_screen.dart';
 import 'reminder_screen.dart';
+import '../widgets/ai_chat_button.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -102,6 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       body: SafeArea(child: pages[selectedIndex]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
@@ -365,7 +367,7 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -661,8 +663,7 @@ class _HomeTab extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 22),
-          _buildReminderCard(context),
+          const _NextReminderCard(),
         ],
       ),
     );
@@ -797,47 +798,121 @@ class _HomeTab extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildReminderCard(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3DF),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                Icons.notifications_active_rounded,
-                color: Color(0xFFF0A126),
-              ),
-            ),
-            const SizedBox(width: 13),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Next Reminder',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF718096)),
+/// The patient's next reminder (rest of today, else the coming days), read
+/// from the reminders API. Hidden when there is none or it cannot be loaded;
+/// tapping it opens the Reminders tab.
+class _NextReminderCard extends StatefulWidget {
+  const _NextReminderCard();
+
+  @override
+  State<_NextReminderCard> createState() => _NextReminderCardState();
+}
+
+class _NextReminderCardState extends State<_NextReminderCard> {
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  (Reminder, DateTime)? next;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final reminders = await reminderStore.list();
+      if (mounted) {
+        setState(() => next = nextReminder(reminders, DateTime.now()));
+      }
+    } on ApiException {
+      // Same as no reminder: the card stays hidden.
+    }
+  }
+
+  /// "Next Reminder", "Next Reminder · Tomorrow", "Next Reminder · Fri"
+  static String _label(DateTime at, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final days = DateTime(at.year, at.month, at.day).difference(today).inDays;
+    if (days == 0) {
+      return 'Next Reminder';
+    }
+    if (days == 1) {
+      return 'Next Reminder · Tomorrow';
+    }
+    return 'Next Reminder · ${_weekdays[at.weekday - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final found = next;
+    if (found == null) {
+      return const SizedBox.shrink();
+    }
+    final (reminder, at) = found;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context
+              .findAncestorStateOfType<_DashboardScreenState>()
+              ?._onNavigationSelected(3),
+          child: Padding(
+            padding: const EdgeInsets.all(17),
+            child: Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3DF),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Evening blood glucose',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  child: const Icon(
+                    Icons.notifications_active_rounded,
+                    color: Color(0xFFF0A126),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _label(at, DateTime.now()),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF718096),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        reminder.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  reminder.timeText,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
-            const Text(
-              '20:00',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1445,14 +1520,6 @@ class _MoreTab extends StatelessWidget {
           subtitle: 'Export your records as PDF or CSV',
           onTap: () {
             _open(context, const PdfReportScreen());
-          },
-        ),
-        _MoreTile(
-          icon: Icons.smart_toy_outlined,
-          title: 'DiaMate Assistant',
-          subtitle: 'Get help with your health data',
-          onTap: () {
-            _open(context, const AiAssistantScreen());
           },
         ),
         _MoreTile(
