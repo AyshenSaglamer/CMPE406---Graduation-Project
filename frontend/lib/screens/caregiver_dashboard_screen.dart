@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../data/alert_store.dart';
 import '../data/care_patients_store.dart';
+import '../data/reminder_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
 import 'care_patient_detail_screen.dart';
+import '../widgets/care_reminders_view.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
-  const CaregiverDashboardScreen({super.key, this.patientsStore});
+  const CaregiverDashboardScreen({
+    super.key,
+    this.patientsStore,
+    this.reminderStoreFor,
+  });
 
   /// Defaults to [carePatientsStore]; tests pass one with a fake backend.
   final CarePatientsStore? patientsStore;
+
+  /// Reminders of one family member; defaults to the reminders API.
+  final ReminderStore Function(int patientId)? reminderStoreFor;
 
   @override
   State<CaregiverDashboardScreen> createState() =>
@@ -770,55 +779,10 @@ class _CaregiverDashboardScreenState
   // ============================================================
 
   Widget _buildReminderPage() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        18,
-        20,
-        18,
-        30,
-      ),
-      children: [
-        const Text(
-          'Reminders',
-          style: TextStyle(
-            fontSize: 27,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-
-        const SizedBox(height: 6),
-
-        const Text(
-          'Stay informed about important health reminders.',
-          style: TextStyle(
-            fontSize: 13,
-            color: Color(0xFF718096),
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        const _FamilyReminderCard(
-          time: '08:00',
-          title: 'Morning glucose check',
-          subtitle: 'Family Member',
-          enabled: true,
-        ),
-
-        const _FamilyReminderCard(
-          time: '12:30',
-          title: 'Medication',
-          subtitle: 'Family Member',
-          enabled: true,
-        ),
-
-        const _FamilyReminderCard(
-          time: '20:00',
-          title: 'Evening glucose check',
-          subtitle: 'Family Member',
-          enabled: false,
-        ),
-      ],
+    return CareRemindersView(
+      members: familyMembers,
+      membersLoading: familyLoading,
+      storeFor: widget.reminderStoreFor,
     );
   }
 
@@ -1143,90 +1107,6 @@ class _CaregiverActionCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// REMINDER CARD
-// ============================================================================
-
-class _FamilyReminderCard extends StatelessWidget {
-  final String time;
-  final String title;
-  final String subtitle;
-  final bool enabled;
-
-  const _FamilyReminderCard({
-    required this.time,
-    required this.title,
-    required this.subtitle,
-    required this.enabled,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Row(
-          children: [
-            Container(
-              width: 47,
-              height: 47,
-              decoration: BoxDecoration(
-                color: enabled
-                    ? const Color(0xFFFFF3DF)
-                    : const Color(0xFFF1F3F5),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                Icons.notifications_active_outlined,
-                color: enabled
-                    ? const Color(0xFFF0A126)
-                    : const Color(0xFF98A1AC),
-              ),
-            ),
-
-            const SizedBox(width: 13),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-
-                  const SizedBox(height: 3),
-
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF718096),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Text(
-              time,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
         ),
       ),
     );
