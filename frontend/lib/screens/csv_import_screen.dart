@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/ai_chat_button.dart';
 
 class CsvImportScreen extends StatefulWidget {
   const CsvImportScreen({super.key});
@@ -115,6 +116,7 @@ class _CsvImportScreenState extends State<CsvImportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         title: const Text('Import CSV'),

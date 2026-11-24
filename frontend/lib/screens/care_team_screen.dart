@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/care_store.dart';
 import '../services/api_exception.dart';
+import '../widgets/ai_chat_button.dart';
 
 /// The patient's care team: invite a doctor or caregiver by the email of
 /// their DiaMate account, see who has access or has not answered yet, and
@@ -183,6 +184,7 @@ class _CareTeamScreenState extends State<CareTeamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         title: const Text('Care Team'),

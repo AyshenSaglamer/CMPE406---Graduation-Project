@@ -22,6 +22,7 @@ import 'offline_mode_screen.dart';
 import 'patient_alerts_screen.dart';
 import 'pdf_report_screen.dart';
 import 'reminder_screen.dart';
+import '../widgets/ai_chat_button.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -102,6 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       body: SafeArea(child: pages[selectedIndex]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
@@ -365,7 +367,7 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1445,14 +1447,6 @@ class _MoreTab extends StatelessWidget {
           subtitle: 'Export your records as PDF or CSV',
           onTap: () {
             _open(context, const PdfReportScreen());
-          },
-        ),
-        _MoreTile(
-          icon: Icons.smart_toy_outlined,
-          title: 'DiaMate Assistant',
-          subtitle: 'Get help with your health data',
-          onTap: () {
-            _open(context, const AiAssistantScreen());
           },
         ),
         _MoreTile(

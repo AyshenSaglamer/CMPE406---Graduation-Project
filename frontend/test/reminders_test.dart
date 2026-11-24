@@ -255,6 +255,9 @@ void main() {
 
       expect(find.text('No reminders yet'), findsOneWidget);
       expect(notifier.scheduled, isEmpty);
+      // One add button only: Create Reminder, not also the header's Add.
+      expect(find.text('Create Reminder'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Add'), findsNothing);
     });
 
     testWidgets('lists saved reminders and puts them on the phone', (tester) async {
@@ -270,6 +273,7 @@ void main() {
       expect(find.text('Weekends'), findsOneWidget);
       expect(find.text('2 active'), findsOneWidget);
       expect(notifier.scheduled, hasLength(2));
+      expect(find.widgetWithText(TextButton, 'Add'), findsOneWidget);
     });
 
     testWidgets('a due dose is marked as taken', (tester) async {
@@ -331,7 +335,7 @@ void main() {
     testWidgets('adding a medication reminder', (tester) async {
       await pump(tester);
 
-      await tester.tap(find.byTooltip('Add reminder'));
+      await tester.tap(find.text('Create Reminder'));
       await tester.pumpAndSettle();
 
       // Missing name is caught in the form.

@@ -5,6 +5,7 @@ import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/glucose_alert_sheet.dart';
+import '../widgets/ai_chat_button.dart';
 
 /// The logged-in patient's own hypo / hyper alerts
 /// (GET /patients/{id}/alerts), newest first. Tap one for the first steps;
@@ -133,6 +134,7 @@ class _PatientAlertsScreenState extends State<PatientAlertsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const AiChatButton(),
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         title: const Text('My Alerts'),
