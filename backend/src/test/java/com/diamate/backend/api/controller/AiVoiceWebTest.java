@@ -85,7 +85,7 @@ class AiVoiceWebTest {
 
     @BeforeEach
     void accountsAreActive() {
-        when(userRepository.findActiveUserRole(anyLong()))
+        when(userRepository.findRoleForOpenSession(anyLong(), any(), any()))
                 .thenAnswer(call -> Optional.ofNullable(ROLES.get((Long) call.getArgument(0))));
     }
 
@@ -149,7 +149,7 @@ class AiVoiceWebTest {
         User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, ROLES.get(userId),
                 userId + "@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", userId);
-        String token = new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+        String token = new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, java.util.UUID.randomUUID());
         return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 }

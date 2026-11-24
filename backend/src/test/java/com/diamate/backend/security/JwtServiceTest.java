@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.UUID;
 
 import javax.crypto.spec.SecretKeySpec;
 
@@ -32,30 +33,35 @@ class JwtServiceTest {
     // base64 of "test-only-jwt-key-not-a-real-secret-0123456789" (same test key as the web tests)
     private static final String SECRET = "dGVzdC1vbmx5LWp3dC1rZXktbm90LWEtcmVhbC1zZWNyZXQtMDEyMzQ1Njc4OQ==";
     private static final Instant NOW = Instant.parse("2026-10-13T09:00:00Z");
+    private static final UUID SESSION_ID = UUID.fromString("7d5e2a1c-0b9f-4c6e-8a3d-2f1b0c9e8d7a");
 
-    private final JwtProperties properties = new JwtProperties(SECRET, Duration.ofHours(1), "diamate-backend");
+    private final JwtProperties properties = new JwtProperties(SECRET, Duration.ofHours(1), Duration.ofDays(30),
+            "diamate-backend");
     private final JwtService jwtService = new JwtService(new SecurityConfig().jwtEncoder(properties), properties,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     void tokenCarriesIssuerUserIdRoleAndALifetimeOfOneHour() {
-        Jwt token = decode(jwtService.generateToken(patient()));
+        Jwt token = decode(jwtService.generateToken(patient(), SESSION_ID));
 
         assertThat(token.getHeaders()).containsEntry("alg", "HS256");
         assertThat(token.getClaimAsString("iss")).isEqualTo("diamate-backend");
         assertThat(token.getSubject()).isEqualTo("5");
         assertThat(token.getClaimAsString(JwtService.ROLE_CLAIM)).isEqualTo("PATIENT");
+        assertThat(token.getClaimAsString(JwtService.SESSION_CLAIM)).isEqualTo(SESSION_ID.toString());
         assertThat(token.getIssuedAt()).isEqualTo(NOW);
         assertThat(token.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
         assertThat(jwtService.getExpirationSeconds()).isEqualTo(3600); // "expiresIn" of the login response
+        assertThat(jwtService.getRefreshExpirationSeconds()).isEqualTo(30 * 24 * 3600); // "refreshExpiresIn"
     }
 
     @Test
     void tokenHoldsNoPersonalData() {
         // The payload is only base64, anyone holding the token can read it.
-        String token = jwtService.generateToken(patient());
+        String token = jwtService.generateToken(patient(), SESSION_ID);
 
-        assertThat(decode(token).getClaims()).containsOnlyKeys("iss", "sub", "iat", "exp", JwtService.ROLE_CLAIM);
+        assertThat(decode(token).getClaims()).containsOnlyKeys("iss", "sub", "iat", "exp", JwtService.ROLE_CLAIM,
+                JwtService.SESSION_CLAIM);
         String payload = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
         assertThat(payload).doesNotContain("ayse", "Ayşe", "Yılmaz", "FEMALE");
     }
@@ -66,7 +72,7 @@ class JwtServiceTest {
             User user = new User("A", "B", LocalDate.of(1990, 5, 1), Gender.OTHER, role, "x@example.com", "hash");
             ReflectionTestUtils.setField(user, "id", 7L);
 
-            assertThat(decode(jwtService.generateToken(user)).getClaimAsString(JwtService.ROLE_CLAIM))
+            assertThat(decode(jwtService.generateToken(user, SESSION_ID)).getClaimAsString(JwtService.ROLE_CLAIM))
                     .isEqualTo(role.name());
         }
     }

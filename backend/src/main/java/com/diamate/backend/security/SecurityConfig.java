@@ -42,8 +42,11 @@ public class SecurityConfig {
 
     // Reachable without a token. Any HTTP method is let through, so a wrong method gets 405 from Spring MVC
     // instead of a misleading 401 (only POST is mapped on the auth endpoints, so nothing else is opened).
-    private static final String[] PUBLIC_PATHS = { "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/health",
-            "/actuator/health", "/actuator/health/**" };
+    private static final String[] PUBLIC_PATHS = { "/api/v1/auth/register", "/api/v1/auth/login",
+            "/api/v1/auth/refresh", "/api/v1/health",
+            "/actuator/health", "/actuator/health/**",
+            // OpenAPI description and Swagger UI; they exist only when API_DOCS_ENABLED=true (springdoc, OpenApiConfig).
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**" };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemDetailSecurityHandler problemHandler)

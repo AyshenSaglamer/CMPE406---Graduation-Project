@@ -26,7 +26,11 @@ BEGIN
         AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = format('public.%I', t.table_name)::regclass AND c.contype = 'p');
     IF n > 0 THEN bad := bad || format('%s public tables without primary key', n); END IF;
     SELECT count(*) INTO n FROM food_catalog;
-    IF n <> 101 THEN bad := bad || format('food_catalog has %s rows, expected 101', n); END IF;
+    -- 101 right after this package (Food-101); 125 once the backend's Flyway V9 has added the photo model's 24 Turkish
+    -- dishes (V10 only fills in rows that are already there).
+    IF n NOT IN (101, 125) THEN
+        bad := bad || format('food_catalog has %s rows, expected 101 (fresh install) or 125 (after Flyway V9)', n);
+    END IF;
 
     -- audit trail must reject changes
     BEGIN

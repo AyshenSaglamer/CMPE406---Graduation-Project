@@ -54,3 +54,6 @@ ai-service/ml/models/*.joblib
 
 # Templates with placeholder values are versioned (the .env.* rule above would hide them)
 !.env.example
+
+# Database backups made by deploy/backup-db.sh (health data: never in Git)
+/deploy/backups/

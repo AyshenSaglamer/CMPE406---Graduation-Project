@@ -56,11 +56,12 @@ class ProtectedRoutesTest {
     private static final Set<String> PUBLIC_ENDPOINTS = Set.of(
             "POST /api/v1/auth/register",
             "POST /api/v1/auth/login",
+            "POST /api/v1/auth/refresh",
             "GET /api/v1/health");
 
-    // 56 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
+    // 58 controller endpoints (+ /actuator/health, which is not a controller). When this changes, update the
     // endpoint inventory in docs/BACKEND_REVIEW.md, the README and AuthorizationMatrixTest.
-    private static final int ENDPOINT_COUNT = 56;
+    private static final int ENDPOINT_COUNT = 58;
 
     @Autowired
     private MockMvc mockMvc;

@@ -1,0 +1,64 @@
+# Known-vulnerability scan of the dependencies (SECURITY.md S-J), next to Dependabot:
+#   backend      OSV-Scanner on a CycloneDX SBOM of backend/pom.xml (every resolved dependency, transitive included)
+#   ai-service   pip-audit on requirements.txt
+#   food-vision  pip-audit on requirements.txt
+#   frontend     OSV-Scanner on pubspec.lock
+# Runs on pull requests that change a dependency file, every Monday, and by hand (Actions > Run workflow).
+# A finding fails the job and is listed in its log; fix by upgrading (or document why it does not apply).
+name: Dependency audit
+
+on:
+  pull_request:
+    paths:
+      - backend/pom.xml
+      - ai-service/requirements.txt
+      - food-vision-service/requirements.txt
+      - frontend/pubspec.lock
+      - .github/workflows/dependency-audit.yml
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osv-scanner:
+    name: Backend and Flutter (OSV-Scanner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4 # resolves the Maven dependency tree for OSV-Scanner
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Install OSV-Scanner
+        run: |
+          curl -sSfL -o osv-scanner https://github.com/google/osv-scanner/releases/download/v2.2.4/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+      # pom.xml alone gives OSV-Scanner only the direct dependencies (most without a version: the Spring Boot parent
+      # manages them). A CycloneDX SBOM lists every resolved dependency, transitive ones included.
+      - name: Backend SBOM (all resolved runtime dependencies)
+        run: mvn -B -ntp -f backend/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeBom -DoutputFormat=json -DoutputName=bom.cdx -DincludeTestScope=false
+      - name: Scan
+        run: ./osv-scanner scan source --lockfile backend/target/bom.cdx.json --lockfile frontend/pubspec.lock
+
+  pip-audit:
+    name: Python services (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ai-service, food-vision-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: pip install pip-audit==2.9.0
+      - name: Audit ${{ matrix.service }}
+        run: pip-audit --requirement ${{ matrix.service }}/requirements.txt --desc

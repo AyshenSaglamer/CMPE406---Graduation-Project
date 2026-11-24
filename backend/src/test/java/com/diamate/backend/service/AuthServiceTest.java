@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,9 +36,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.diamate.backend.api.dto.request.LoginRequest;
+import com.diamate.backend.api.dto.request.RefreshRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.AuthSession;
 import com.diamate.backend.entity.ClinicianProfile;
 import com.diamate.backend.entity.DiabetesType;
 import com.diamate.backend.entity.Gender;
@@ -49,6 +52,7 @@ import com.diamate.backend.exception.AccountLockedException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidFieldException;
 import com.diamate.backend.exception.InvalidCredentialsException;
+import com.diamate.backend.exception.InvalidRefreshTokenException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
 import com.diamate.backend.repository.ClinicianProfileRepository;
 import com.diamate.backend.repository.PatientProfileRepository;
@@ -71,6 +75,7 @@ class AuthServiceTest {
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 3);
     private static final LocalDate ADULT_BIRTH_DATE = LocalDate.of(2000, 1, 15);
     private static final Instant NOW = TODAY.atStartOfDay(ZoneId.of("UTC")).toInstant();
+    private static final UUID SESSION_ID = UUID.fromString("7d5e2a1c-0b9f-4c6e-8a3d-2f1b0c9e8d7a");
 
     @Mock
     private UserRepository userRepository;
@@ -87,6 +92,9 @@ class AuthServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private AuthSessionService sessions;
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
 
     private AuthService authService;
@@ -95,7 +103,7 @@ class AuthServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(NOW, ZoneId.of("UTC"));
         authService = new AuthService(userRepository, patientProfileRepository, clinicianProfileRepository,
-                passwordEncoder, new PasswordPolicy(), jwtService, auditService, fixedClock);
+                passwordEncoder, new PasswordPolicy(), jwtService, auditService, sessions, fixedClock);
     }
 
     // ---------- register ----------
@@ -306,14 +314,18 @@ class AuthServiceTest {
     void loginReturnsTokenAndRecordsLastLogin() {
         User patient = patient(true);
         when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(patient));
-        when(jwtService.generateToken(patient)).thenReturn("test-token");
+        when(sessions.open(5L)).thenReturn(new AuthSessionService.Issued(SESSION_ID, "refresh-1"));
+        when(jwtService.generateToken(patient, SESSION_ID)).thenReturn("test-token");
         when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+        when(jwtService.getRefreshExpirationSeconds()).thenReturn(2592000L);
 
         AuthResponse response = authService.login(new LoginRequest(" PATIENT01@DIAMATE.EXAMPLE ", RIGHT_PASSWORD));
 
         assertThat(response.accessToken()).isEqualTo("test-token");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600L);
+        assertThat(response.refreshToken()).isEqualTo("refresh-1");
+        assertThat(response.refreshExpiresIn()).isEqualTo(2592000L);
         assertThat(response.user()).isEqualTo(new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, PATIENT_EMAIL));
         assertThat(patient.getLastLoginAt()).isEqualTo(NOW);
         verify(auditService).loginSucceeded(5L);
@@ -398,7 +410,8 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(wasLocked, "lockedUntil", NOW.minusSeconds(1));
         ReflectionTestUtils.setField(wasLocked, "failedLoginAttempts", 2);
         when(userRepository.findByEmailForLogin(PATIENT_EMAIL)).thenReturn(Optional.of(wasLocked));
-        when(jwtService.generateToken(wasLocked)).thenReturn("test-token");
+        when(sessions.open(5L)).thenReturn(new AuthSessionService.Issued(SESSION_ID, "refresh-1"));
+        when(jwtService.generateToken(wasLocked, SESSION_ID)).thenReturn("test-token");
 
         authService.login(new LoginRequest(PATIENT_EMAIL, RIGHT_PASSWORD));
 
@@ -461,5 +474,67 @@ class AuthServiceTest {
     private static User withId(User user, Long id) {
         ReflectionTestUtils.setField(user, "id", id);
         return user;
+    }
+
+    // ---------- refresh and logout ----------
+
+    @Test
+    void refreshWithAnOpenSessionGivesNewTokensForTheSameSession() {
+        User patient = patient(true);
+        AuthSession session = new AuthSession(SESSION_ID, 5L, "hash", NOW, NOW.plus(Duration.ofDays(30)));
+        when(sessions.find("refresh-1")).thenReturn(new AuthSessionService.Lookup.Open(session));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(patient));
+        when(sessions.rotate(session)).thenReturn(new AuthSessionService.Issued(SESSION_ID, "refresh-2"));
+        when(jwtService.generateToken(patient, SESSION_ID)).thenReturn("access-2");
+
+        AuthResponse response = authService.refresh(new RefreshRequest("refresh-1"));
+
+        assertThat(response.accessToken()).isEqualTo("access-2");
+        assertThat(response.refreshToken()).isEqualTo("refresh-2");
+        verifyNoInteractions(auditService); // a normal refresh is not audited (it happens every few minutes)
+    }
+
+    @Test
+    void refreshForADisabledAccountClosesTheSession() {
+        AuthSession session = new AuthSession(SESSION_ID, 5L, "hash", NOW, NOW.plus(Duration.ofDays(30)));
+        when(sessions.find("refresh-1")).thenReturn(new AuthSessionService.Lookup.Open(session));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(patient(false)));
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshRequest("refresh-1")))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        verify(sessions).revoke(session, AuthSession.RevokeReason.ACCOUNT_DISABLED);
+        verify(sessions, never()).rotate(any());
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void reusedRefreshTokenIsRefusedAndAudited() {
+        AuthSession session = new AuthSession(SESSION_ID, 5L, "hash", NOW, NOW.plus(Duration.ofDays(30)));
+        when(sessions.find("old-refresh")).thenReturn(new AuthSessionService.Lookup.Reused(session));
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshRequest("old-refresh")))
+                .isInstanceOf(InvalidRefreshTokenException.class)
+                .hasMessage("The refresh token is invalid or has expired; log in again");
+        verify(auditService).refreshTokenReused(5L, SESSION_ID);
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    void unknownRefreshTokenIsRefused() {
+        when(sessions.find("nope")).thenReturn(new AuthSessionService.Lookup.Invalid());
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshRequest("nope")))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        verifyNoInteractions(jwtService, auditService);
+    }
+
+    @Test
+    void logoutClosesTheSessionOnceAndAuditsIt() {
+        when(sessions.logout(5L, SESSION_ID)).thenReturn(true).thenReturn(false);
+
+        authService.logout(5L, SESSION_ID);
+        authService.logout(5L, SESSION_ID); // already closed: nothing more is written
+
+        verify(auditService, times(1)).loggedOut(5L, SESSION_ID);
     }
 }

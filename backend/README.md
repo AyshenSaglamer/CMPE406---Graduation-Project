@@ -4,7 +4,7 @@ DiaMate, diyabet öz yönetimi ve hasta izleme sistemidir. Bu proje, Flutter mob
 
 | | |
 |---|---|
-| Dil / çatı | Java 21, Spring Boot 4.1.1 (Spring MVC, Spring Data JPA / Hibernate 7, Spring Security + JWT, Bean Validation, Actuator) |
+| Dil / çatı | Java 21, Spring Boot 4.1.3 (Spring MVC, Spring Data JPA / Hibernate 7, Spring Security + JWT, Bean Validation, Actuator) |
 | Veritabanı | PostgreSQL 17: takımın ortak veritabanı **Neon** (bulut) ya da yerel Docker (`localhost:5434`); hangisi olduğunu `.env` belirler |
 | Build | Maven |
 | API | `/api/v1/...`, JSON; hatalar RFC 9457 `application/problem+json` |
@@ -62,6 +62,7 @@ Sonuç: `public` şemasında 30 uygulama tablosu, `research` şemasında 14 veri
 | V8 | `fn_can_access` artık hastanın hesabının da aktif olmasını istiyor: admin bir hasta hesabını durdurunca bakım ekibi o hastanın verisini okuyamaz (önceden care-team listesinden çıkıyordu ama id ile doğrudan okunabiliyordu; 3. hafta, OWASP A01). Yalnız fonksiyon değişti, satır değişmedi |
 | V9 | `food_catalog`'a fotoğraf modelinin 24 Türk yemeği eklendi (lahmacun, mantı, simit …): yalnız ad ve görünen ad. Besin değerleri **boş** (`nutrition_source = 'not_available'`), çünkü henüz doğrulanmış bir kaynak yok. Var olan satırlara dokunulmaz (`ON CONFLICT DO NOTHING`) |
 | V10 | `food_catalog`'a Food-101'in 101 yemeği, kaba besin tahminleriyle (`Dataset/unified/food_classes.csv` ile aynı değerler, `is_verified = false`). Önceden bu satırları yalnızca research CSV yüklemesi sonrası `08_reference_seed.sql` ekliyordu; tam Docker yığınında ve veritabanı testlerinde bu yükleme yok, bu yüzden `/ai/food` hiçbir yemek için besin değeri döndürmüyordu. Satırları zaten olan veritabanı (yerel kurulum, Neon) değişmez |
+| V11 | `auth_sessions` tablosu: girişte açılan oturum (cihaz), refresh token'ın SHA-256'sı ve bir önceki token'ın özeti (tekrar kullanımı yakalamak için), bitiş ve kapanma zamanı/sebebi (`LOGOUT`, `REUSED`, `ACCOUNT_DISABLED`). Access token oturum id'sini (`sid`) taşır ve yalnızca oturum açıkken kabul edilir (24 Kasım, SECURITY.md S-C) |
 
 Uygulanmış bir migration dosyası **değiştirilmez**; yeni bir değişiklik için yeni sürüm dosyası eklenir.
 
@@ -95,9 +96,9 @@ cd ../food-vision-service && pip install -r requirements.txt && uvicorn app:app 
 mvn test        # birim + web katmanı testleri; Docker açıksa veritabanı testleri de
 ```
 
-Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V10. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
+Veritabanı testleri (`src/test/java/.../integration/`) Testcontainers ile Docker'da gerçek bir PostgreSQL 17 açar ve şemayı gerçek kurulumdaki gibi kurar: `../Database/sql` + Flyway V2–V11. Docker çalışmıyorsa bu testler atlanır, diğerleri yine çalışır. GitHub Actions (`.github/workflows/backend-ci.yml`) her push'ta ve PR'da hepsini çalıştırır.
 
-`ProtectedRoutesTest` uygulamadaki tüm endpoint'leri Spring'in kendi listesinden bulur ve her birini token'sız çağırır. Yalnızca `register`, `login` ve `health` 401 dışında bir cevap verebilir. Endpoint sayısı değişirse test kırılır: o zaman testteki sayı, aşağıdaki tablo ve `docs/BACKEND_REVIEW.md` birlikte güncellenir.
+`ProtectedRoutesTest` uygulamadaki tüm endpoint'leri Spring'in kendi listesinden bulur ve her birini token'sız çağırır. Yalnızca `register`, `login`, `refresh` ve `health` 401 dışında bir cevap verebilir. Endpoint sayısı değişirse test kırılır: o zaman testteki sayı, aşağıdaki tablo ve `docs/BACKEND_REVIEW.md` birlikte güncellenir.
 
 Postman: `postman/DiaMate.postman_collection.json` dosyasını içe aktarın ve koleksiyonu baştan sona çalıştırın (*Run collection*). Giriş isteği token'ı `accessToken` değişkenine kaydeder. Postman açmadan terminalden çalıştırmak için (backend `localhost:8080`'de açık olmalı):
 
@@ -144,7 +145,9 @@ docker run --env-file .env -p 8080:8080 diamate-backend
 | GET | `/api/v1/health` | herkese açık | Uygulama ayakta mı |
 | GET | `/actuator/health` | herkese açık | Veritabanı bağlantısı dahil genel durum: `{"status":"UP"}` ya da `DOWN`, yanında yalnızca probe grup adları (`"groups":["liveness","readiness"]`). Bileşen listesi (veritabanı, disk vb.) gösterilmez |
 | POST | `/api/v1/auth/register` | herkese açık | `{firstName, lastName, email, password, role, dateOfBirth, gender}` → 201. Rol: `PATIENT`, `CAREGIVER`, `CLINICIAN` (`ADMIN` kayıt olamaz). `dateOfBirth` `yyyy-MM-dd`, **en az 16 yaş**. `gender`: `FEMALE`, `MALE`, `OTHER`. Ad/soyad ve şifre kuralları için bkz. [Güvenlik](#güvenlik) |
-| POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, user}`. Üst üste 5 hatalı şifre → hesap 15 dakika kilitlenir (**429**) |
+| POST | `/api/v1/auth/login` | herkese açık | `{email, password}` → `{accessToken, tokenType, expiresIn, refreshToken, refreshExpiresIn, user}`. Her giriş yeni bir oturum (cihaz) açar. Üst üste 5 hatalı şifre → hesap 15 dakika kilitlenir (**429**) |
+| POST | `/api/v1/auth/refresh` | herkese açık (refresh token'ın kendisi kimlik) | `{refreshToken}` → login ile aynı cevap: yeni access token **ve yeni refresh token**; gönderilen refresh token artık çalışmaz. Bilinmeyen, süresi dolmuş, logout edilmiş ya da **daha önce kullanılmış** token → **401** (sonuncusunda oturum kapanır ve `REFRESH_TOKEN_REUSED` denetim kaydı yazılır). Pasif hesap → **401** |
+| POST | `/api/v1/auth/logout` | giriş yapmış herkes | Token'ın oturumunu kapatır → **204**: access token ve refresh token hemen geçersiz olur, kullanıcının diğer cihazları etkilenmez. Tekrar çağırmak bir şey değiştirmez |
 | GET | `/api/v1/users/me` | giriş yapmış herkes | Kendi profili (ad, soyad, e-posta, rol, doğum tarihi, cinsiyet). Kimlik token'dan okunur. |
 | GET | `/api/v1/admin/users` | yalnızca `ADMIN` | Hesap listesi; sağlık verisi, doğum tarihi ve cinsiyet **yok** |
 | PATCH | `/api/v1/admin/users/{userId}/status` | yalnızca `ADMIN` | `{"active": false}` hesabı hemen durdurur (giriş 403, mevcut token'lar 401); `{"active": true}` açar, örneğin durdurulmuş bir hesabı geri açar. Admin kendi hesabını değiştiremez (**409**). Her değişiklik denetim kaydına yazılır |
@@ -193,7 +196,7 @@ Diğer tüm adresler `Authorization: Bearer <accessToken>` ister.
 
 | Endpoint'ler | PATIENT | CLINICIAN | CAREGIVER | ADMIN |
 |---|---|---|---|---|
-| `register`, `login`, `health` (herkese açık) | ✓ | ✓ | ✓ | ✓ |
+| `register`, `login`, `refresh`, `health` (herkese açık), `logout` (giriş yapmış herkes) | ✓ | ✓ | ✓ | ✓ |
 | `GET /users/me`, `GET /patients/{id}/overview`, kayıtların `GET`'leri, `GET`/`PATCH …/alerts`, `GET …/reminders` ve `…/reminder-events`, `GET /ai/patients/{id}/summary` | ✓ | ✓ | ✓ | ✓ (veri yok → 404) |
 | Kayıtların `POST`/`PUT`/`DELETE`'i, hatırlatıcıların `POST`/`PUT`/`DELETE`'i ve `POST …/reminders/{id}/events`, `POST /ai/parse`, `POST …/ai-entries` | ✓ | 403 | 403 | 403 |
 | `GET /care-team/patients`, `GET /care-team/alerts`, `POST /care-relationships/{id}/accept` ve `/decline` | 403 | ✓ | ✓ | 403 |
@@ -216,7 +219,7 @@ Her hata aynı biçimde döner (RFC 9457, `Content-Type: application/problem+jso
 | 400 | Alan kuralı (`@Valid`), yanlış tip, bilinmeyen enum değeri, hatalı tarih, URL'de yanlış tip, metinde kontrol karakteri | `errors: {alan: mesaj}`. Örnek: `"mealContext": "Must be one of: FASTING, BEFORE_MEAL, ..."`, `"dateOfBirth": "Must be a date in yyyy-MM-dd format"`, `"patientId": "Must be a whole number"`, `"notes": "Must not contain control characters"` |
 | 405 | Desteklenmeyen HTTP metodu (herkese açık adreslerde de) | `detail` |
 | 400 | Gövde JSON değil / gövde yok / nesne yerine dizi | `detail`: `Request body is not valid JSON` / `Request body is required` / `Request body must be a JSON object` |
-| 401 | Token yok, geçersiz, süresi dolmuş **ya da hesap pasif veya silinmiş** | `detail`: `Authentication required` / `Invalid or expired access token` |
+| 401 | Token yok, geçersiz, süresi dolmuş, **oturumu kapanmış (logout) ya da hesap pasif veya silinmiş**; refresh token geçersiz | `detail`: `Authentication required` / `Invalid or expired access token` |
 | 403 | Rol uygun değil; doğru şifreyle giriş ama hesap admin tarafından durdurulmuş | `detail` |
 | 400 | Adres Spring Security'nin güvenlik duvarına takıldı (ör. `;`, `..` ya da `%3B` içeren path) | `detail`: `The request is not valid` (6. gün; önceden Spring Boot'un `timestamp`/`error`/`path` gövdesi). `%00` ve `%2F` içeren adresleri Tomcat, Spring'e gelmeden kısa bir HTML sayfasıyla reddeder |
 | 404 | Kayıt yok, erişim yok (ikisi ayırt edilmez), bilinmeyen adres | `detail`: örn. `Patient not found`, `Resource not found` |
@@ -327,15 +330,15 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 
 ### Güvenlik
 
-- **Giriş kilidi:** Aynı hesaba üst üste **5** hatalı şifre girilirse hesap **15 dakika** kilitlenir. Kilitliyken doğru şifre de kabul edilmez; cevap **429** + `Retry-After` olur. Başarılı giriş sayacı sıfırlar. Kilit yalnızca yeni girişleri durdurur; daha önce alınmış bir token süresi dolana kadar çalışmaya devam eder. Hatalı denemeler veritabanında tek bir `UPDATE ... + 1` ile sayıldığı için paralel denemeler birbirinin sayısını ezemez.
+- **Giriş kilidi:** Aynı hesaba üst üste **5** hatalı şifre girilirse hesap **15 dakika** kilitlenir. Kilitliyken doğru şifre de kabul edilmez; cevap **429** + `Retry-After` olur. Başarılı giriş sayacı sıfırlar. Kilit yalnızca yeni girişleri durdurur; daha önce açılmış oturumlar devam eder. Hatalı denemeler veritabanında tek bir `UPDATE ... + 1` ile sayıldığı için paralel denemeler birbirinin sayısını ezemez.
 - **Pasif hesap ve rol değişikliği:** Token'ın imzası, süresi ve `iss` alanı doğruysa her istekte hesabın hâlâ aktif olup olmadığı ve rolünün token'daki rolle aynı olup olmadığı da kontrol edilir (tek sorgu). Hesap pasife alınır, silinir ya da rolü değişirse, eski token'lar süreleri dolmadan **hemen 401** almaya başlar.
 - **Token nasıl kabul edilir:** Token yalnızca `Authorization: Bearer <token>` başlığından okunur. URL'de (`?access_token=`) gelen token kabul edilmez, çünkü URL'ler sunucu ve proxy log'larına yazılır. `Basic` (kullanıcı adı + şifre) başlığı da kabul edilmez. Başka bir anahtarla imzalanmış, imzasız (`alg: none`), içeriği değiştirilmiş, başka bir `iss` değeri taşıyan ya da `role` alanı olmayan token **401** alır. Bu kurallar `RbacWebTest`'te ve Postman'deki "Auth flow (Week 2 Day 2)" klasöründe denenir.
-- **Token içeriği:** `iss`, `sub` (kullanıcı id'si), `role`, `iat`, `exp`. Ad, e-posta ya da sağlık verisi yoktur (`JwtServiceTest`).
+- **Token içeriği:** `iss`, `sub` (kullanıcı id'si), `role`, `sid` (oturum id'si, V11), `iat`, `exp`. Ad, e-posta ya da sağlık verisi yoktur (`JwtServiceTest`).
 - **Süre dolumu:** Token `JWT_EXPIRATION` sonunda geçersiz olur. Spring'in varsayılan **60 saniyelik saat toleransı** yüzünden `exp`'ten sonraki 60 saniye içinde hâlâ kabul edilir; sonra **401** alır. Bu davranış `JWT_EXPIRATION=1m` ile gerçek veritabanında ölçüldü (5. gün).
 - **`JWT_SECRET`:** Takımın ortak geliştirme anahtarı `.env` dosyasıyla paylaşılıyor. Bu anahtarı bilen herkes, ortak Neon veritabanındaki her kullanıcı (ADMIN dahil) için geçerli bir token üretebilir. Bu yüzden **üretim ortamı mutlaka ayrı ve yalnızca sunucuda duran bir anahtar** kullanmalı (`openssl rand -base64 64`). Anahtar sızarsa değiştirilmesi yeterlidir: eski anahtarla imzalanmış tüm token'lar o anda geçersiz olur.
 - **Doktor hesabı:** Her rol, `CLINICIAN` dahil, kayıtta hemen aktif olur. 5. günde eklenen admin onayı uygulamada admin ekranı olmadığı için kaldırıldı (3. hafta). **Kabul edilen risk:** Herkes kendini doktor olarak kaydedebilir. Ancak doktor hesabı tek başına hiçbir hastanın verisine ulaşamaz: veri yalnızca hastanın o e-postayı kendisi davet etmesi ve hesabın daveti kabul etmesiyle paylaşılır (`fn_can_access`), ve admin şüpheli bir hesabı durdurabilir. Lisans doğrulaması sonraki işlerde.
 - **Hesabı durdurma:** `ADMIN`, ele geçirilmiş ya da kötüye kullanılan bir hesabı `PATCH /admin/users/{id}/status` ile durdurabilir; hesabın token'ları hemen 401 alır.
-- **Herkese açık adreslerde token yok sayılır:** `/auth/register`, `/auth/login` ve `/health` adreslerinde `Authorization` başlığı okunmaz. Böylece uygulama, giriş ekranında süresi dolmuş eski token'ı göndermeye devam etse de giriş yapılabilir.
+- **Herkese açık adreslerde token yok sayılır:** `/auth/register`, `/auth/login`, `/auth/refresh` ve `/health` adreslerinde `Authorization` başlığı okunmaz. Böylece uygulama, giriş ekranında süresi dolmuş eski token'ı göndermeye devam etse de giriş yapılabilir.
 - **Metin:** JSON'daki tüm metin alanlarında kontrol karakterleri (örn. NUL) reddedilir (**400**). Satır sonu ve tab serbesttir. NUL karakteri PostgreSQL'e yazılamıyordu.
 - **JSON'da aynı alan iki kez** (`{"glucoseValue":120,"glucoseValue":600}`) → **400** `errors.glucoseValue: "Must appear only once"` (`spring.jackson.read.strict-duplicate-detection`). Aksi halde bir proxy ya da log ilk değeri, backend ikinciyi görürdü.
 - **Sunucunun belirlediği alanlar** (`id`, `patientId`, `enteredBy`, `createdAt`, `deletedAt` …) istek gövdesinde gelirse yok sayılır; hasta id'si URL'den alınıp token'la karşılaştırılır. `source` yalnızca `MANUAL` ya da `AI_ASSISTANT` olabilir, öğünde ayrıca `AI_PHOTO` (`CGM`, `PUMP` … → 400).
@@ -348,8 +351,9 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
   - **Şifre:** En az 8 karakter ve en fazla 72 byte (BCrypt sınırı). Yaygın şifreler listesinde (`src/main/resources/security/common-passwords.txt`) bulunan şifreler ve e-posta adresinin kendisi reddedilir. Bu kurallar NIST SP 800-63B'yi izler; "büyük harf + rakam + sembol" zorunluluğu yoktur.
 - **Başlıklar:** Spring Security varsayılanları açık: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`.
 - **Doğum tarihi:** En az 16 yaş ve en fazla 120 yıl önce (daha eskisi yazım hatası sayılır; 400 + `errors.dateOfBirth`).
-- **Çıkış (logout):** Şimdilik yalnızca uygulama tarafında yapılır; uygulama token'ı siler. Sunucu token'ı geri çekemez, bu yüzden token süresi dolana kadar (en fazla 1 saat) geçerli kalır. Hesap pasife alınırsa ya da rolü değişirse token hemen 401 alır. Refresh token ve sunucu tarafında logout 2. haftada yapılmayacak, sonraya bırakıldı (karar: 12 Ekim 2026).
-- **Kapsam dışı (sonraki işler):** Refresh token ve sunucu tarafında logout, 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (admin onayı kaldırıldı, bkz. "Doktor hesabı"). OWASP Top 10 değerlendirmesi ve kabul edilen riskler: `docs/BACKEND_REVIEW.md` bölüm 15; güncel özet ve açık kalanlar `docs/SECURITY.md`. Giriş ve kayıt için IP başına hız sınırı tam stack'teki Nginx'te (23 Kasım; `SECURITY.md` bölüm 8).
+- **Oturum, refresh token ve çıkış (24 Kasım, S-C):** Access token kısa ömürlüdür (`JWT_EXPIRATION`, varsayılan 15 dk); uygulama süresi dolunca `POST /auth/refresh` ile yenisini alır. Refresh token 256 bit rastgele bir değerdir, veritabanında yalnız SHA-256'sı tutulur (`auth_sessions`), her kullanımda yenisiyle değişir (rotation) ve son kullanımından `JWT_REFRESH_EXPIRATION` (varsayılan 30 gün) sonra geçersiz olur. Değiştirilmiş (eski) bir refresh token tekrar gelirse kopyalanmış demektir: oturum kapanır ve `REFRESH_TOKEN_REUSED` yazılır. `POST /auth/logout` oturumu sunucuda kapatır; access token'ın içindeki `sid` her istekte kontrol edildiği için token süresi dolmadan **hemen 401** alır. Testler: `AuthSessionServiceTest`, `AuthServiceTest`, `AuthControllerTest`, gerçek veritabanında `RefreshTokenIntegrationTest`. Uygulama tarafı: `../frontend/lib/services/api_client.dart` (tek seferde yenileme, 401'de bir kez yenile ve tekrar dene) ve `token_storage.dart` (refresh token yalnız secure storage'da).
+- **API dokümanı:** `API_DOCS_ENABLED=true` iken Swagger UI `/swagger-ui.html`, OpenAPI açıklaması `/v3/api-docs` (springdoc). Varsayılan ve production'da kapalı. Kullanım: `docs/DEVELOPER_GUIDE.md`.
+- **Kapsam dışı (sonraki işler):** 2FA, e-posta doğrulama, doktorun lisansının doğrulanması (admin onayı kaldırıldı, bkz. "Doktor hesabı"). OWASP Top 10 değerlendirmesi ve kabul edilen riskler: `docs/BACKEND_REVIEW.md` bölüm 15; güncel özet ve açık kalanlar `docs/SECURITY.md`. Giriş ve kayıt için IP başına hız sınırı tam stack'teki Nginx'te (23 Kasım; `SECURITY.md` bölüm 8).
 
 ## Paket yapısı
 
