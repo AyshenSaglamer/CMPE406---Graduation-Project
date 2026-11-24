@@ -189,6 +189,50 @@ void main() {
       expect(r.occurrenceOn(monday.add(const Duration(days: 1))), isNull);
       expect(r.copyWith(active: false).occurrenceOn(monday), isNull);
     });
+
+    group('next reminder (home card)', () {
+      // Monday 23 November 2026.
+      final morning = Reminder(
+          type: Reminder.medication, medicationName: 'Metformin',
+          hour: 8, minute: 0, days: {1, 2, 3, 4, 5, 6, 7});
+      final evening = Reminder(
+          type: Reminder.glucoseCheck, hour: 20, minute: 0, days: {1, 2, 3, 4, 5, 6, 7});
+      final fridayOnly = Reminder(
+          type: Reminder.appointment, hour: 10, minute: 30, days: {5});
+
+      test('no reminders: nothing to show', () {
+        expect(nextReminder(const [], DateTime(2026, 11, 23, 9)), isNull);
+      });
+
+      test('the earliest one still to come today', () {
+        final next = nextReminder([evening, morning], DateTime(2026, 11, 23, 7));
+        expect(next!.$1.title, 'Metformin');
+        expect(next.$2, DateTime(2026, 11, 23, 8));
+      });
+
+      test('a reminder that already rang today is skipped', () {
+        final next = nextReminder([morning, evening], DateTime(2026, 11, 23, 9));
+        expect(next!.$2, DateTime(2026, 11, 23, 20));
+      });
+
+      test('after the last one today: tomorrow morning', () {
+        final next = nextReminder([morning, evening], DateTime(2026, 11, 23, 21));
+        expect(next!.$1.title, 'Metformin');
+        expect(next.$2, DateTime(2026, 11, 24, 8));
+      });
+
+      test('a weekly reminder on its own day', () {
+        final next = nextReminder([fridayOnly], DateTime(2026, 11, 23, 9));
+        expect(next!.$2, DateTime(2026, 11, 27, 10, 30));
+      });
+
+      test('a paused reminder is never next', () {
+        expect(
+          nextReminder([morning.copyWith(active: false)], DateTime(2026, 11, 23, 7)),
+          isNull,
+        );
+      });
+    });
   });
 
   group('notifications', () {

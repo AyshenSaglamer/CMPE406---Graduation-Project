@@ -152,6 +152,29 @@ class Reminder {
   }
 }
 
+/// The reminder that rings next from [now] (the rest of today, then the
+/// coming 7 days), with when it rings; null when nothing is active.
+(Reminder, DateTime)? nextReminder(List<Reminder> reminders, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  for (var offset = 0; offset <= 7; offset++) {
+    final day = DateTime(today.year, today.month, today.day + offset);
+    (Reminder, DateTime)? best;
+    for (final r in reminders) {
+      final at = r.occurrenceOn(day);
+      if (at == null || !at.isAfter(now)) {
+        continue;
+      }
+      if (best == null || at.isBefore(best.$2)) {
+        best = (r, at);
+      }
+    }
+    if (best != null) {
+      return best;
+    }
+  }
+  return null;
+}
+
 /// What the patient did with one occurrence (ReminderEventResponse).
 class ReminderAnswer {
   static const String taken = 'TAKEN';
