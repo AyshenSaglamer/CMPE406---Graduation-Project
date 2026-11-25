@@ -12,6 +12,7 @@ import 'package:gradia/data/offline_queue.dart';
 import 'package:gradia/screens/add_family_member_screen.dart';
 import 'package:gradia/screens/care_patient_detail_screen.dart';
 import 'package:gradia/screens/caregiver_dashboard_screen.dart';
+import 'package:gradia/screens/glucose_chart_screen.dart';
 import 'package:gradia/screens/glucose_entry_screen.dart';
 import 'package:gradia/screens/pdf_report_screen.dart';
 import 'package:gradia/services/api_client.dart';
@@ -498,6 +499,46 @@ void main() {
       expect(find.text('132 mg/dL'), findsOneWidget);
       expect(find.text('132'), findsOneWidget);
       expect(find.text('250'), findsNothing);
+    });
+
+    testWidgets("the details open the family member's chart, read only",
+        (tester) async {
+      backend.glucose[50] = [
+        {
+          'id': 900,
+          'glucoseValue': 156,
+          'measurementTime': DateTime.now()
+              .subtract(const Duration(hours: 2))
+              .toUtc()
+              .toIso8601String(),
+          'mealContext': 'FASTING',
+          'notes': null,
+        },
+      ];
+      await pumpDetail(tester, patient(managed: true));
+
+      await tester.scrollUntilVisible(find.text('Glucose Chart'), 300);
+      await tester.tap(find.text('Glucose Chart'));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GlucoseChartScreen), findsOneWidget);
+      expect(find.text('For Deniz Kaya'), findsOneWidget);
+      expect(
+        backend.requests.where(
+            (r) => r.url.path == '/api/v1/patients/50/glucose-logs'),
+        isNotEmpty,
+      );
+      // The details screen underneath shows the reading too: look only
+      // inside the chart.
+      Finder inChart(Finder f) =>
+          find.descendant(of: find.byType(GlucoseChartScreen), matching: f);
+      // A SingleChildScrollView builds everything: the reading is in the
+      // statistics and in the list.
+      expect(inChart(find.text('156 mg/dL')), findsWidgets);
+      expect(inChart(find.text('Tap a reading to edit it.')), findsNothing);
+      expect(inChart(find.byTooltip('Delete')), findsNothing);
     });
 
     testWidgets('a refused entry shows the backend message and stays open',

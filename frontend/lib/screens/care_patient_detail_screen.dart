@@ -10,6 +10,7 @@ import '../utils/form_helpers.dart';
 import '../widgets/ai_insights_card.dart';
 import 'activity_entry_screen.dart';
 import 'ai_assistant_screen.dart';
+import 'glucose_chart_screen.dart';
 import 'glucose_entry_screen.dart';
 import 'insulin_entry_screen.dart';
 import 'meal_entry_screen.dart';
@@ -183,6 +184,25 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
               ),
               const SizedBox(height: 12),
               ..._buildHistory(),
+              const SizedBox(height: 8),
+              // The full chart (7 / 30 / 90 days) like the patient's own
+              // Chart tab, read only.
+              _ActionTile(
+                icon: Icons.show_chart_rounded,
+                color: const Color(0xFF168AF7),
+                background: const Color(0xFFEAF5FF),
+                title: 'Glucose Chart',
+                subtitle: 'Trends over 7 days, 30 days or 3 months',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GlucoseChartScreen(
+                      patient: patient,
+                      store: widget.glucose,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ],
         ),

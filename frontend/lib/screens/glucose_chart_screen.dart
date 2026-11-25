@@ -3,14 +3,28 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../data/care_patients_store.dart';
 import '../data/glucose_store.dart';
+import '../data/log_store.dart';
 import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/ai_insights_card.dart';
+import '../widgets/entry_title.dart';
 import 'glucose_entry_screen.dart';
 
+/// Glucose over 7 / 30 / 90 days: chart, statistics, AI insights, readings.
+///
+/// With [patient] a caregiver (or doctor) looks at someone they follow:
+/// their readings and target range, read only (their readings are edited by
+/// whoever keeps their diary, from the details screen).
 class GlucoseChartScreen extends StatefulWidget {
-  const GlucoseChartScreen({super.key});
+  const GlucoseChartScreen({super.key, this.patient, this.store});
+
+  /// The followed patient / family member; null = the logged-in patient.
+  final CarePatient? patient;
+
+  /// Defaults to [glucoseStore]; tests pass one with a fake backend.
+  final LogStore<GlucoseRecord>? store;
 
   @override
   State<GlucoseChartScreen> createState() => _GlucoseChartScreenState();
@@ -27,9 +41,14 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
     '3 Months': 90,
   };
 
-  /// Target range used for "time in range".
-  static const double _targetLow = 70;
-  static const double _targetHigh = 180;
+  /// Target range used for "time in range": the followed patient's own,
+  /// 70-180 for the logged-in patient.
+  double get _targetLow => widget.patient?.targetMin.toDouble() ?? 70;
+  double get _targetHigh => widget.patient?.targetMax.toDouble() ?? 180;
+
+  CarePatient? get _patient => widget.patient;
+
+  LogStore<GlucoseRecord> get _store => widget.store ?? glucoseStore;
 
   /// Readings of the selected period, oldest first.
   List<GlucoseRecord> records = [];
@@ -48,14 +67,19 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
   void initState() {
     super.initState();
     periodStart = _startFor(periodDays);
-    // Reload when a reading is added, edited or deleted anywhere in the app.
-    glucoseStore.addListener(_load);
+    // Reload when one of the patient's own readings is added, edited or
+    // deleted anywhere in the app (the store holds only their own).
+    if (_patient == null) {
+      _store.addListener(_load);
+    }
     _fetch();
   }
 
   @override
   void dispose() {
-    glucoseStore.removeListener(_load);
+    if (_patient == null) {
+      _store.removeListener(_load);
+    }
     super.dispose();
   }
 
@@ -79,7 +103,7 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
     final start = _startFor(periodDays);
 
     try {
-      final fetched = await glucoseStore.fetch(from: start);
+      final fetched = await _store.fetch(from: start, patientId: _patient?.id);
 
       if (!mounted || request != _loadRequest) {
         return;
@@ -165,7 +189,7 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
     }
 
     try {
-      await glucoseStore.delete(record.id);
+      await _store.delete(record.id);
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -195,7 +219,7 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Glucose Chart'),
+        title: EntryTitle('Glucose Chart', forName: _patient?.name),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: RefreshIndicator(
@@ -292,9 +316,11 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
 
                 const SizedBox(height: 18),
 
-                AiInsightsCard(days: periodDays),
-
-                const SizedBox(height: 18),
+                // Someone else's AI summary needs their "reports" permission.
+                if (_patient == null || _patient!.canViewReports) ...[
+                  AiInsightsCard(days: periodDays, patientId: _patient?.id),
+                  const SizedBox(height: 18),
+                ],
 
                 _buildReadingsCard(),
               ],
@@ -357,11 +383,11 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Blood Glucose Trends',
                   style: TextStyle(
                     fontSize: 19,
@@ -369,10 +395,12 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
                     color: Color(0xFF233247),
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
-                  'Review your glucose measurements over time.',
-                  style: TextStyle(
+                  _patient == null
+                      ? 'Review your glucose measurements over time.'
+                      : 'Review their glucose measurements over time.',
+                  style: const TextStyle(
                     fontSize: 12,
                     height: 1.4,
                     color: Color(0xFF64788B),
@@ -631,9 +659,10 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
 
             const SizedBox(height: 8),
 
-            const Text(
-              'Green band: target range 70-180 mg/dL',
-              style: TextStyle(fontSize: 11, color: Color(0xFF8A97A5)),
+            Text(
+              'Green band: target range '
+              '${formatNumber(_targetLow)}-${formatNumber(_targetHigh)} mg/dL',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF8A97A5)),
             ),
           ],
         ),
@@ -718,16 +747,19 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
               'Readings',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              'Tap a reading to edit it.',
-              style: TextStyle(fontSize: 11, color: Color(0xFF8A97A5)),
-            ),
+            if (_patient == null) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'Tap a reading to edit it.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF8A97A5)),
+              ),
+            ],
             const SizedBox(height: 6),
             for (final record in newestFirst)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                onTap: () => _edit(record),
+                // Read only for someone else's readings.
+                onTap: _patient == null ? () => _edit(record) : null,
                 leading: Container(
                   width: 42,
                   height: 42,
@@ -752,14 +784,16 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
                   style: const TextStyle(fontSize: 12),
                 ),
                 isThreeLine: record.notes != null,
-                trailing: IconButton(
-                  tooltip: 'Delete',
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: Color(0xFF9AA8B7),
-                  ),
-                  onPressed: () => _delete(record),
-                ),
+                trailing: _patient != null
+                    ? null
+                    : IconButton(
+                        tooltip: 'Delete',
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: Color(0xFF9AA8B7),
+                        ),
+                        onPressed: () => _delete(record),
+                      ),
               ),
           ],
         ),
