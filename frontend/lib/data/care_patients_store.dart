@@ -21,7 +21,14 @@ class CarePatient {
   final bool canViewReports;
   final bool canReceiveAlerts;
 
+  /// A family member without an account whom this caregiver added and
+  /// manages (sees everything, keeps their diary, may correct the details).
+  final bool managed;
+
   final int? ageYears;
+
+  /// FEMALE, MALE or OTHER (from the overview).
+  final String? gender;
 
   /// TYPE_1, TYPE_2, GESTATIONAL or OTHER.
   final String? diabetesType;
@@ -43,7 +50,9 @@ class CarePatient {
     this.canViewMedications = false,
     this.canViewReports = false,
     this.canReceiveAlerts = false,
+    this.managed = false,
     this.ageYears,
+    this.gender,
     this.diabetesType,
     this.targetMin = 70,
     this.targetMax = 180,
@@ -107,7 +116,9 @@ class CarePatient {
       canViewMedications: member['canViewMedications'] as bool? ?? false,
       canViewReports: member['canViewReports'] as bool? ?? false,
       canReceiveAlerts: member['canReceiveAlerts'] as bool? ?? false,
+      managed: member['managed'] as bool? ?? false,
       ageYears: (o['ageYears'] as num?)?.toInt(),
+      gender: o['gender'] as String?,
       diabetesType: o['diabetesType'] as String?,
       targetMin: (o['targetMinMgdl'] as num?)?.toInt() ?? 70,
       targetMax: (o['targetMaxMgdl'] as num?)?.toInt() ?? 180,
