@@ -73,10 +73,11 @@ public class AiController {
     /**
      * multipart/form-data with a field "image": a JPG, PNG or WEBP meal photo of at most 5 MB. Answers the photo
      * model's best guesses with approximate nutrition; nothing is saved and the photo is not stored. The app lets the
-     * patient confirm or correct the food and saves the meal with the meal log endpoint.
+     * patient confirm or correct the food and saves the meal with the meal log endpoint. Open to caregivers like parse:
+     * the managing caregiver photographs a family member's meal, and the meal log endpoint decides the patient.
      */
     @PostMapping(value = "/food", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public FoodRecognitionResponse food(@RequestPart("image") MultipartFile image) {
         return foodRecognitionService.recognize(image);
     }

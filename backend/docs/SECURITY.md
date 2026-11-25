@@ -117,7 +117,7 @@ Bitiş tarihi geçer                                      →  erişim kendiliğ
 |---|---|---|
 | `POST /ai/parse` (metin → kayıt önerisi, kaydetmez) | `PATIENT`, `CAREGIVER` | Yok (yalnız gönderilen metin) |
 | `POST /ai/voice` (ses → kayıt önerisi, kaydetmez) | `PATIENT`, `CAREGIVER` | Yok |
-| `POST /ai/food` (yemek fotoğrafı → tahmin + yaklaşık besin değeri, kaydetmez) | `PATIENT` | Yok (yalnız gönderilen fotoğraf ve `food_catalog`) |
+| `POST /ai/food` (yemek fotoğrafı → tahmin + yaklaşık besin değeri, kaydetmez) | `PATIENT`, `CAREGIVER` | Yok (yalnız gönderilen fotoğraf ve `food_catalog`) |
 | `POST /patients/{id}/ai-entries` (onaylanan öneriyi kaydeder) | `PATIENT` (kendisi), `CAREGIVER` (yalnız yönettiği hesapsız aile üyesi) | Kayıt yazma kuralları (`checkCanWrite`, başka hasta → `404`) |
 | `GET /ai/patients/{id}/summary`, `anomaly`, `data-quality`, `drift`, `prediction` | Herkes (rol) | `reports` + `glucose` izni, yoksa `404`; her okuma denetime yazılır |
 

@@ -122,10 +122,11 @@ class AuthorizationMatrixTest {
         RULES.put("POST " + LOGS + "reminders/{reminderId}/events", WRITERS);
         RULES.put("GET " + LOGS + "reminder-events", EVERYONE);
         RULES.put("POST " + LOGS + "ai-entries", WRITERS);
-        // The assistant only reads text / speech (nothing saved), so the managing caregiver may use it too.
+        // The assistant and the meal photo only read text / speech / a photo (nothing saved), so the managing
+        // caregiver may use them too.
         RULES.put("POST /api/v1/ai/parse", WRITERS);
         RULES.put("POST /api/v1/ai/voice", WRITERS);
-        RULES.put("POST /api/v1/ai/food", PATIENT);
+        RULES.put("POST /api/v1/ai/food", WRITERS);
         // Patient-history analyses: like the log lists, fn_can_access (reports + glucose) decides who sees what.
         for (String analysis : new String[] { "summary", "anomaly", "data-quality", "drift", "prediction" }) {
             RULES.put("GET /api/v1/ai/patients/{patientId}/" + analysis, EVERYONE);
