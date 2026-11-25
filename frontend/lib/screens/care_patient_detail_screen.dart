@@ -9,6 +9,7 @@ import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/ai_insights_card.dart';
 import 'activity_entry_screen.dart';
+import 'ai_assistant_screen.dart';
 import 'glucose_entry_screen.dart';
 import 'insulin_entry_screen.dart';
 import 'meal_entry_screen.dart';
@@ -153,7 +154,7 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
             if (patient.managed) ...[
               _buildAddEntry(),
               const SizedBox(height: 12),
-              _buildRemindersTile(),
+              _buildManageTiles(),
               const SizedBox(height: 18),
             ],
             if (!patient.canViewGlucose)
@@ -303,44 +304,40 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
     );
   }
 
-  /// The family member's reminder plan, kept by the caregiver.
-  Widget _buildRemindersTile() {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF3DF),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Icon(
-            Icons.notifications_active_outlined,
-            color: Color(0xFFF0A126),
-          ),
-        ),
-        title: const Text(
-          'Reminders',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        subtitle: const Text(
-          'Medicines, glucose checks and what was taken',
-          style: TextStyle(fontSize: 12),
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReminderScreen(
-              patientId: patient.id,
-              patientName: patient.name,
-              store: widget.reminderStoreFor?.call(patient.id),
+  /// The family member's reminder plan and the assistant, for the caregiver
+  /// who keeps their diary.
+  Widget _buildManageTiles() {
+    return Column(
+      children: [
+        _ActionTile(
+          icon: Icons.notifications_active_outlined,
+          color: const Color(0xFFF0A126),
+          background: const Color(0xFFFFF3DF),
+          title: 'Reminders',
+          subtitle: 'Medicines, glucose checks and what was taken',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ReminderScreen(
+                patientId: patient.id,
+                patientName: patient.name,
+                store: widget.reminderStoreFor?.call(patient.id),
+              ),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 10),
+        _ActionTile(
+          icon: Icons.smart_toy_rounded,
+          color: const Color(0xFF8B62D6),
+          background: const Color(0xFFF0E9FF),
+          title: 'DiaMate Assistant',
+          subtitle: 'Log in one sentence, typed or spoken',
+          onTap: () => _addEntry(
+            (id, name) => AiAssistantScreen(patientId: id, patientName: name),
+          ),
+        ),
+      ],
     );
   }
 
@@ -480,6 +477,47 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
           ),
         ),
     ];
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
+    );
   }
 }
 
