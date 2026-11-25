@@ -14,7 +14,7 @@ COPY src ./src
 RUN mvn -B -q -DskipTests package
 
 # ---- run: JRE only, no build tools, not root ----
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 RUN groupadd --system diamate && useradd --system --gid diamate --no-create-home --shell /usr/sbin/nologin diamate
 WORKDIR /app
 # Owned by root and only readable for others: the application user can run the jar but not replace it.
