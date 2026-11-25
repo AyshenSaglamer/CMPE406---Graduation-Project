@@ -228,6 +228,65 @@ void main() {
       expect(DateTime.parse(q['from']!), DateTime(2026, 11, 10).toUtc());
       expect(DateTime.parse(q['to']!), DateTime(2026, 11, 24).toUtc());
     });
+
+    test("a family member's report reads only what they share", () async {
+      final requests = <http.Request>[];
+      final api = ApiClient(
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode({'items': [], 'totalPages': 1}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      LogStore<T> store<T extends LogRecord>(
+              String resource, T Function(Map<String, dynamic>) fromJson) =>
+          LogStore<T>(resource: resource, fromJson: fromJson, api: api);
+
+      final report = await HealthReport.load(
+        from: DateTime(2026, 11, 10),
+        to: DateTime(2026, 11, 23),
+        patientName: 'Deniz Kaya',
+        patientId: 50,
+        mealsShared: false,
+        activityShared: false,
+        glucose: store('glucose-logs', GlucoseRecord.fromJson),
+        insulin: store('insulin-logs', InsulinRecord.fromJson),
+        meals: store('meal-logs', MealRecord.fromJson),
+        activities: store('activity-logs', ActivityRecord.fromJson),
+      );
+
+      expect(
+        requests.map((r) => r.url.path).toSet(),
+        {
+          '/api/v1/patients/50/glucose-logs',
+          '/api/v1/patients/50/insulin-logs',
+        },
+      );
+      expect(report.notShared, ['Meals', 'Activity']);
+      expect(report.patientName, 'Deniz Kaya');
+    });
+
+    testWidgets('the PDF says which parts were not shared', (tester) async {
+      final report = HealthReport(
+        from: DateTime(2026, 11, 10),
+        to: DateTime(2026, 11, 23),
+        patientName: 'Deniz Kaya',
+        glucose: const [],
+        insulin: const [],
+        meals: const [],
+        activities: const [],
+        notShared: const ['Meals'],
+      );
+
+      final bytes = await tester.runAsync(() => buildReportPdf(report));
+
+      expect(bytes, isNotNull);
+      expect(bytes!.length, greaterThan(1000));
+    });
   });
 
   group('Health Report screen', () {

@@ -4,11 +4,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../data/care_patients_store.dart';
 import '../data/health_report.dart';
 import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../services/report_pdf.dart';
 import '../widgets/ai_chat_button.dart';
+import '../widgets/entry_title.dart';
 
 /// What happened to an exported file.
 enum ExportOutcome { shared, downloaded, cancelled }
@@ -45,11 +47,23 @@ Future<ExportOutcome> shareReportFile(
 /// The patient's health report for a chosen period: the real numbers from
 /// the backend, exported as a PDF (for the doctor) or a CSV (for a
 /// spreadsheet).
+///
+/// With [patient] a caregiver (or doctor) makes the report of someone they
+/// follow: only the kinds of logs that person shares are read.
 class PdfReportScreen extends StatefulWidget {
-  const PdfReportScreen({super.key, this.loadReport, this.exporter});
+  const PdfReportScreen({
+    super.key,
+    this.loadReport,
+    this.exporter,
+    this.patient,
+  });
 
-  /// Defaults to [HealthReport.load] for the logged-in patient.
+  /// Defaults to [HealthReport.load] for the logged-in patient, or for
+  /// [patient].
   final Future<HealthReport> Function(DateTime from, DateTime to)? loadReport;
+
+  /// The followed patient / family member; null = the logged-in patient.
+  final CarePatient? patient;
 
   /// Defaults to [shareReportFile].
   final ReportExporter? exporter;
@@ -84,6 +98,20 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     final custom = widget.loadReport;
     if (custom != null) {
       return custom(from, to);
+    }
+
+    final patient = widget.patient;
+    if (patient != null) {
+      return HealthReport.load(
+        from: from,
+        to: to,
+        patientName: patient.name,
+        patientId: patient.id,
+        glucoseShared: patient.canViewGlucose,
+        insulinShared: patient.canViewMedications,
+        mealsShared: patient.canViewMeals,
+        activityShared: patient.canViewActivity,
+      );
     }
 
     return HealthReport.load(
@@ -213,10 +241,13 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: const AiChatButton(),
+      // The assistant button logs for the logged-in patient: not on someone
+      // else's report.
+      floatingActionButton:
+          widget.patient == null ? const AiChatButton() : null,
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Health Report'),
+        title: EntryTitle('Health Report', forName: widget.patient?.name),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(
@@ -309,6 +340,21 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     String n(double? v) => v == null ? '—' : formatReportNumber(v);
 
     return [
+      if (r.notShared.isNotEmpty)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            'Not shared with you: ${r.notShared.join(', ')}. '
+            'These stay empty in the report.',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5F6E7D)),
+          ),
+        ),
       Row(
         children: [
           Expanded(
@@ -405,11 +451,11 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Health Report',
                   style: TextStyle(
                     fontSize: 19,
@@ -417,11 +463,14 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     color: Color(0xFF31294B),
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
-                  'Export your glucose, insulin, meal and activity records as '
-                  'a PDF for your doctor or a CSV for a spreadsheet.',
-                  style: TextStyle(
+                  widget.patient == null
+                      ? 'Export your glucose, insulin, meal and activity records as '
+                          'a PDF for your doctor or a CSV for a spreadsheet.'
+                      : 'Export their glucose, insulin, meal and activity records as '
+                          'a PDF for their doctor or a CSV for a spreadsheet.',
+                  style: const TextStyle(
                     fontSize: 12,
                     height: 1.4,
                     color: Color(0xFF776D89),

@@ -134,6 +134,12 @@ Future<Uint8List> buildReportPdf(HealthReport report) async {
           'Generated: ${formatReportTime(report.generatedAt)}',
           style: const pw.TextStyle(fontSize: 9, color: muted),
         ),
+        if (report.notShared.isNotEmpty)
+          pw.Text(
+            'Not shared with the person who made this report: '
+            '${report.notShared.join(', ')}. Those sections are empty.',
+            style: const pw.TextStyle(fontSize: 9, color: muted),
+          ),
         heading('Summary'),
         pw.TableHelper.fromTextArray(
           data: summary,

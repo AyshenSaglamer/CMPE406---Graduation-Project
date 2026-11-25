@@ -13,6 +13,7 @@ import 'package:gradia/screens/add_family_member_screen.dart';
 import 'package:gradia/screens/care_patient_detail_screen.dart';
 import 'package:gradia/screens/caregiver_dashboard_screen.dart';
 import 'package:gradia/screens/glucose_entry_screen.dart';
+import 'package:gradia/screens/pdf_report_screen.dart';
 import 'package:gradia/services/api_client.dart';
 import 'package:gradia/services/api_exception.dart';
 import 'package:http/http.dart' as http;
@@ -538,6 +539,33 @@ void main() {
 
       expect(find.text('Managed by you'), findsOneWidget);
       expect(find.byTooltip('Edit details'), findsOneWidget);
+    });
+
+    testWidgets('the Reports tab opens a family member\'s health report',
+        (tester) async {
+      backend.members.add(managedMember(50, 'Deniz', 'Kaya'));
+      await pump(tester);
+
+      await tester.tap(find.text('Reports'));
+      await tester.pumpAndSettle();
+      expect(find.text('Deniz Kaya'), findsOneWidget);
+
+      await tester.tap(find.text('Deniz Kaya'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PdfReportScreen), findsOneWidget);
+      expect(find.text('For Deniz Kaya'), findsOneWidget);
+    });
+
+    testWidgets('More no longer repeats Family Members and Invitations',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Family Members'), findsNothing);
+      expect(find.text('Invitations'), findsNothing);
+      expect(find.text('Log Out'), findsOneWidget);
     });
 
     testWidgets('a family member added on the Family tab joins the list',
