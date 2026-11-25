@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gradia/data/care_patients_store.dart';
 import 'package:gradia/data/reminder_store.dart';
+import 'package:gradia/screens/reminder_screen.dart';
 import 'package:gradia/services/api_client.dart';
 import 'package:gradia/services/token_storage.dart';
 import 'package:gradia/widgets/care_reminders_view.dart';
@@ -78,8 +79,10 @@ class FakeBackend {
       );
 }
 
-CarePatient member(int id, String first, {bool medications = true}) =>
+CarePatient member(int id, String first,
+        {bool medications = true, bool managed = false}) =>
     CarePatient.fromJson({
+      'managed': managed,
       'patientId': id,
       'firstName': first,
       'lastName': 'Kaya',
@@ -192,5 +195,24 @@ void main() {
     expect(find.text('Ali Kaya • Medication • 500 mg'), findsOneWidget);
     expect(find.text('Can Kaya • Medication • 500 mg'), findsOneWidget);
     expect(find.textContaining('Could not load the reminders'), findsOneWidget);
+  });
+
+  testWidgets('only a family member the caregiver manages has Manage',
+      (tester) async {
+    backend.add(7);
+    backend.add(9, name: 'Insulin', time: '13:00:00');
+
+    await pump(tester, [member(7, 'Ali'), member(9, 'Can', managed: true)]);
+
+    expect(find.widgetWithText(TextButton, 'Manage'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Manage'));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReminderScreen), findsOneWidget);
+    expect(find.text('For Can Kaya'), findsOneWidget);
+    expect(find.text('Their Reminders'), findsOneWidget);
   });
 }

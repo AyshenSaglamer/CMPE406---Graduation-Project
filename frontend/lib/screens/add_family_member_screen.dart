@@ -1,56 +1,102 @@
 import 'package:flutter/material.dart';
-import '../models/family_member.dart';
 
+import '../data/care_patients_store.dart';
+import '../data/dependent_store.dart';
+import '../services/api_exception.dart';
+
+/// A caregiver adds a family member without an account (e.g. a child) and
+/// keeps their diary: POST /care-team/dependents. With [existing] (a family
+/// member this caregiver manages) the same form corrects the details:
+/// PUT /care-team/dependents/{patientId}.
+///
+/// Pops with the saved [Dependent], or null when the caregiver goes back.
 class AddFamilyMemberScreen extends StatefulWidget {
-  const AddFamilyMemberScreen({super.key});
+  const AddFamilyMemberScreen({
+    super.key,
+    this.existing,
+    this.store,
+    this.today,
+  });
+
+  /// The managed family member to edit; null adds a new one.
+  final CarePatient? existing;
+
+  /// Defaults to [dependentStore]; tests pass one with a fake backend.
+  final DependentStore? store;
+
+  /// Defaults to the phone's date; tests fix it.
+  final DateTime Function()? today;
 
   @override
-  State<AddFamilyMemberScreen> createState() =>
-      _AddFamilyMemberScreenState();
+  State<AddFamilyMemberScreen> createState() => _AddFamilyMemberScreenState();
 }
 
 class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
-  final nameController = TextEditingController();
+  static const _purple = Color(0xFF765BD4);
+  static const _border = Color(0xFFE2E8F0);
+  static const _label = Color(0xFF344054);
+  static const _muted = Color(0xFF667085);
+
+  /// The backend's limit (AuthService.MAX_AGE_YEARS).
+  static const _maxAgeYears = 120;
+
+  static const _genders = {
+    'FEMALE': 'Female',
+    'MALE': 'Male',
+    'OTHER': 'Other',
+  };
+
+  static const _diabetesTypes = {
+    'TYPE_1': 'Type 1',
+    'TYPE_2': 'Type 2',
+    'GESTATIONAL': 'Gestational',
+    'OTHER': 'Other / not sure',
+  };
+
+  final firstNameController = TextEditingController();
+  final lastNameController = TextEditingController();
 
   DateTime? selectedDateOfBirth;
   String? selectedGender;
-  String? selectedRelationship;
+  String? selectedDiabetesType;
 
-  final List<String> relationships = [
-    'Child',
-    'Mother',
-    'Father',
-    'Spouse',
-    'Sibling',
-    'Other',
-  ];
+  bool saving = false;
+
+  /// Errors the backend sent per field (firstName, dateOfBirth, ...).
+  Map<String, String> fieldErrors = const {};
+
+  bool get isEditing => widget.existing != null;
+
+  DependentStore get _store => widget.store ?? dependentStore;
+
+  DateTime get _today {
+    final now = (widget.today ?? DateTime.now)();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final existing = widget.existing;
+    if (existing != null) {
+      firstNameController.text = existing.firstName;
+      lastNameController.text = existing.lastName;
+      selectedGender =
+          _genders.containsKey(existing.gender) ? existing.gender : null;
+      selectedDiabetesType = _diabetesTypes.containsKey(existing.diabetesType)
+          ? existing.diabetesType
+          : null;
+      // The backend does not send the date of birth back (only the age), and
+      // the update replaces every field: the caregiver picks it again.
+    }
+  }
 
   @override
   void dispose() {
-    nameController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
     super.dispose();
-  }
-
-  // ------------------------------------------------------------
-  // RELATIONSHIP DEĞİŞTİĞİNDE CİNSİYETİ OTOMATİK BELİRLE
-  // ------------------------------------------------------------
-
-  void _onRelationshipChanged(String? relationship) {
-    if (relationship == null) return;
-
-    setState(() {
-      selectedRelationship = relationship;
-
-      if (relationship == 'Mother') {
-        selectedGender = 'Female';
-      } else if (relationship == 'Father') {
-        selectedGender = 'Male';
-      } else {
-        // Child, Spouse, Sibling ve Other için
-        // kullanıcı cinsiyeti seçebilir.
-        selectedGender = null;
-      }
-    });
   }
 
   // ------------------------------------------------------------
@@ -58,17 +104,21 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
   // ------------------------------------------------------------
 
   Future<void> _selectDateOfBirth() async {
-    final now = DateTime.now();
+    final today = _today;
+    // The date of birth must be in the past (not today).
+    final lastDate = today.subtract(const Duration(days: 1));
+    final firstDate =
+        DateTime(today.year - _maxAgeYears, today.month, today.day);
+
+    final age = widget.existing?.ageYears;
+    final initialDate = selectedDateOfBirth ??
+        DateTime(today.year - (age ?? 8), today.month, today.day);
 
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: DateTime(
-        now.year - 18,
-        now.month,
-        now.day,
-      ),
-      firstDate: DateTime(1900),
-      lastDate: now,
+      initialDate: initialDate.isAfter(lastDate) ? lastDate : initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: 'Select date of birth',
       cancelText: 'Cancel',
       confirmText: 'Select',
@@ -77,268 +127,161 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
     if (pickedDate != null) {
       setState(() {
         selectedDateOfBirth = pickedDate;
+        fieldErrors = Map.of(fieldErrors)..remove('dateOfBirth');
       });
     }
   }
 
   // ------------------------------------------------------------
-  // RELATIONSHIP YAZISI
+  // SAVE
   // ------------------------------------------------------------
 
-  String _getRelationshipText(String relationship) {
-    switch (relationship) {
-      case 'Child':
-        return 'Child';
-
-      case 'Mother':
-        return 'Mother';
-
-      case 'Father':
-        return 'Father';
-
-      case 'Spouse':
-        return 'Spouse';
-
-      case 'Sibling':
-        return 'Sibling';
-
-      case 'Other':
-        return 'Other';
-
-      default:
-        return relationship;
-    }
-  }
-
-  // ------------------------------------------------------------
-  // BUTTON YAZISI
-  // ------------------------------------------------------------
-
-  String _getButtonText() {
-    if (selectedRelationship == null) {
-      return 'Add Family Member';
+  Future<void> _save() async {
+    if (saving) {
+      return;
     }
 
-    switch (selectedRelationship) {
-      case 'Child':
-        return 'Add Child';
-
-      case 'Mother':
-        return 'Add Mother';
-
-      case 'Father':
-        return 'Add Father';
-
-      case 'Spouse':
-        return 'Add Spouse';
-
-      case 'Sibling':
-        return 'Add Sibling';
-
-      case 'Other':
-        return 'Add Family Member';
-
-      default:
-        return 'Add Family Member';
+    if (firstNameController.text.trim().isEmpty) {
+      _showMessage('Please enter the first name.');
+      return;
     }
-  }
 
-  // ------------------------------------------------------------
-  // CİNSİYET GÖSTERİMİ
-  // ------------------------------------------------------------
-
-  Widget _buildGenderField() {
-    final isAutomaticallySelected =
-        selectedRelationship == 'Mother' ||
-        selectedRelationship == 'Father';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Gender',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF344054),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        if (isAutomaticallySelected)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F6F8),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFE2E8F0),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  selectedGender == 'Female'
-                      ? Icons.female_rounded
-                      : Icons.male_rounded,
-                  color: const Color(0xFF765BD4),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  selectedGender ?? '',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF344054),
-                  ),
-                ),
-                const Spacer(),
-                const Icon(
-                  Icons.lock_outline_rounded,
-                  size: 17,
-                  color: Color(0xFF98A2B3),
-                ),
-              ],
-            ),
-          )
-        else
-          DropdownButtonFormField<String>(
-            initialValue: selectedGender,
-            decoration: InputDecoration(
-              hintText: 'Select gender',
-              prefixIcon: const Icon(
-                Icons.person_outline_rounded,
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE2E8F0),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xFFE2E8F0),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xFF765BD4),
-                  width: 1.5,
-                ),
-              ),
-            ),
-            items: const [
-              DropdownMenuItem(
-                value: 'Female',
-                child: Text('Female'),
-              ),
-              DropdownMenuItem(
-                value: 'Male',
-                child: Text('Male'),
-              ),
-              DropdownMenuItem(
-                value: 'Other',
-                child: Text('Other'),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                selectedGender = value;
-              });
-            },
-          ),
-      ],
-    );
-  }
-
-  // ------------------------------------------------------------
-  // ADD FAMILY MEMBER
-  // ------------------------------------------------------------
-
-  void _addFamilyMember() {
-    if (nameController.text.trim().isEmpty) {
-      _showError('Please enter the full name.');
+    if (lastNameController.text.trim().isEmpty) {
+      _showMessage('Please enter the last name.');
       return;
     }
 
     if (selectedDateOfBirth == null) {
-      _showError('Please select the date of birth.');
-      return;
-    }
-
-    if (selectedRelationship == null) {
-      _showError('Please select the relationship.');
+      _showMessage('Please select the date of birth.');
       return;
     }
 
     if (selectedGender == null) {
-      _showError('Please select the gender.');
+      _showMessage('Please select the gender.');
       return;
     }
 
-    // ----------------------------------------------------------
-    // BACKEND'E GÖNDERİLECEK DEĞİŞKENLER
-    // ----------------------------------------------------------
-
-    final managedPersonName = nameController.text.trim();
-    final managedPersonDateOfBirth =
-        selectedDateOfBirth!.toIso8601String();
-    final managedPersonGender =
-        selectedGender!.toLowerCase();
-    final relationship =
-        selectedRelationship!.toLowerCase();
-
-    // Backendci arkadaşının kullanacağı veri.
-    final requestBody = {
-      'name': managedPersonName,
-      'date_of_birth': managedPersonDateOfBirth,
-      'gender': managedPersonGender,
-      'relationship': relationship,
-    };
-
-    debugPrint('Managed Person: $requestBody');
-
-    // ----------------------------------------------------------
-    // ŞİMDİLİK FRONTEND
-    // Backend geldiğinde API BURADA çağrılacak.
-    // ----------------------------------------------------------
-
-    final familyMember = FamilyMember(
-      name: managedPersonName,
+    final details = DependentDetails(
+      firstName: firstNameController.text,
+      lastName: lastNameController.text,
       dateOfBirth: selectedDateOfBirth!,
       gender: selectedGender!,
-      relationship: selectedRelationship!,
+      diabetesType: selectedDiabetesType,
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$managedPersonName added successfully.',
+    setState(() {
+      saving = true;
+      fieldErrors = const {};
+    });
+
+    try {
+      final existing = widget.existing;
+      final saved = existing == null
+          ? await _store.add(details)
+          : await _store.update(existing.id, details);
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        existing == null
+            ? '${saved.name} was added to your family.'
+            : '${saved.name} was updated.',
+      );
+      Navigator.pop(context, saved);
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        saving = false;
+        fieldErrors = e.fieldErrors;
+      });
+      _showMessage(
+        e.isNetworkError
+            ? 'No connection. Family members can only be saved online.'
+            : e.message,
+      );
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
         ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+  }
 
-    Navigator.pop(
-      context,
-      familyMember,
+  // ------------------------------------------------------------
+  // FIELD HELPERS
+  // ------------------------------------------------------------
+
+  InputDecoration _decoration({
+    required String hint,
+    required IconData icon,
+    String? errorText,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: color, width: width),
+        );
+
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon),
+      errorText: errorText,
+      filled: true,
+      fillColor: Colors.white,
+      border: border(_border),
+      enabledBorder: border(_border),
+      focusedBorder: border(_purple, 1.5),
     );
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
+  Widget _fieldLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: _label,
+        ),
       ),
+    );
+  }
+
+  Widget _nameField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required String errorKey,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldLabel(label),
+        TextField(
+          controller: controller,
+          enabled: !saving,
+          textInputAction: TextInputAction.next,
+          textCapitalization: TextCapitalization.words,
+          maxLength: 50,
+          decoration: _decoration(
+            hint: hint,
+            icon: Icons.person_outline_rounded,
+            errorText: fieldErrors[errorKey],
+          ).copyWith(counterText: ''),
+        ),
+      ],
     );
   }
 
@@ -348,11 +291,13 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateText = selectedDateOfBirth == null
+    final dob = selectedDateOfBirth;
+    final dateText = dob == null
         ? 'Select date of birth'
-        : '${selectedDateOfBirth!.day.toString().padLeft(2, '0')}/'
-            '${selectedDateOfBirth!.month.toString().padLeft(2, '0')}/'
-            '${selectedDateOfBirth!.year}';
+        : '${dob.day.toString().padLeft(2, '0')}/'
+            '${dob.month.toString().padLeft(2, '0')}/'
+            '${dob.year}';
+    final dobError = fieldErrors['dateOfBirth'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -360,9 +305,9 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Add Family Member',
-          style: TextStyle(
+        title: Text(
+          isEditing ? 'Edit Family Member' : 'Add Family Member',
+          style: const TextStyle(
             color: Color(0xFF1D2939),
             fontWeight: FontWeight.w800,
           ),
@@ -370,22 +315,14 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_rounded,
-            color: Color(0xFF344054),
+            color: _label,
           ),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            10,
-            20,
-            30,
-          ),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -418,31 +355,34 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                       ),
                       child: const Icon(
                         Icons.family_restroom_rounded,
-                        color: Color(0xFF765BD4),
+                        color: _purple,
                         size: 29,
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Who are you caring for?',
-                            style: TextStyle(
+                            isEditing
+                                ? 'Correct their details'
+                                : 'Who are you caring for?',
+                            style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1D2939),
                             ),
                           ),
-                          SizedBox(height: 5),
+                          const SizedBox(height: 5),
                           Text(
-                            'Add the person whose health you want to manage.',
-                            style: TextStyle(
+                            isEditing
+                                ? 'Their diary and readings stay as they are.'
+                                : 'Add the person whose health you want to manage.',
+                            style: const TextStyle(
                               fontSize: 12,
                               height: 1.4,
-                              color: Color(0xFF667085),
+                              color: _muted,
                             ),
                           ),
                         ],
@@ -455,50 +395,23 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
               const SizedBox(height: 26),
 
               // ------------------------------------------------
-              // FULL NAME
+              // NAME
               // ------------------------------------------------
 
-              const Text(
-                'Full Name',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF344054),
-                ),
+              _nameField(
+                label: 'First Name',
+                hint: 'Enter first name',
+                controller: firstNameController,
+                errorKey: 'firstName',
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
 
-              TextField(
-                controller: nameController,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: 'Enter full name',
-                  prefixIcon: const Icon(
-                    Icons.person_outline_rounded,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFE2E8F0),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFE2E8F0),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF765BD4),
-                      width: 1.5,
-                    ),
-                  ),
-                ),
+              _nameField(
+                label: 'Last Name',
+                hint: 'Enter last name',
+                controller: lastNameController,
+                errorKey: 'lastName',
               ),
 
               const SizedBox(height: 20),
@@ -507,19 +420,11 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
               // DATE OF BIRTH
               // ------------------------------------------------
 
-              const Text(
-                'Date of Birth',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF344054),
-                ),
-              ),
-
-              const SizedBox(height: 8),
+              _fieldLabel('Date of Birth'),
 
               InkWell(
-                onTap: _selectDateOfBirth,
+                key: const Key('dateOfBirthField'),
+                onTap: saving ? null : _selectDateOfBirth,
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   width: double.infinity,
@@ -531,14 +436,16 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFFE2E8F0),
+                      color: dobError != null
+                          ? Theme.of(context).colorScheme.error
+                          : _border,
                     ),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.calendar_today_outlined,
-                        color: Color(0xFF667085),
+                        color: _muted,
                         size: 21,
                       ),
                       const SizedBox(width: 12),
@@ -546,13 +453,11 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                         dateText,
                         style: TextStyle(
                           fontSize: 15,
-                          color: selectedDateOfBirth == null
+                          color: dob == null
                               ? const Color(0xFF98A2B3)
-                              : const Color(0xFF344054),
+                              : _label,
                           fontWeight:
-                              selectedDateOfBirth == null
-                                  ? FontWeight.w400
-                                  : FontWeight.w600,
+                              dob == null ? FontWeight.w400 : FontWeight.w600,
                         ),
                       ),
                     ],
@@ -560,62 +465,25 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
-
-              // ------------------------------------------------
-              // RELATIONSHIP
-              // ------------------------------------------------
-
-              const Text(
-                'Relationship',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF344054),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              DropdownButtonFormField<String>(
-                initialValue: selectedRelationship,
-                decoration: InputDecoration(
-                  hintText: 'Who are you caring for?',
-                  prefixIcon: const Icon(
-                    Icons.family_restroom_outlined,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFE2E8F0),
+              if (dobError != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: Text(
+                    dobError,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFE2E8F0),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF765BD4),
-                      width: 1.5,
-                    ),
+                )
+              else if (isEditing && dob == null)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: Text(
+                    'Please select it again to save the changes.',
+                    style: TextStyle(fontSize: 12, color: _muted),
                   ),
                 ),
-                items: relationships.map((relationship) {
-                  return DropdownMenuItem<String>(
-                    value: relationship,
-                    child: Text(
-                      _getRelationshipText(relationship),
-                    ),
-                  );
-                }).toList(),
-                onChanged: _onRelationshipChanged,
-              ),
 
               const SizedBox(height: 20),
 
@@ -623,7 +491,55 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
               // GENDER
               // ------------------------------------------------
 
-              _buildGenderField(),
+              _fieldLabel('Gender'),
+
+              DropdownButtonFormField<String>(
+                key: const Key('genderField'),
+                initialValue: selectedGender,
+                decoration: _decoration(
+                  hint: 'Select gender',
+                  icon: Icons.wc_rounded,
+                  errorText: fieldErrors['gender'],
+                ),
+                items: [
+                  for (final entry in _genders.entries)
+                    DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => selectedGender = value),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ------------------------------------------------
+              // DIABETES TYPE
+              // ------------------------------------------------
+
+              _fieldLabel('Diabetes Type (optional)'),
+
+              DropdownButtonFormField<String>(
+                key: const Key('diabetesTypeField'),
+                initialValue: selectedDiabetesType,
+                decoration: _decoration(
+                  hint: 'Select diabetes type',
+                  icon: Icons.water_drop_outlined,
+                  errorText: fieldErrors['diabetesType'],
+                ),
+                items: [
+                  for (final entry in _diabetesTypes.entries)
+                    DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => selectedDiabetesType = value),
+              ),
 
               const SizedBox(height: 18),
 
@@ -644,17 +560,17 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
                     Icon(
                       Icons.info_outline_rounded,
                       size: 20,
-                      color: Color(0xFF667085),
+                      color: _muted,
                     ),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'This person does not need to create a separate account. '
+                        'This person does not need an account and cannot log in. '
                         'You will manage their health information from your caregiver account.',
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.45,
-                          color: Color(0xFF667085),
+                          color: _muted,
                         ),
                       ),
                     ),
@@ -665,29 +581,39 @@ class _AddFamilyMemberScreenState extends State<AddFamilyMemberScreen> {
               const SizedBox(height: 25),
 
               // ------------------------------------------------
-              // ADD BUTTON
+              // SAVE BUTTON
               // ------------------------------------------------
 
               SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  onPressed: _addFamilyMember,
+                  onPressed: saving ? null : _save,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF765BD4),
+                    backgroundColor: _purple,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: _purple.withValues(alpha: 0.6),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(17),
                     ),
                   ),
-                  child: Text(
-                    _getButtonText(),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                  child: saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          isEditing ? 'Save Changes' : 'Add Family Member',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                 ),
               ),
             ],

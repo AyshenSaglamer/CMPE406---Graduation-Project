@@ -108,7 +108,11 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
         return 'The AI assistant is not available right now. '
             'Please try again later.';
       default:
-        return e.message;
+        // e.g. 400 with errors.from = "At least 2 glucose readings are
+        // needed in this time range": the field says what is wrong.
+        return e.fieldErrors.values.isNotEmpty
+            ? e.fieldErrors.values.first
+            : e.message;
     }
   }
 

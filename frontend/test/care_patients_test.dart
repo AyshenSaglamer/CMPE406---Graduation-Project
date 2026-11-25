@@ -271,15 +271,18 @@ void main() {
       expect(find.textContaining('More → Care Team'), findsOneWidget);
     });
 
-    testWidgets('the Family tab opens Invitations instead of a local form',
+    testWidgets('the Family tab offers Add Family Member and Invitations',
         (tester) async {
       await pump(tester);
 
       await tester.tap(find.text('Family'));
       await tester.pumpAndSettle();
-      expect(find.text('Add Family Member'), findsNothing);
+      expect(
+        find.widgetWithText(ElevatedButton, 'Add Family Member'),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Invitations'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Invitations'));
       await settle(tester);
 
       expect(find.byType(CareInvitationsScreen), findsOneWidget);

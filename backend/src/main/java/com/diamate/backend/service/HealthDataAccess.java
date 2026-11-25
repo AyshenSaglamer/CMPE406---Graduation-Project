@@ -80,12 +80,16 @@ public class HealthDataAccess {
     }
 
     /**
-     * Current rule: only the patient writes their own logs. The controllers also require the PATIENT role
-     * (@PreAuthorize), so clinicians and caregivers get 403 before reaching this check.
+     * The patient, or the caregiver who manages this patient (a dependent without an account, V12): fn_can_access with
+     * the 'write' permission. Nobody else writes, not even a clinician or caregiver with every view permission.
+     * The log controllers allow the PATIENT and CAREGIVER roles; a clinician gets 403 before reaching this check.
      */
     public void checkCanWrite(long viewerId, long patientId) {
-        if (viewerId != patientId) {
+        if (viewerId != patientId && !patientAccessRepository.canAccess(viewerId, patientId, WRITE)) {
             throw new ResourceNotFoundException("Patient not found");
         }
     }
+
+    /** fn_can_access permission of the managing caregiver (and of the patient themself). */
+    static final String WRITE = "write";
 }

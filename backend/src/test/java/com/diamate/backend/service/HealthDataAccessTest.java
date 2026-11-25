@@ -41,7 +41,7 @@ class HealthDataAccessTest {
 
     /** Permission names fn_can_access understands (Database/sql/07_app_functions_views.sql); anything else is false. */
     private static final Set<String> DATABASE_PERMISSIONS =
-            Set.of("glucose", "meals", "medications", "activity", "reports", "alerts", "recommend");
+            Set.of("glucose", "meals", "medications", "activity", "reports", "alerts", "recommend", "write");
 
     @Mock
     private PatientAccessRepository repository;
@@ -139,15 +139,27 @@ class HealthDataAccessTest {
     }
 
     @Test
-    void nobodyElseMayWriteEvenWithAnActiveRelationship() {
-        // Writing does not consult care_relationships at all: a clinician with every permission is still refused.
+    void nobodyElseMayWriteWithoutTheWritePermission() {
+        // Only fn_can_access 'write' (a managing caregiver) counts; view permissions never allow writing.
+        when(repository.canAccess(CLINICIAN, PATIENT, "write")).thenReturn(false);
+        when(repository.canAccess(OTHER_PATIENT, PATIENT, "write")).thenReturn(false);
+
         assertThatThrownBy(() -> access.checkCanWrite(CLINICIAN, PATIENT))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Patient not found");
         assertThatThrownBy(() -> access.checkCanWrite(OTHER_PATIENT, PATIENT))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        verify(repository, never()).canAccess(anyLong(), anyLong(), any());
+        verify(repository, never()).canAccess(anyLong(), anyLong(), org.mockito.ArgumentMatchers.eq("glucose"));
         verify(auditService, never()).patientDataViewed(anyLong(), anyLong(), any(), anyBoolean());
+    }
+
+    @Test
+    void theManagingCaregiverMayWriteTheirDependentsData() {
+        long caregiver = 9;
+        when(repository.canAccess(caregiver, PATIENT, "write")).thenReturn(true);
+
+        assertThatCode(() -> access.checkCanWrite(caregiver, PATIENT)).doesNotThrowAnyException();
+        verifyNoInteractions(auditService);
     }
 }

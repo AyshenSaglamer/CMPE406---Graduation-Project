@@ -26,7 +26,7 @@ import com.diamate.backend.service.AuthService;
  *
  * The database is built like a real install: the Database/sql package (schema, functions, views, reference data,
  * without the research CSV load and the demo seed, which need the dataset files), then the application starts and
- * Flyway applies V2..V11 on top. One container for all test classes (started on first use, removed by Testcontainers
+ * Flyway applies V2..V12 on top. One container for all test classes (started on first use, removed by Testcontainers
  * when the JVM ends). Each test creates its own accounts with unique emails, so tests do not depend on each other.
  *
  * Skipped (not failed) when Docker is not running.

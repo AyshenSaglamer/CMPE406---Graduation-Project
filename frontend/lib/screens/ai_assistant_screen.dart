@@ -9,6 +9,7 @@ import '../data/insulin_store.dart';
 import '../data/meal_store.dart';
 import '../services/api_exception.dart';
 import '../services/voice_recorder.dart';
+import '../widgets/entry_title.dart';
 import '../utils/form_helpers.dart';
 
 /// The patient types or says a sentence ("My glucose is 125 and I took 5
@@ -16,13 +17,25 @@ import '../utils/form_helpers.dart';
 /// or, for a recording, POST /ai/voice; nothing saved) and saves the entries
 /// only after the patient confirms them (POST /patients/{id}/ai-entries).
 /// The assistant understands English.
+///
+/// With [patientId] a caregiver logs for a family member without an account
+/// whom they manage: the entries are saved to that patient (the backend lets
+/// the managing caregiver write, 6df8a5b).
 class AiAssistantScreen extends StatefulWidget {
   const AiAssistantScreen({
     super.key,
     this.store,
     this.onSaved,
     this.recorder,
+    this.patientId,
+    this.patientName,
   });
+
+  /// The family member the entries are for; null = the logged-in patient.
+  final int? patientId;
+
+  /// Shown under the title and in the greeting when logging for [patientId].
+  final String? patientName;
 
   /// Defaults to [aiStore]; tests pass one with a fake backend.
   final AiStore? store;
@@ -51,11 +64,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final ScrollController scrollController =
       ScrollController();
 
-  final List<ChatMessage> messages = [
+  late final List<ChatMessage> messages = [
     ChatMessage(
-      text:
-          'Hello! I am your DiaMate Assistant. Tell me what you measured, '
-          'took, ate or did, and I will add it to your logs.',
+      text: _forFamily
+          ? 'Hello! Tell me what ${widget.patientName ?? 'your family member'} '
+              'measured, took, ate or did, and I will add it to their logs.'
+          : 'Hello! I am your DiaMate Assistant. Tell me what you measured, '
+              'took, ate or did, and I will add it to your logs.',
       isUser: false,
     ),
     ChatMessage(
@@ -69,6 +84,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   bool isSending = false;
 
   AiStore get _store => widget.store ?? aiStore;
+
+  /// A caregiver logging for a family member.
+  bool get _forFamily => widget.patientId != null;
 
   /// Created on the first tap of the microphone button.
   VoiceRecorder? _ownRecorder;
@@ -334,7 +352,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     });
 
     try {
-      final saved = await _store.save(entries);
+      final saved = await _store.save(entries, patientId: widget.patientId);
 
       if (!mounted) {
         return;
@@ -344,14 +362,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         message.state = EntriesState.saved;
       });
 
+      final whose = _forFamily ? 'their' : 'your';
       _addMessage(ChatMessage(
         text: saved == 1
-            ? 'Saved 1 entry to your logs.'
-            : 'Saved $saved entries to your logs.',
+            ? 'Saved 1 entry to $whose logs.'
+            : 'Saved $saved entries to $whose logs.',
         isUser: false,
       ));
 
-      await (widget.onSaved ?? _reloadLogs)();
+      // The default reload is of the logged-in patient's own lists; a family
+      // member's screen reloads its history when this screen closes.
+      final onSaved = widget.onSaved ?? (_forFamily ? null : _reloadLogs);
+      await onSaved?.call();
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -433,7 +455,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('DiaMate Assistant'),
+        title: EntryTitle('DiaMate Assistant', forName: widget.patientName),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: Column(

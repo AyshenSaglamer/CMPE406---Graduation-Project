@@ -70,6 +70,8 @@ class ReminderWebTest {
 
     private static final long PATIENT_ID = 5;
     private static final long CLINICIAN_ID = 2;
+    private static final long CAREGIVER_ID = 4;
+    private static final long DEPENDENT_ID = 9;
     private static final long REMINDER_ID = 60;
     private static final String REMINDERS_URL = "/api/v1/patients/{patientId}/reminders";
     private static final String REMINDER_URL = REMINDERS_URL + "/{reminderId}";
@@ -153,6 +155,21 @@ class ReminderWebTest {
     }
 
     @Test
+    void aCaregiverPassesTheRoleCheckAndTheServiceDecidesWhichPatient() throws Exception {
+        // The managing caregiver of a dependent (V12) writes; for any other patient the service answers 404.
+        when(reminderService.create(eq(CAREGIVER_ID), eq(DEPENDENT_ID), any())).thenReturn(reminder());
+        when(reminderService.create(eq(CAREGIVER_ID), eq(PATIENT_ID), any()))
+                .thenThrow(new ResourceNotFoundException("Patient not found"));
+
+        as(post(REMINDERS_URL, DEPENDENT_ID).contentType(MediaType.APPLICATION_JSON).content(METFORMIN), CAREGIVER_ID)
+                .andExpect(status().isCreated());
+        as(post(REMINDERS_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(METFORMIN), CAREGIVER_ID)
+                .andExpect(status().isNotFound());
+        as(delete(REMINDER_URL, DEPENDENT_ID, REMINDER_ID), CAREGIVER_ID).andExpect(status().isNoContent());
+        verify(reminderService).delete(CAREGIVER_ID, DEPENDENT_ID, REMINDER_ID);
+    }
+
+    @Test
     void notFoundIs404AndDeleteIs204() throws Exception {
         when(reminderService.get(PATIENT_ID, PATIENT_ID, REMINDER_ID))
                 .thenThrow(new ResourceNotFoundException("Reminder not found"));
@@ -216,6 +233,9 @@ class ReminderWebTest {
     }
 
     private static Role roleOf(long id) {
-        return id == CLINICIAN_ID ? Role.CLINICIAN : Role.PATIENT;
+        if (id == CLINICIAN_ID) {
+            return Role.CLINICIAN;
+        }
+        return id == CAREGIVER_ID ? Role.CAREGIVER : Role.PATIENT;
     }
 }

@@ -51,7 +51,8 @@ import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.FoodRecognitionService;
 
 /**
- * POST /api/v1/ai/food: a meal photo as multipart/form-data, only for patients. The checks of the photo are in
+ * POST /api/v1/ai/food: a meal photo as multipart/form-data, for patients and caregivers (who log for a family member
+ * they manage). The checks of the photo are in
  * FoodRecognitionService (FoodRecognitionServiceTest); here: the HTTP shape, the role rule and how errors are answered.
  */
 @WebMvcTest(
@@ -177,11 +178,19 @@ class AiFoodWebTest {
     }
 
     @Test
-    void onlyPatientsMayUploadAPhoto() throws Exception {
+    void cliniciansCannotUploadAPhoto() throws Exception {
         as(CLINICIAN_ID, multipart(URL).file(PHOTO)).andExpect(status().isForbidden());
-        as(CAREGIVER_ID, multipart(URL).file(PHOTO)).andExpect(status().isForbidden());
         mockMvc.perform(multipart(URL).file(PHOTO)).andExpect(status().isUnauthorized());
         verifyNoInteractions(foodRecognitionService);
+    }
+
+    @Test
+    void aCaregiverMayRecognizeTheMealOfAFamilyMember() throws Exception {
+        // Nothing is saved here; the meal is saved with the meal log endpoint, where checkCanWrite decides the patient.
+        when(foodRecognitionService.recognize(any())).thenReturn(new FoodRecognitionResponse("ResNet50", false, true,
+                List.of(), "Photo recognition can be wrong."));
+
+        as(CAREGIVER_ID, multipart(URL).file(PHOTO)).andExpect(status().isOk());
     }
 
     @Test

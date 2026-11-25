@@ -21,7 +21,8 @@ import jakarta.validation.Valid;
 /**
  * Step 2 of the AI assistant: POST /api/v1/ai/parse shows the patient what Dia understood (nothing saved); after the
  * patient confirms, the app sends those entries here and they are saved as logs with source AI_ASSISTANT.
- * Writing: only the patient (PATIENT role here, own id in the service), like the log endpoints.
+ * Writing: the patient, or the caregiver who manages a dependent without an account (V12), like the log endpoints;
+ * HealthDataAccess.checkCanWrite in the service decides which patient (404 otherwise).
  */
 @RestController
 @RequestMapping("/api/v1/patients/{patientId}/ai-entries")
@@ -35,7 +36,7 @@ public class AiEntryController {
 
     /** 201 when at least one log was saved; 200 when every entry had been saved before (same clientUuid). */
     @PostMapping
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<AiEntriesResponse> save(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @Valid @RequestBody AiEntriesRequest request) {
         AiEntriesResponse response = aiEntryService.save(CurrentUser.id(jwt), patientId, request);

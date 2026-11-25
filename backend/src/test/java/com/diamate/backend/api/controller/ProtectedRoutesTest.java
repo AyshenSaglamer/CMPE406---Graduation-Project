@@ -32,6 +32,7 @@ import com.diamate.backend.service.AiEntryService;
 import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.FoodRecognitionService;
 import com.diamate.backend.service.AlertService;
+import com.diamate.backend.service.DependentService;
 import com.diamate.backend.service.AuditLogService;
 import com.diamate.backend.service.AuthService;
 import com.diamate.backend.service.CareRelationshipService;
@@ -111,6 +112,9 @@ class ProtectedRoutesTest {
 
     @MockitoBean
     private ReminderService reminderService;
+
+    @MockitoBean
+    private DependentService dependentService;
 
     @MockitoBean
     private UserRepository userRepository;

@@ -39,6 +39,7 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import com.diamate.backend.api.dto.response.AiEntriesResponse;
+import com.diamate.backend.api.dto.response.DependentResponse;
 import com.diamate.backend.api.dto.response.ReminderResponse;
 import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
@@ -54,6 +55,7 @@ import com.diamate.backend.service.AiEntryService;
 import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.FoodRecognitionService;
 import com.diamate.backend.service.AlertService;
+import com.diamate.backend.service.DependentService;
 import com.diamate.backend.service.AuditLogService;
 import com.diamate.backend.service.AuthService;
 import com.diamate.backend.service.CareRelationshipService;
@@ -84,6 +86,9 @@ class AuthorizationMatrixTest {
     private static final Set<Role> PATIENT = EnumSet.of(Role.PATIENT);
     private static final Set<Role> ADMIN = EnumSet.of(Role.ADMIN);
     private static final Set<Role> CARE_TEAM = EnumSet.of(Role.CLINICIAN, Role.CAREGIVER);
+    private static final Set<Role> CAREGIVER = EnumSet.of(Role.CAREGIVER);
+    // Log writes: the patient, or the caregiver who manages a dependent (which patient: HealthDataAccess.checkCanWrite).
+    private static final Set<Role> WRITERS = EnumSet.of(Role.PATIENT, Role.CAREGIVER);
 
     private static final String LOGS = "/api/v1/patients/{patientId}/";
     private static final Map<String, Set<Role>> RULES = new TreeMap<>();
@@ -100,25 +105,28 @@ class AuthorizationMatrixTest {
         for (String log : new String[] { "glucose-logs", "insulin-logs", "meal-logs", "activity-logs" }) {
             RULES.put("GET " + LOGS + log, EVERYONE);
             RULES.put("GET " + LOGS + log + "/{logId}", EVERYONE);
-            RULES.put("POST " + LOGS + log, PATIENT);
-            RULES.put("PUT " + LOGS + log + "/{logId}", PATIENT);
-            RULES.put("DELETE " + LOGS + log + "/{logId}", PATIENT);
+            RULES.put("POST " + LOGS + log, WRITERS);
+            RULES.put("PUT " + LOGS + log + "/{logId}", WRITERS);
+            RULES.put("DELETE " + LOGS + log + "/{logId}", WRITERS);
         }
         RULES.put("GET " + LOGS + "alerts", EVERYONE);
         RULES.put("GET " + LOGS + "alerts/{alertId}", EVERYONE);
         RULES.put("PATCH " + LOGS + "alerts/{alertId}", EVERYONE);
-        // Reminders: read like the logs (fn_can_access "medications"), written only by the patient.
+        // Reminders: read like the logs (fn_can_access "medications"), written like the logs (the patient, or the
+        // caregiver who manages a dependent).
         RULES.put("GET " + LOGS + "reminders", EVERYONE);
         RULES.put("GET " + LOGS + "reminders/{reminderId}", EVERYONE);
-        RULES.put("POST " + LOGS + "reminders", PATIENT);
-        RULES.put("PUT " + LOGS + "reminders/{reminderId}", PATIENT);
-        RULES.put("DELETE " + LOGS + "reminders/{reminderId}", PATIENT);
-        RULES.put("POST " + LOGS + "reminders/{reminderId}/events", PATIENT);
+        RULES.put("POST " + LOGS + "reminders", WRITERS);
+        RULES.put("PUT " + LOGS + "reminders/{reminderId}", WRITERS);
+        RULES.put("DELETE " + LOGS + "reminders/{reminderId}", WRITERS);
+        RULES.put("POST " + LOGS + "reminders/{reminderId}/events", WRITERS);
         RULES.put("GET " + LOGS + "reminder-events", EVERYONE);
-        RULES.put("POST " + LOGS + "ai-entries", PATIENT);
-        RULES.put("POST /api/v1/ai/parse", PATIENT);
-        RULES.put("POST /api/v1/ai/voice", PATIENT);
-        RULES.put("POST /api/v1/ai/food", PATIENT);
+        RULES.put("POST " + LOGS + "ai-entries", WRITERS);
+        // The assistant and the meal photo only read text / speech / a photo (nothing saved), so the managing
+        // caregiver may use them too.
+        RULES.put("POST /api/v1/ai/parse", WRITERS);
+        RULES.put("POST /api/v1/ai/voice", WRITERS);
+        RULES.put("POST /api/v1/ai/food", WRITERS);
         RULES.put("POST /api/v1/ai/food/nutrition", PATIENT);
         RULES.put("GET /api/v1/ai/food/search", PATIENT);
         // Patient-history analyses: like the log lists, fn_can_access (reports + glucose) decides who sees what.
@@ -129,6 +137,8 @@ class AuthorizationMatrixTest {
         RULES.put("PATCH /api/v1/admin/users/{userId}/status", ADMIN);
         RULES.put("GET /api/v1/care-team/patients", CARE_TEAM);
         RULES.put("GET /api/v1/care-team/alerts", CARE_TEAM);
+        RULES.put("POST /api/v1/care-team/dependents", CAREGIVER);
+        RULES.put("PUT /api/v1/care-team/dependents/{patientId}", CAREGIVER);
         // Care relationships: which one the caller may touch is checked in CareRelationshipService (404 otherwise).
         RULES.put("POST /api/v1/care-relationships", PATIENT);
         RULES.put("GET /api/v1/care-relationships", EVERYONE);
@@ -164,7 +174,9 @@ class AuthorizationMatrixTest {
             Map.entry("POST /api/v1/care-relationships", "{\"memberEmail\":\"dr@example.com\"}"),
             Map.entry("POST /api/v1/care-relationships/{id}/accept", "{}"),
             Map.entry("POST /api/v1/care-relationships/{id}/decline", "{}"),
-            Map.entry("PATCH /api/v1/care-relationships/{id}", "{\"canViewMeals\":false}"));
+            Map.entry("PATCH /api/v1/care-relationships/{id}", "{\"canViewMeals\":false}"),
+            Map.entry("dependents", """
+                    {"firstName":"Can","lastName":"Kaya","dateOfBirth":"2016-04-01","gender":"MALE"}"""));
 
     private static final Map<Role, Long> USER_IDS = Map.of(Role.ADMIN, 1L, Role.CLINICIAN, 2L, Role.CAREGIVER, 4L,
             Role.PATIENT, 5L);
@@ -196,6 +208,7 @@ class AuthorizationMatrixTest {
     @MockitoBean private CareRelationshipService careRelationshipService;
     @MockitoBean private AuditLogService auditLogService;
     @MockitoBean private ReminderService reminderService;
+    @MockitoBean private DependentService dependentService;
     @MockitoBean private UserRepository userRepository;
 
     @BeforeEach
@@ -211,6 +224,8 @@ class AuthorizationMatrixTest {
         when(aiEntryService.save(anyLong(), anyLong(), any())).thenReturn(new AiEntriesResponse(0, List.of()));
         when(reminderService.create(anyLong(), anyLong(), any())).thenReturn(new ReminderResponse(1, 5, null, null,
                 null, null, null, List.of(), "UTC", true, 0, null, null, null));
+        when(dependentService.create(anyLong(), any())).thenReturn(new DependentResponse(10, "Can", "Kaya", null, null,
+                null, 1));
         when(reminderService.reportEvent(anyLong(), anyLong(), anyLong(), any())).thenReturn(CreateResult.existing(null));
     }
 

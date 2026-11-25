@@ -43,6 +43,7 @@ import com.diamate.backend.entity.GlucoseSource;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.InvalidFieldException;
+import com.diamate.backend.exception.ResourceNotFoundException;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.ActiveAccountValidator;
 import com.diamate.backend.security.JwtProperties;
@@ -126,13 +127,27 @@ class AiEntryWebTest {
     }
 
     @Test
-    void onlyPatientsCanSave() throws Exception {
-        for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID, ADMIN_ID }) {
+    void cliniciansAndAdminsCannotSave() throws Exception {
+        // A caregiver passes the role check (they may manage a dependent, V12); the service decides which patient.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
             as(post(URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(CONFIRMED), id)
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
         }
         verifyNoInteractions(aiEntryService);
+    }
+
+    @Test
+    void theManagingCaregiverSavesAndAnyOtherCaregiverGets404() throws Exception {
+        long dependentId = 9;
+        when(aiEntryService.save(eq(CAREGIVER_ID), eq(dependentId), any())).thenReturn(response(true));
+        when(aiEntryService.save(eq(CAREGIVER_ID), eq(PATIENT_ID), any()))
+                .thenThrow(new ResourceNotFoundException("Patient not found"));
+
+        as(post(URL, dependentId).contentType(MediaType.APPLICATION_JSON).content(CONFIRMED), CAREGIVER_ID)
+                .andExpect(status().isCreated());
+        as(post(URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(CONFIRMED), CAREGIVER_ID)
+                .andExpect(status().isNotFound());
     }
 
     @Test
