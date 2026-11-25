@@ -3,17 +3,37 @@ import 'package:flutter/material.dart';
 import '../data/reminder_store.dart';
 import '../services/api_exception.dart';
 import '../services/reminder_notifications.dart';
+import '../widgets/entry_title.dart';
 
 /// The patient's reminders (medication, glucose check, meal, appointment),
 /// saved in the backend and shown as phone notifications. "Today" lists
 /// today's reminders; the patient marks each one Taken, Skipped or Missed,
 /// which the care team sees as medication adherence.
+///
+/// With [patientId] a caregiver manages the reminders of a family member
+/// without an account (V12: the backend lets the managing caregiver write).
+/// Those reminders are not scheduled as notifications on this phone: the
+/// notifier keeps only the logged-in patient's own reminders.
 class ReminderScreen extends StatefulWidget {
-  const ReminderScreen({super.key, this.store, this.notifier, this.now});
+  const ReminderScreen({
+    super.key,
+    this.store,
+    this.notifier,
+    this.now,
+    this.patientId,
+    this.patientName,
+  });
 
   /// Default to [reminderStore] and [reminderNotifier]; tests pass fakes.
   final ReminderStore? store;
   final ReminderNotifier? notifier;
+
+  /// The family member whose reminders the caregiver manages; null = the
+  /// logged-in patient.
+  final int? patientId;
+
+  /// Shown under the title when managing [patientId]'s reminders.
+  final String? patientName;
 
   /// For tests; defaults to the clock.
   final DateTime Function()? now;
@@ -31,9 +51,15 @@ class _ReminderScreenState extends State<ReminderScreen> {
   /// Reminder ids (and "id@time" for answers) being saved right now.
   final Set<String> busy = {};
 
-  ReminderStore get _store => widget.store ?? reminderStore;
+  late final ReminderStore _store = widget.store ??
+      (widget.patientId == null
+          ? reminderStore
+          : ReminderStore(patientId: widget.patientId));
   ReminderNotifier get _notifier => widget.notifier ?? reminderNotifier;
   DateTime _now() => (widget.now ?? DateTime.now)();
+
+  /// A caregiver managing a family member's reminders.
+  bool get _forFamily => widget.patientId != null;
 
   @override
   void initState() {
@@ -79,7 +105,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   /// Keeps the phone's notifications equal to the saved reminders.
+  /// Not for a family member: scheduling replaces every notification on the
+  /// phone, so it would drop the others.
   Future<void> _reschedule() async {
+    if (_forFamily) {
+      return;
+    }
     try {
       await _notifier.schedule(reminders);
     } catch (_) {
@@ -122,6 +153,11 @@ class _ReminderScreenState extends State<ReminderScreen> {
       setState(() {
         reminders = [...reminders, created]..sort(_byTime);
       });
+
+      if (_forFamily) {
+        _showMessage('Reminder saved for ${widget.patientName ?? 'your family member'}.');
+        return;
+      }
 
       final allowed = await _notifier.requestPermission();
       await _reschedule();
@@ -237,7 +273,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Reminders'),
+        title: EntryTitle('Reminders', forName: widget.patientName),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: RefreshIndicator(
@@ -304,9 +340,9 @@ class _ReminderScreenState extends State<ReminderScreen> {
       ],
       Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
-              'Your Reminders',
+              _forFamily ? 'Their Reminders' : 'Your Reminders',
               style: TextStyle(
                 fontSize: 21,
                 fontWeight: FontWeight.w800,
@@ -543,8 +579,10 @@ class _ReminderScreenState extends State<ReminderScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 7),
-            const Text(
-              'Create a reminder for your medicines, glucose checks, meals or appointments.',
+            Text(
+              _forFamily
+                  ? 'Create a reminder for their medicines, glucose checks, meals or appointments.'
+                  : 'Create a reminder for your medicines, glucose checks, meals or appointments.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF718096)),
             ),
@@ -571,16 +609,20 @@ class _ReminderScreenState extends State<ReminderScreen> {
         color: const Color(0xFFEFF8FF),
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline_rounded, color: Color(0xFF168AF7), size: 21),
-          SizedBox(width: 10),
+          const Icon(Icons.info_outline_rounded, color: Color(0xFF168AF7), size: 21),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Reminders are saved to your account and shown as notifications on '
-              'this phone. Your doctor and caregivers who see your medications '
-              'can see the plan and whether doses were taken. Swipe left to delete.',
+              _forFamily
+                  ? 'You keep this plan for your family member and mark each dose '
+                      'Taken, Skipped or Missed. These reminders are not shown as '
+                      'notifications on this phone. Swipe left to delete.'
+                  : 'Reminders are saved to your account and shown as notifications on '
+                      'this phone. Your doctor and caregivers who see your medications '
+                      'can see the plan and whether doses were taken. Swipe left to delete.',
               style: TextStyle(fontSize: 11, height: 1.5, color: Color(0xFF5F7489)),
             ),
           ),

@@ -9,6 +9,7 @@ import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/date_time_tile.dart';
+import '../widgets/entry_title.dart';
 import 'food_camera_screen.dart';
 
 class MealEntryScreen extends StatefulWidget {
@@ -17,7 +18,16 @@ class MealEntryScreen extends StatefulWidget {
     this.photoPicker,
     this.recognizer,
     this.store,
+    this.patientId,
+    this.patientName,
   });
+
+  /// A family member the logged-in caregiver manages; null = the logged-in
+  /// patient.
+  final int? patientId;
+
+  /// Shown under the title when logging for [patientId].
+  final String? patientName;
 
   /// Passed on to the meal photo screen (tests use fakes).
   final PhotoPicker? photoPicker;
@@ -162,7 +172,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
         'source': fromPhoto ? 'AI_PHOTO' : 'MANUAL',
         if (fromPhoto) 'aiConfidence': ?aiConfidence,
         'clientUuid': clientUuid,
-      }) == null;
+      }, patientId: widget.patientId) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -204,7 +214,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Meal'),
+        title: EntryTitle('Meal', forName: widget.patientName),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(

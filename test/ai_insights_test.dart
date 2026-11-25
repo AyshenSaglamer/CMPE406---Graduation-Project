@@ -66,6 +66,15 @@ class FakeBackend {
 
     if (request.url.path == '/api/v1/ai/patients/7/summary' &&
         request.method == 'GET') {
+      if (status == 400) {
+        // What the backend answers for a range with too few readings.
+        return _json(400, {
+          'detail': 'One or more fields are invalid',
+          'errors': {
+            'from': 'At least 2 glucose readings are needed in this time range',
+          },
+        });
+      }
       if (status != 200) {
         return _json(status, {'detail': 'AI said no ($status)'});
       }
@@ -219,6 +228,16 @@ void main() {
 
       expect(find.text('Next glucose: Trending higher'), findsOneWidget);
       expect(backend.requests, hasLength(2));
+    });
+
+    testWidgets('a rejected range shows the backend reason, not a generic one',
+        (tester) async {
+      backend.status = 400;
+      await pump(tester);
+
+      expect(find.text('At least 2 glucose readings are needed in this time range'),
+          findsOneWidget);
+      expect(find.text('One or more fields are invalid'), findsNothing);
     });
 
     testWidgets('AI service down is explained', (tester) async {
