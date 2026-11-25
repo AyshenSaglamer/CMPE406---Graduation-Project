@@ -189,6 +189,22 @@ public class AuditService {
         write(userId, patientId, change.name(), "CARE_RELATIONSHIP", String.valueOf(relationshipId), true, details);
     }
 
+    /** What a managing caregiver did to a dependent's record (stored as the action). */
+    public enum DependentChange {
+        DEPENDENT_CREATED,
+        DEPENDENT_UPDATED
+    }
+
+    /**
+     * A caregiver added a dependent (a patient without an account) or corrected their details. details: the managing
+     * relationship, not the personal data.
+     */
+    @Transactional
+    public void dependentChanged(long caregiverId, long patientId, long relationshipId, DependentChange change) {
+        write(caregiverId, patientId, change.name(), "PATIENT", String.valueOf(patientId), true,
+                Map.of("relationshipId", String.valueOf(relationshipId)));
+    }
+
     /**
      * A patient's invitation was refused (no such member, already invited or declined recently, invalid flags).
      * Counted for the daily invitation limit. The email is not stored: only why it was refused.

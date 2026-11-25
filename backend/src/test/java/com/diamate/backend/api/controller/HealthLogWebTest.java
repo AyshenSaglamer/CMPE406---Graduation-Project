@@ -142,8 +142,9 @@ class HealthLogWebTest {
     }
 
     @Test
-    void onlyPatientsCanWriteLogs() throws Exception {
-        for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID, ADMIN_ID }) {
+    void cliniciansAndAdminsCannotWriteLogs() throws Exception {
+        // A caregiver passes the role check (they may manage a dependent, V12); the service decides which patient.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
             as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(VALID_GLUCOSE), id)
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));

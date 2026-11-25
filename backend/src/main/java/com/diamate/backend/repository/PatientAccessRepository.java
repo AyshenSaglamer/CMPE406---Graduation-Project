@@ -85,7 +85,7 @@ public class PatientAccessRepository {
         return jdbc.query("""
                 SELECT u.id AS patient_id, u.first_name, u.last_name,
                        r.can_view_glucose, r.can_view_meals, r.can_view_medications, r.can_view_activity,
-                       r.can_view_reports, r.can_receive_alerts, r.can_add_recommendations
+                       r.can_view_reports, r.can_receive_alerts, r.can_add_recommendations, r.manages_patient
                 FROM care_relationships r
                 JOIN users u ON u.id = r.patient_id
                 WHERE r.member_id = :member
@@ -105,7 +105,8 @@ public class PatientAccessRepository {
                         rs.getBoolean("can_view_activity"),
                         rs.getBoolean("can_view_reports"),
                         rs.getBoolean("can_receive_alerts"),
-                        rs.getBoolean("can_add_recommendations")));
+                        rs.getBoolean("can_add_recommendations"),
+                        rs.getBoolean("manages_patient")));
     }
 
     private static Integer nullableInt(ResultSet rs, String column) throws SQLException {
@@ -125,6 +126,6 @@ public class PatientAccessRepository {
 
     public record CareTeamPatientRow(long patientId, String firstName, String lastName,
             boolean canViewGlucose, boolean canViewMeals, boolean canViewMedications, boolean canViewActivity,
-            boolean canViewReports, boolean canReceiveAlerts, boolean canAddRecommendations) {
+            boolean canViewReports, boolean canReceiveAlerts, boolean canAddRecommendations, boolean managed) {
     }
 }

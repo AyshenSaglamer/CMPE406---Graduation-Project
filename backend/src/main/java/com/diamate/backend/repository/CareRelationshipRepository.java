@@ -94,6 +94,63 @@ public class CareRelationshipRepository {
     }
 
     /**
+     * An ACTIVE relationship in which the caregiver manages a dependent (V12): every view permission, no
+     * recommendations, no end date. Returns its id. The database refuses it for a patient who has an account
+     * (care_manager_guard) and for a second open manager (ux_care_one_manager).
+     */
+    @Transactional
+    public long insertManaging(long patientId, long caregiverId) {
+        MapSqlParameterSource params = permissionParams(MANAGING_PERMISSIONS)
+                .addValue("patient", patientId)
+                .addValue("member", caregiverId);
+        return jdbc.queryForObject("""
+                INSERT INTO care_relationships (patient_id, member_id, member_role, status, manages_patient,
+                       can_view_glucose, can_view_meals, can_view_medications, can_view_activity, can_view_reports,
+                       can_receive_alerts, can_add_recommendations, invited_by)
+                VALUES (:patient, :member, 'CAREGIVER', 'ACTIVE', true, :glucose, :meals, :medications, :activity,
+                        :reports, :alerts, :recommendations, :member)
+                RETURNING id
+                """, params, Long.class);
+    }
+
+    /** The id of the ACTIVE relationship in which this caregiver manages this patient, if there is one. */
+    @Transactional(readOnly = true)
+    public Optional<Long> findManagingId(long caregiverId, long patientId) {
+        return jdbc.query("""
+                SELECT id FROM care_relationships
+                WHERE member_id = :member AND patient_id = :patient AND manages_patient AND status = 'ACTIVE'
+                """, Map.of("member", caregiverId, "patient", patientId), (rs, i) -> rs.getLong(1))
+                .stream().findFirst();
+    }
+
+    /** How many dependents this caregiver manages now (ACTIVE). */
+    public int countManagedBy(long caregiverId) {
+        Integer count = jdbc.queryForObject("""
+                SELECT count(*) FROM care_relationships
+                WHERE member_id = :member AND manages_patient AND status = 'ACTIVE'
+                """, Map.of("member", caregiverId), Integer.class);
+        return count == null ? 0 : count;
+    }
+
+    /** Locks the caregiver's user row until the end of the transaction, so their dependents are added one by one. */
+    public void lockMemberForDependent(long caregiverId) {
+        jdbc.query("SELECT id FROM users WHERE id = :member FOR UPDATE", Map.of("member", caregiverId),
+                (rs, i) -> rs.getLong(1));
+    }
+
+    /** Whether this relationship is one in which a caregiver manages a dependent. */
+    @Transactional(readOnly = true)
+    public boolean isManaging(long id) {
+        Boolean managing = jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM care_relationships WHERE id = :id AND manages_patient)",
+                Map.of("id", id), Boolean.class);
+        return Boolean.TRUE.equals(managing);
+    }
+
+    /** What a managing caregiver's row says: everything shared except recommendations (fn_can_access grants it all anyway). */
+    public static final Permissions MANAGING_PERMISSIONS = new Permissions(true, true, true, true, true, true, false);
+
+    /**
      * Locks the patient's profile row until the end of the transaction (SELECT ... FOR UPDATE), so the invitations of
      * one patient run one after the other: the daily limit is counted and enforced as one step.
      */

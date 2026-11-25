@@ -228,10 +228,11 @@ class LogEndpointsWebTest {
     }
 
     @Test
-    void onlyPatientsCanUpdateOrDelete() throws Exception {
+    void cliniciansAndAdminsCannotUpdateOrDelete() throws Exception {
         String[][] typeUrlAndBody = { { INSULIN_URL, VALID_INSULIN }, { MEAL_URL, VALID_MEAL },
                 { ACTIVITY_URL, VALID_ACTIVITY } };
-        for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID, ADMIN_ID }) {
+        // A caregiver passes the role check (managed dependents, V12); HealthDataAccess.checkCanWrite decides.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
             for (String[] type : typeUrlAndBody) {
                 as(put(type[0] + "/{logId}", PATIENT_ID, 1).contentType(MediaType.APPLICATION_JSON).content(type[1]), id)
                         .andExpect(status().isForbidden())
