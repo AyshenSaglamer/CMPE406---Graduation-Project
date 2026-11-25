@@ -50,19 +50,22 @@ public class AiController {
         this.foodRecognitionService = foodRecognitionService;
     }
 
-    /** Body: {"text": "..."}. What the assistant understood; nothing is saved. */
+    /**
+     * Body: {"text": "..."}. What the assistant understood; nothing is saved. Open to caregivers too, for the family
+     * member they manage: saving goes through /patients/{id}/ai-entries, where checkCanWrite decides the patient.
+     */
     @PostMapping("/parse")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public AiParseResponse parse(@Valid @RequestBody AiParseRequest request) {
         return aiService.parse(request.text());
     }
 
     /**
      * multipart/form-data with a field "audio": a WAV, MP3, M4A, WEBM or OGG recording of at most 10 MB. Answers what
-     * the speech-to-text heard and what the assistant understood; nothing is saved.
+     * the speech-to-text heard and what the assistant understood; nothing is saved. Open to caregivers like parse.
      */
     @PostMapping(value = "/voice", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public AiVoiceResponse voice(@RequestPart("audio") MultipartFile audio) {
         return aiService.parseVoice(audio);
     }

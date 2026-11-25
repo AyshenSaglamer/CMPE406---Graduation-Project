@@ -115,10 +115,10 @@ Bitiş tarihi geçer                                      →  erişim kendiliğ
 
 | Endpoint | Rol | Veri erişimi |
 |---|---|---|
-| `POST /ai/parse` (metin → kayıt önerisi, kaydetmez) | `PATIENT` | Yok (yalnız gönderilen metin) |
-| `POST /ai/voice` (ses → kayıt önerisi, kaydetmez) | `PATIENT` | Yok |
+| `POST /ai/parse` (metin → kayıt önerisi, kaydetmez) | `PATIENT`, `CAREGIVER` | Yok (yalnız gönderilen metin) |
+| `POST /ai/voice` (ses → kayıt önerisi, kaydetmez) | `PATIENT`, `CAREGIVER` | Yok |
 | `POST /ai/food` (yemek fotoğrafı → tahmin + yaklaşık besin değeri, kaydetmez) | `PATIENT` | Yok (yalnız gönderilen fotoğraf ve `food_catalog`) |
-| `POST /patients/{id}/ai-entries` (onaylanan öneriyi kaydeder) | `PATIENT` (kendisi) | Kayıt yazma kuralları |
+| `POST /patients/{id}/ai-entries` (onaylanan öneriyi kaydeder) | `PATIENT` (kendisi), `CAREGIVER` (yalnız yönettiği hesapsız aile üyesi) | Kayıt yazma kuralları (`checkCanWrite`, başka hasta → `404`) |
 | `GET /ai/patients/{id}/summary`, `anomaly`, `data-quality`, `drift`, `prediction` | Herkes (rol) | `reports` + `glucose` izni, yoksa `404`; her okuma denetime yazılır |
 
 - **AI servisi kapalı ya da yavaşsa:** Bağlantı için 2 sn, okuma için 10 sn (ses için 60 sn) zaman aşımı var. Aşılırsa `503 "The AI service is currently unavailable"` döner.

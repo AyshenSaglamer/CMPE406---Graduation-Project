@@ -443,11 +443,19 @@ class HealthLogWebTest {
     // ---------- AI ----------
 
     @Test
-    void aiParseIsForPatientsOnly() throws Exception {
+    void aiParseIsForPatientsAndCaregiversOnly() throws Exception {
+        // A caregiver may use the assistant for the family member they manage; nothing is saved here.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
+            as(post("/api/v1/ai/parse").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"glucose 130\"}"),
+                    id)
+                    .andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(aiService);
+
+        when(aiService.parse("glucose 130")).thenReturn(new AiParseResponse("SUCCESS", 0, List.of(), null));
         as(post("/api/v1/ai/parse").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"glucose 130\"}"),
                 CAREGIVER_ID)
-                .andExpect(status().isForbidden());
-        verifyNoInteractions(aiService);
+                .andExpect(status().isOk());
     }
 
     @Test

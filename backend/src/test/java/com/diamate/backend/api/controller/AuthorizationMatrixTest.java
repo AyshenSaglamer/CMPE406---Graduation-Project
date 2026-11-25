@@ -112,17 +112,19 @@ class AuthorizationMatrixTest {
         RULES.put("GET " + LOGS + "alerts", EVERYONE);
         RULES.put("GET " + LOGS + "alerts/{alertId}", EVERYONE);
         RULES.put("PATCH " + LOGS + "alerts/{alertId}", EVERYONE);
-        // Reminders: read like the logs (fn_can_access "medications"), written only by the patient.
+        // Reminders: read like the logs (fn_can_access "medications"), written like the logs (the patient, or the
+        // caregiver who manages a dependent).
         RULES.put("GET " + LOGS + "reminders", EVERYONE);
         RULES.put("GET " + LOGS + "reminders/{reminderId}", EVERYONE);
-        RULES.put("POST " + LOGS + "reminders", PATIENT);
-        RULES.put("PUT " + LOGS + "reminders/{reminderId}", PATIENT);
-        RULES.put("DELETE " + LOGS + "reminders/{reminderId}", PATIENT);
-        RULES.put("POST " + LOGS + "reminders/{reminderId}/events", PATIENT);
+        RULES.put("POST " + LOGS + "reminders", WRITERS);
+        RULES.put("PUT " + LOGS + "reminders/{reminderId}", WRITERS);
+        RULES.put("DELETE " + LOGS + "reminders/{reminderId}", WRITERS);
+        RULES.put("POST " + LOGS + "reminders/{reminderId}/events", WRITERS);
         RULES.put("GET " + LOGS + "reminder-events", EVERYONE);
-        RULES.put("POST " + LOGS + "ai-entries", PATIENT);
-        RULES.put("POST /api/v1/ai/parse", PATIENT);
-        RULES.put("POST /api/v1/ai/voice", PATIENT);
+        RULES.put("POST " + LOGS + "ai-entries", WRITERS);
+        // The assistant only reads text / speech (nothing saved), so the managing caregiver may use it too.
+        RULES.put("POST /api/v1/ai/parse", WRITERS);
+        RULES.put("POST /api/v1/ai/voice", WRITERS);
         RULES.put("POST /api/v1/ai/food", PATIENT);
         // Patient-history analyses: like the log lists, fn_can_access (reports + glucose) decides who sees what.
         for (String analysis : new String[] { "summary", "anomaly", "data-quality", "drift", "prediction" }) {
