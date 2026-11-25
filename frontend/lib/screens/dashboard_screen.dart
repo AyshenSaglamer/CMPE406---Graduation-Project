@@ -10,6 +10,7 @@ import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
+import '../utils/greeting.dart';
 import 'activity_entry_screen.dart';
 import 'ai_assistant_screen.dart';
 import 'care_team_screen.dart';
@@ -686,16 +687,18 @@ class _HomeTab extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hello \u{1F44B}',
-                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+                greetingFor(authService.currentUser),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
               ),
-              SizedBox(height: 3),
-              Text(
+              const SizedBox(height: 3),
+              const Text(
                 'Let’s take care of your health today.',
                 style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
               ),

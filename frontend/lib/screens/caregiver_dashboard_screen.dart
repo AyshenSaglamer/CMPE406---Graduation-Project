@@ -6,7 +6,9 @@ import '../data/dependent_store.dart';
 import '../data/reminder_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
+import '../utils/greeting.dart';
 import 'add_family_member_screen.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
@@ -437,19 +439,21 @@ class _CaregiverDashboardScreenState
 
         const SizedBox(width: 12),
 
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hello 👋',
-                style: TextStyle(
+                greetingFor(authService.currentUser),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   fontSize: 23,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              SizedBox(height: 3),
-              Text(
+              const SizedBox(height: 3),
+              const Text(
                 'Keep your family health on track.',
                 style: TextStyle(
                   fontSize: 13,
