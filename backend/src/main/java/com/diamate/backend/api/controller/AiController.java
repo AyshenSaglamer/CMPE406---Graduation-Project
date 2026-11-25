@@ -1,6 +1,7 @@
 package com.diamate.backend.api.controller;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -20,9 +21,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.diamate.backend.ai.AiAnalysis;
 import com.diamate.backend.api.dto.request.AiParseRequest;
+import com.diamate.backend.api.dto.request.FoodNutritionRequest;
 import com.diamate.backend.api.dto.response.AiParseResponse;
 import com.diamate.backend.api.dto.response.AiVoiceResponse;
+import com.diamate.backend.api.dto.response.FoodNutritionResponse;
 import com.diamate.backend.api.dto.response.FoodRecognitionResponse;
+import com.diamate.backend.api.dto.response.FoodSearchResult;
 import com.diamate.backend.security.CurrentUser;
 import com.diamate.backend.service.AiService;
 import com.diamate.backend.service.FoodRecognitionService;
@@ -76,6 +80,23 @@ public class AiController {
     @PreAuthorize("hasRole('PATIENT')")
     public FoodRecognitionResponse food(@RequestPart("image") MultipartFile image) {
         return foodRecognitionService.recognize(image);
+    }
+
+    /**
+     * Body: {"items": [{"foodCatalogId": 76, "grams": 150}, ...]} (1 to 20 foods, 1 to 2000 g each). The nutrition of
+     * the foods and amounts the patient confirmed or corrected after a photo, and of the whole meal; nothing is saved.
+     */
+    @PostMapping("/food/nutrition")
+    @PreAuthorize("hasRole('PATIENT')")
+    public FoodNutritionResponse foodNutrition(@Valid @RequestBody FoodNutritionRequest request) {
+        return foodRecognitionService.nutrition(request);
+    }
+
+    /** ?q=lahm (2 to 50 characters): catalog foods for the "wrong food?" picker, at most 20. */
+    @GetMapping("/food/search")
+    @PreAuthorize("hasRole('PATIENT')")
+    public List<FoodSearchResult> foodSearch(@RequestParam("q") String query) {
+        return foodRecognitionService.search(query);
     }
 
     @GetMapping("/patients/{patientId}/summary")

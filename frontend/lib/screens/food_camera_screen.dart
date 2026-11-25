@@ -45,35 +45,86 @@ Future<PickedPhoto?> pickMealPhoto(ImageSource source) async {
   );
 }
 
+/// A recognised food the patient confirmed, with the portion they chose
+/// (SMALL, MEDIUM or LARGE).
+class ConfirmedFood {
+  final FoodPrediction prediction;
+  final String portion;
+
+  const ConfirmedFood(this.prediction, {this.portion = 'MEDIUM'});
+
+  /// Rough carbs of the chosen portion, null if unknown.
+  double? get carbsG => prediction.carbsFor(portion);
+}
+
 /// What the patient chose in the camera screen, put into the meal form.
 class FoodPhotoResult {
-  /// The confirmed guess (if any) first, then anything typed by hand.
+  /// The confirmed foods first, then anything typed by hand.
   final List<String> foods;
 
-  /// The model's guess the patient confirmed, null if they only typed.
-  final FoodPrediction? confirmed;
+  /// The recognised foods the patient confirmed (one for a single dish,
+  /// several for a plate), empty if they only typed.
+  final List<ConfirmedFood> confirmedFoods;
 
-  const FoodPhotoResult({required this.foods, this.confirmed});
+  const FoodPhotoResult({required this.foods, this.confirmedFoods = const []});
+
+  /// The first confirmed food, null if they only typed.
+  FoodPrediction? get confirmed =>
+      confirmedFoods.isEmpty ? null : confirmedFoods.first.prediction;
 
   /// A food came from the recognition: the meal is saved as AI_PHOTO.
-  bool get fromRecognition => confirmed != null;
+  bool get fromRecognition => confirmedFoods.isNotEmpty;
 
-  /// For the meal log's aiConfidence (0..1, at most 3 decimals).
-  double? get aiConfidence => confirmed == null
-      ? null
-      : double.parse(confirmed!.confidence.toStringAsFixed(3));
+  /// For the meal log's aiConfidence (0..1, at most 3 decimals): the lowest
+  /// confidence of the confirmed foods.
+  double? get aiConfidence {
+    if (confirmedFoods.isEmpty) {
+      return null;
+    }
+    final lowest = confirmedFoods
+        .map((f) => f.prediction.confidence)
+        .reduce((a, b) => a < b ? a : b);
+    return double.parse(lowest.toStringAsFixed(3));
+  }
 
-  /// Rough carbs of a typical serving of the confirmed food, null if unknown.
-  double? get carbsEstimate => confirmed?.carbsGPerServing;
+  /// Rough carbs of the confirmed foods and portions. Null when there is none
+  /// or one of them has no estimate: a part of the meal is never counted as
+  /// 0 g, the patient types the carbs instead.
+  double? get carbsEstimate {
+    if (confirmedFoods.isEmpty ||
+        confirmedFoods.any((f) => f.carbsG == null)) {
+      return null;
+    }
+    final sum = confirmedFoods.fold<double>(0, (total, f) => total + f.carbsG!);
+    return double.parse(sum.toStringAsFixed(1));
+  }
 
   /// "Pizza, Salad"
   String get description => foods.join(', ');
 }
 
-/// Photo of a meal -> the model's guesses (at most 3, for the whole plate)
-/// -> the patient picks the right one or none and adds what was missed ->
-/// back to the meal form, where meal type, time and carbs are checked and the
-/// meal is saved. Nothing is saved here.
+/// One food region of a plate with several foods, as the patient set it.
+class _PlateChoice {
+  _PlateChoice(this.item) : included = !item.lowConfidence;
+
+  final DetectedFood item;
+
+  /// Which of the region's guesses is chosen.
+  int index = 0;
+
+  /// The patient ate it (ticked).
+  bool included;
+
+  String portion = 'MEDIUM';
+
+  FoodPrediction get prediction => item.predictions[index];
+}
+
+/// Photo of a meal -> the model's guesses (at most 3 for one dish, or one per
+/// food when the plate has several) -> the patient picks the right ones and
+/// their portions and adds what was missed -> back to the meal form, where
+/// meal type, time and carbs are checked and the meal is saved. Nothing is
+/// saved here.
 class FoodCameraScreen extends StatefulWidget {
   const FoodCameraScreen({super.key, this.picker, this.recognizer});
 
@@ -100,6 +151,12 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
 
   /// The guess the patient picked ([FoodPrediction.food]), or null.
   String? selected;
+
+  /// Portion of the picked guess (one dish).
+  String portion = 'MEDIUM';
+
+  /// Several foods on the plate: one entry per food, instead of [predictions].
+  List<_PlateChoice> plate = [];
 
   /// The backend's note on the numbers (shown under the guesses).
   String? recognitionNote;
@@ -173,14 +230,23 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       setState(() {
         predictions = found.predictions;
         selected = found.suggested?.food;
+        portion = 'MEDIUM';
+        plate = found.showsPlate
+            ? [for (final item in found.items) _PlateChoice(item)]
+            : [];
         recognitionNote = found.note;
         stage = _Stage.results;
         notice = found.predictions.isEmpty
             ? 'No food was recognised in this photo. Add what you ate below.'
-            : found.lowConfidence
-                ? 'DiaMate is not sure about this photo. Pick the right food '
-                    'if it is listed, or add it below.'
-                : null;
+            : plate.isNotEmpty
+                ? (plate.any((c) => !c.included)
+                    ? 'DiaMate is not sure about some foods. Tick only what '
+                        'you ate.'
+                    : null)
+                : found.lowConfidence
+                    ? 'DiaMate is not sure about this photo. Pick the right '
+                        'food if it is listed, or add it below.'
+                    : null;
       });
     } on FoodRecognitionUnavailable {
       if (!mounted) {
@@ -190,6 +256,7 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       setState(() {
         predictions = [];
         selected = null;
+        plate = [];
         stage = _Stage.results;
         notice = 'Food recognition is not connected yet. Add what you see in '
             'the photo below.';
@@ -202,6 +269,7 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
       setState(() {
         predictions = [];
         selected = null;
+        plate = [];
         stage = _Stage.results;
         notice = e.message;
         noticeIsError = true;
@@ -232,12 +300,27 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
     return null;
   }
 
-  List<String> get _chosenFoods => [
-        if (_confirmed != null) _confirmed!.displayName,
-        ...manual.where(
-          (m) => m.toLowerCase() != _confirmed?.displayName.toLowerCase(),
-        ),
-      ];
+  /// The recognised foods the patient confirmed, with their portions.
+  List<ConfirmedFood> get _confirmedFoods => plate.isNotEmpty
+      ? [
+          for (final choice in plate)
+            if (choice.included)
+              ConfirmedFood(choice.prediction, portion: choice.portion),
+        ]
+      : [if (_confirmed != null) ConfirmedFood(_confirmed!, portion: portion)];
+
+  List<String> get _chosenFoods {
+    final foods = <String>[];
+    for (final name in [
+      for (final food in _confirmedFoods) food.prediction.displayName,
+      ...manual,
+    ]) {
+      if (!foods.any((f) => f.toLowerCase() == name.toLowerCase())) {
+        foods.add(name);
+      }
+    }
+    return foods;
+  }
 
   void _useFoods() {
     final foods = _chosenFoods;
@@ -247,7 +330,7 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
 
     Navigator.pop(
       context,
-      FoodPhotoResult(foods: foods, confirmed: _confirmed),
+      FoodPhotoResult(foods: foods, confirmedFoods: _confirmedFoods),
     );
   }
 
@@ -394,7 +477,27 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
         ),
         const SizedBox(height: 16),
       ],
-      if (predictions.isNotEmpty) ...[
+      if (plate.isNotEmpty) ...[
+        const Text(
+          'Foods on your plate',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Tick what you ate, choose the portion. Tap ⋮ if a name is wrong.',
+          style: TextStyle(fontSize: 12, color: _muted),
+        ),
+        const SizedBox(height: 8),
+        for (final choice in plate) _buildPlateChoice(choice),
+        if (recognitionNote != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            recognitionNote!,
+            style: const TextStyle(fontSize: 11, height: 1.4, color: _muted),
+          ),
+        ],
+        const SizedBox(height: 12),
+      ] else if (predictions.isNotEmpty) ...[
         const Text(
           'Is this what you ate?',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
@@ -412,6 +515,7 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
               onTap: () => setState(() {
                 // Tapping the picked one again un-picks it.
                 selected = selected == p.food ? null : p.food;
+                portion = 'MEDIUM';
               }),
               leading: Icon(
                 selected == p.food
@@ -427,10 +531,19 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
                 [
                   '${p.confidenceText} sure',
                   if (p.carbsText != null) p.carbsText!,
+                  if (p.macrosText != null) p.macrosText!,
                 ].join(' · '),
               ),
             ),
           ),
+        if (_confirmed != null && _confirmed!.portionOptions.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _buildPortions(
+            _confirmed!,
+            portion,
+            (size) => setState(() => portion = size),
+          ),
+        ],
         if (recognitionNote != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -483,6 +596,101 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
     ];
   }
 
+  Widget _buildPlateChoice(_PlateChoice choice) {
+    final p = choice.prediction;
+    final carbs = p.carbsFor(choice.portion);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              onTap: () => setState(() => choice.included = !choice.included),
+              leading: Icon(
+                choice.included
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                color: choice.included ? _orange : _muted,
+              ),
+              title: Text(
+                p.displayName,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                [
+                  '${p.confidenceText} sure',
+                  carbs == null
+                      ? 'carbs unknown'
+                      : 'about ${_amount(carbs)} g carbs',
+                ].join(' · '),
+              ),
+              trailing: choice.item.predictions.length < 2
+                  ? null
+                  : PopupMenuButton<int>(
+                      tooltip: 'Not ${p.displayName}?',
+                      onSelected: (index) => setState(() {
+                        choice.index = index;
+                        choice.included = true;
+                        choice.portion = 'MEDIUM';
+                      }),
+                      itemBuilder: (context) => [
+                        for (var i = 0; i < choice.item.predictions.length; i++)
+                          PopupMenuItem(
+                            value: i,
+                            child: Text(
+                              '${choice.item.predictions[i].displayName} '
+                              '(${choice.item.predictions[i].confidenceText})',
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+            if (choice.included && p.portionOptions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildPortions(
+                  p,
+                  choice.portion,
+                  (size) => setState(() => choice.portion = size),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Small / medium / large chips with their grams and rough carbs.
+  Widget _buildPortions(
+    FoodPrediction p,
+    String current,
+    ValueChanged<String> onSelected,
+  ) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final option in p.portionOptions)
+          ChoiceChip(
+            label: Text(
+              '${option.label} · ${_amount(option.grams)} g'
+              '${option.carbsG == null ? '' : ' · ${_amount(option.carbsG!)} g carbs'}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            selected: option.size == current,
+            onSelected: (_) => onSelected(option.size),
+          ),
+      ],
+    );
+  }
+
+  static String _amount(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
+
   Widget _buildBottomBar() {
     final foods = _chosenFoods;
 
@@ -497,6 +705,8 @@ class _FoodCameraScreenState extends State<FoodCameraScreen> {
                 photo = null;
                 predictions = [];
                 selected = null;
+                portion = 'MEDIUM';
+                plate = [];
                 recognitionNote = null;
                 notice = null;
               }),

@@ -72,6 +72,9 @@ class FakeBackend {
     },
   ];
 
+  /// Food regions of a plate with several foods (empty = one dish).
+  List<Map<String, dynamic>> items = [];
+
   late final client = MockClient((request) async {
     requests.add(request);
 
@@ -105,6 +108,8 @@ class FakeBackend {
       'lowConfidence': lowConfidence,
       'requiresConfirmation': true,
       'predictions': predictions,
+      'multipleFoods': items.length >= 2,
+      'items': items,
       'note': backendNote,
     });
   });
@@ -425,6 +430,173 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Take a photo'), findsOneWidget);
+    });
+
+    testWidgets('a portion changes the carb estimate', (tester) async {
+      backend.predictions.first['portionOptions'] = [
+        {'size': 'SMALL', 'grams': 75, 'carbsG': 24.8, 'kcal': 200},
+        {'size': 'MEDIUM', 'grams': 150, 'carbsG': 49.5, 'kcal': 399},
+        {'size': 'LARGE', 'grams': 225, 'carbsG': 74.3, 'kcal': 599},
+      ];
+      await openPhoto(tester);
+      await tester.tap(find.text('Take a photo'));
+      await settle(tester);
+
+      await tester.tap(find.textContaining('Large · 225 g'));
+      await tester.pump();
+      await tester.tap(find.text('Use 1 food'));
+      await tester.pumpAndSettle();
+
+      expect(field(tester, 0).text, 'Pizza');
+      expect(field(tester, 1).text, '74.3');
+    });
+
+    testWidgets('several foods on a plate: tick, fix a name, add up carbs',
+        (tester) async {
+      Map<String, dynamic> guess(String food, String name, double confidence,
+              double? carbs) =>
+          {
+            'food': food,
+            'displayName': name,
+            'confidence': confidence,
+            'carbsGPerServing': carbs,
+            'portionOptions': carbs == null
+                ? []
+                : [
+                    {'size': 'SMALL', 'grams': 50, 'carbsG': carbs / 2},
+                    {'size': 'MEDIUM', 'grams': 100, 'carbsG': carbs},
+                    {'size': 'LARGE', 'grams': 150, 'carbsG': carbs * 1.5},
+                  ],
+          };
+      backend.items = [
+        {
+          'box': [0.0, 0.1, 0.3, 0.8],
+          'lowConfidence': false,
+          'predictions': [guess('hamburger', 'Hamburger', 0.99, 48)],
+        },
+        {
+          'box': [0.35, 0.1, 0.65, 0.8],
+          'lowConfidence': false,
+          'predictions': [
+            guess('lahmacun', 'Lahmacun', 0.6, 45),
+            guess('pizza', 'Pizza', 0.35, 36),
+          ],
+        },
+        {
+          'box': [0.7, 0.2, 1.0, 0.8],
+          'lowConfidence': true,
+          'predictions': [guess('ramen', 'Ramen', 0.3, 65)],
+        },
+      ];
+      await openPhoto(tester);
+      await tester.tap(find.text('Take a photo'));
+      await settle(tester);
+
+      expect(find.text('Foods on your plate'), findsOneWidget);
+      expect(find.text('Is this what you ate?'), findsNothing);
+      // The unsure one is not ticked.
+      expect(find.text('Use 2 foods'), findsOneWidget);
+
+      // Lahmacun was really pizza.
+      await tester.tap(find.byTooltip('Not Lahmacun?'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pizza (35%)'));
+      await tester.pumpAndSettle();
+
+      // A small hamburger.
+      await tester.tap(find.textContaining('Small · 50 g').first);
+      await tester.pump();
+
+      await tester.tap(find.text('Use 2 foods'));
+      await tester.pumpAndSettle();
+
+      expect(field(tester, 0).text, 'Hamburger, Pizza');
+      expect(field(tester, 1).text, '60'); // 24 + 36
+
+      await tester.tap(find.text('Save Meal Record'));
+      await settle(tester);
+
+      final saved = backend.savedMeals.single;
+      expect(saved['source'], 'AI_PHOTO');
+      expect(saved['aiConfidence'], 0.35); // the lowest of the confirmed foods
+    });
+  });
+
+  group('FoodPhotoResult', () {
+    FoodPrediction food(String name, double confidence, double? carbs) =>
+        FoodPrediction(
+          food: name,
+          displayName: name,
+          confidence: confidence,
+          carbsGPerServing: carbs,
+        );
+
+    test('a food without an estimate makes the total unknown, not 0', () {
+      final result = FoodPhotoResult(foods: const ['A', 'B'], confirmedFoods: [
+        ConfirmedFood(food('A', 0.9, 30)),
+        ConfirmedFood(food('B', 0.8, null)),
+      ]);
+
+      expect(result.carbsEstimate, isNull);
+      expect(result.aiConfidence, 0.8);
+      expect(result.fromRecognition, isTrue);
+    });
+
+    test('typed foods only: MANUAL, no estimate', () {
+      const result = FoodPhotoResult(foods: ['Soup']);
+
+      expect(result.fromRecognition, isFalse);
+      expect(result.aiConfidence, isNull);
+      expect(result.carbsEstimate, isNull);
+      expect(result.confirmed, isNull);
+    });
+  });
+
+  group('parsing', () {
+    test('portion options, macros and plate items', () {
+      final result = FoodRecognition.fromJson({
+        'lowConfidence': false,
+        'multipleFoods': true,
+        'predictions': [
+          {
+            'food': 'pizza',
+            'displayName': 'Pizza',
+            'confidence': 0.9,
+            'kcalPerServing': 297,
+            'proteinGPerServing': 12.1,
+            'fatGPerServing': 11.4,
+            'portionOptions': [
+              {'size': 'SMALL', 'grams': 55, 'carbsG': 18.2},
+              {'size': 'bad'},
+              'not a map',
+            ],
+          },
+        ],
+        'items': [
+          {
+            'box': [0, 0, 0.5, 1],
+            'predictions': [
+              {'food': 'pizza', 'confidence': 0.9},
+            ],
+          },
+          {
+            'box': [0.5, 0, 1, 1],
+            'predictions': [
+              {'food': 'sushi', 'confidence': 0.4},
+            ],
+          },
+          {'predictions': []},
+        ],
+      });
+
+      final pizza = result.predictions.single;
+      expect(pizza.portionOptions.single.label, 'Small');
+      expect(pizza.carbsFor('SMALL'), 18.2);
+      expect(pizza.macrosText, '12.1 g protein · 11.4 g fat · 297 kcal');
+      expect(result.items, hasLength(2));
+      expect(result.items.first.box, [0.0, 0.0, 0.5, 1.0]);
+      expect(result.items.last.lowConfidence, isTrue);
+      expect(result.showsPlate, isTrue);
     });
   });
 }

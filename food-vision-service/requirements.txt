@@ -6,3 +6,5 @@ fastapi==0.143.0
 uvicorn==0.54.0
 python-multipart==0.0.32
 pillow==12.2.0
+# YOLO for several foods on one plate (food regions); weights downloaded in the Docker build.
+ultralytics==8.4.175
