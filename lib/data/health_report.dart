@@ -24,6 +24,11 @@ class HealthReport {
   final List<MealRecord> meals;
   final List<ActivityRecord> activities;
 
+  /// Kinds of logs the patient does not share with the viewer ("Meals",
+  /// "Activity"...): they were not read, so their empty lists mean
+  /// "not shared", not "nothing logged". Empty for the patient's own report.
+  final List<String> notShared;
+
   HealthReport({
     required this.from,
     required this.to,
@@ -32,15 +37,26 @@ class HealthReport {
     required this.insulin,
     required this.meals,
     required this.activities,
+    this.notShared = const [],
     DateTime? generatedAt,
   }) : generatedAt = generatedAt ?? DateTime.now();
 
   /// Reads the four kinds of logs between the start of [from] and the end
   /// of [to] (local days).
+  ///
+  /// [patientId] reads a family member's or patient's logs (a caregiver or
+  /// doctor); the share flags say which kinds that patient shares with the
+  /// viewer (glucose, medications = insulin, meals, activity). A kind that is
+  /// not shared is not asked for at all and is listed in [notShared].
   static Future<HealthReport> load({
     required DateTime from,
     required DateTime to,
     required String patientName,
+    int? patientId,
+    bool glucoseShared = true,
+    bool insulinShared = true,
+    bool mealsShared = true,
+    bool activityShared = true,
     LogStore<GlucoseRecord>? glucose,
     LogStore<InsulinRecord>? insulin,
     LogStore<MealRecord>? meals,
@@ -49,11 +65,19 @@ class HealthReport {
     final start = DateTime(from.year, from.month, from.day);
     final end = DateTime(to.year, to.month, to.day).add(const Duration(days: 1));
 
+    Future<List<T>> read<T extends LogRecord>(
+      bool shared,
+      LogStore<T> store,
+    ) =>
+        shared
+            ? store.fetch(from: start, to: end, patientId: patientId)
+            : Future.value(<T>[]);
+
     final results = await Future.wait([
-      (glucose ?? glucoseStore).fetch(from: start, to: end),
-      (insulin ?? insulinStore).fetch(from: start, to: end),
-      (meals ?? mealStore).fetch(from: start, to: end),
-      (activities ?? activityStore).fetch(from: start, to: end),
+      read(glucoseShared, glucose ?? glucoseStore),
+      read(insulinShared, insulin ?? insulinStore),
+      read(mealsShared, meals ?? mealStore),
+      read(activityShared, activities ?? activityStore),
     ]);
 
     return HealthReport(
@@ -64,6 +88,12 @@ class HealthReport {
       insulin: results[1] as List<InsulinRecord>,
       meals: results[2] as List<MealRecord>,
       activities: results[3] as List<ActivityRecord>,
+      notShared: [
+        if (!glucoseShared) 'Blood glucose',
+        if (!insulinShared) 'Insulin',
+        if (!mealsShared) 'Meals',
+        if (!activityShared) 'Activity',
+      ],
     );
   }
 

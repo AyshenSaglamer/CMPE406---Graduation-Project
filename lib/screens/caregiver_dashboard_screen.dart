@@ -13,6 +13,7 @@ import 'add_family_member_screen.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
 import 'care_patient_detail_screen.dart';
+import 'pdf_report_screen.dart';
 import '../widgets/care_reminders_view.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
@@ -333,6 +334,11 @@ class _CaregiverDashboardScreenState
             label: 'Reminders',
           ),
           NavigationDestination(
+            icon: Icon(Icons.description_outlined),
+            selectedIcon: Icon(Icons.description_rounded),
+            label: 'Reports',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.more_horiz_rounded),
             selectedIcon: Icon(Icons.more_horiz_rounded),
             label: 'More',
@@ -358,6 +364,9 @@ class _CaregiverDashboardScreenState
         return _buildReminderPage();
 
       case 3:
+        return _buildReportsPage();
+
+      case 4:
         return _buildMorePage();
 
       default:
@@ -781,6 +790,81 @@ class _CaregiverDashboardScreenState
   }
 
   // ============================================================
+  // REPORTS
+  // The health report (PDF / CSV) of a family member, with only the
+  // kinds of logs they share.
+  // ============================================================
+
+  Widget _buildReportsPage() {
+    final withData = familyMembers
+        .where((m) =>
+            m.canViewGlucose ||
+            m.canViewMedications ||
+            m.canViewMeals ||
+            m.canViewActivity)
+        .toList();
+
+    final Widget body;
+    if (familyLoading && familyMembers.isEmpty) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (withData.isEmpty) {
+      body = Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            familyMembers.isEmpty
+                ? 'No family members yet. Add one on the Family tab, or '
+                    'accept an invitation there.'
+                : 'Your family members do not share any logs with you yet.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF718096)),
+          ),
+        ),
+      );
+    } else {
+      body = Column(
+        children: [
+          for (final member in withData)
+            _MoreOption(
+              icon: Icons.description_outlined,
+              iconColor: const Color(0xFF765BD4),
+              background: const Color(0xFFF0ECFF),
+              title: member.name,
+              subtitle: 'Health report as PDF or CSV',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PdfReportScreen(patient: member),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+      children: [
+        const Text(
+          'Reports',
+          style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'A summary of a family member\'s logs for any period, to keep or '
+          'send to their doctor.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
+        ),
+        const SizedBox(height: 20),
+        body,
+      ],
+    );
+  }
+
+  // ============================================================
   // MORE
   // ============================================================
 
@@ -813,23 +897,7 @@ class _CaregiverDashboardScreenState
 
         const SizedBox(height: 20),
 
-        _MoreOption(
-          icon: Icons.people_outline_rounded,
-          title: 'Family Members',
-          subtitle: 'Manage family profiles',
-          onTap: () {
-            setState(() {
-              selectedIndex = 1;
-            });
-          },
-        ),
-
-        _MoreOption(
-          icon: Icons.mark_email_unread_outlined,
-          title: 'Invitations',
-          subtitle: 'Accept patients who invited you',
-          onTap: _openInvitations,
-        ),
+        // Family Members and Invitations are on the Family tab.
 
         _MoreOption(
           icon: Icons.security_outlined,
