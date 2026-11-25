@@ -116,7 +116,7 @@ class PatientServiceTest {
     @Test
     void careTeamListMapsRows() {
         when(repository.findActivePatientsOf(CLINICIAN)).thenReturn(List.of(
-                new CareTeamPatientRow(PATIENT, "Demo Patient", "01", true, true, true, true, true, true, true)));
+                new CareTeamPatientRow(PATIENT, "Demo Patient", "01", true, true, true, true, true, true, true, false)));
 
         List<CareTeamPatientResponse> patients = service.getCareTeamPatients(CLINICIAN);
 

@@ -30,7 +30,8 @@ import jakarta.validation.Valid;
 /**
  * Insulin doses of a patient (units). The care team sees them with the "medications" permission.
  * Reading: the patient, or a clinician / caregiver with an ACTIVE relationship (checked in the service, 404 otherwise).
- * Writing: only the patient (PATIENT role here, own id in the service).
+ * Writing: the patient, or the caregiver who manages them (a dependent without an account); PATIENT or CAREGIVER
+ * role here, HealthDataAccess.checkCanWrite in the service (404 for anyone else).
  */
 @RestController
 @RequestMapping("/api/v1/patients/{patientId}/insulin-logs")
@@ -44,7 +45,7 @@ public class InsulinLogController {
 
     /** 201 + Location for a new log; 200 with the existing log when the same clientUuid was already saved. */
     @PostMapping
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<InsulinLogResponse> create(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @Valid @RequestBody InsulinLogRequest request) {
         CreateResult<InsulinLogResponse> result = insulinLogService.create(CurrentUser.id(jwt), patientId, request);
@@ -72,7 +73,7 @@ public class InsulinLogController {
 
     /** Replaces all editable fields (send the whole log, not only the changed fields). */
     @PutMapping("/{logId}")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public InsulinLogResponse update(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @PathVariable long logId, @Valid @RequestBody InsulinLogRequest request) {
         return insulinLogService.update(CurrentUser.id(jwt), patientId, logId, request);
@@ -80,7 +81,7 @@ public class InsulinLogController {
 
     /** Soft delete: 204, and the log no longer appears in any list. */
     @DeleteMapping("/{logId}")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @PathVariable long logId) {
         insulinLogService.delete(CurrentUser.id(jwt), patientId, logId);

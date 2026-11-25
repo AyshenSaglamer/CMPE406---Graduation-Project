@@ -50,9 +50,14 @@ void main() {
     String source(String name) =>
         File('lib/screens/$name').readAsStringSync();
 
+    // The report screen shows it only for the patient's own report (not on a
+    // family member's), so a condition may stand between the two.
     for (final name in withButton) {
-      expect(source(name), contains('floatingActionButton: const AiChatButton()'),
-          reason: name);
+      expect(
+        source(name),
+        contains(RegExp(r'floatingActionButton:[^;]{0,80}const AiChatButton\(\)')),
+        reason: name,
+      );
     }
     for (final name in withoutButton) {
       expect(source(name), isNot(contains('AiChatButton')), reason: name);

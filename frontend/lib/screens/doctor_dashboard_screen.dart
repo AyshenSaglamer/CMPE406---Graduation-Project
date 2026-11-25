@@ -5,7 +5,9 @@ import '../data/alert_store.dart';
 import '../data/care_patients_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
+import '../utils/greeting.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
 import 'care_patient_detail_screen.dart';
@@ -403,19 +405,21 @@ class _DoctorDashboardScreenState
 
         const SizedBox(width: 12),
 
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hello, Doctor 👋',
-                style: TextStyle(
+                greetingFor(authService.currentUser, doctor: true),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              SizedBox(height: 3),
-              Text(
+              const SizedBox(height: 3),
+              const Text(
                 'Monitor your patients’ health.',
                 style: TextStyle(
                   fontSize: 12,

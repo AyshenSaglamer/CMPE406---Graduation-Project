@@ -37,11 +37,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByOrderByIdAsc();
 
     // Checked on every request with a token (ActiveAccountValidator): the role of the user if the account exists and
-    // is active and the token's login session is still open (not logged out, not expired), otherwise empty. One small
+    // is active, can log in (not a dependent without an account, V12) and the token's login session is still open
+    // (not logged out, not expired), otherwise empty. One small
     // query instead of loading the whole user.
     @Query("""
             select u.role from User u, AuthSession s
-            where u.id = :id and u.active = true
+            where u.id = :id and u.active = true and u.passwordHash is not null and u.email is not null
               and s.id = :sessionId and s.userId = u.id and s.revokedAt is null and s.expiresAt > :now""")
     Optional<Role> findRoleForOpenSession(@Param("id") long id, @Param("sessionId") UUID sessionId,
             @Param("now") Instant now);

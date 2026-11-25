@@ -81,7 +81,7 @@ public class AiEntryService {
 
     @Transactional
     public AiEntriesResponse save(long viewerId, long patientId, AiEntriesRequest request) {
-        access.checkCanWrite(viewerId, patientId); // only the patient, like every log endpoint
+        access.checkCanWrite(viewerId, patientId); // the patient or their managing caregiver, like every log endpoint
         Instant now = clock.instant();
         List<Saved> saved = new ArrayList<>();
         for (int i = 0; i < request.entries().size(); i++) {

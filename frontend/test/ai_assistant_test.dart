@@ -320,6 +320,35 @@ void main() {
       expect(field.controller!.text, 'I walked for 30 minutes');
       expect(backend.requests, isEmpty);
     });
+
+    // A caregiver logging for a family member without an account (patient 7).
+    // No onSaved: the default must not reload the caregiver's own lists
+    // (nobody is logged in here, so such a reload would throw).
+    testWidgets('a caregiver saves to the family member they manage',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: AiAssistantScreen(
+          store: store,
+          patientId: 7,
+          patientName: 'Deniz Kaya',
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('For Deniz Kaya'), findsOneWidget);
+      expect(find.textContaining('Tell me what Deniz Kaya measured'), findsOneWidget);
+
+      await send(tester, 'My glucose is 140');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      final save = backend.requests.lastWhere((r) => r.method == 'POST');
+      expect(save.url.path, '/api/v1/patients/7/ai-entries');
+      expect(find.text('Saved 1 entry to their logs.'), findsOneWidget);
+    });
   });
 }
 

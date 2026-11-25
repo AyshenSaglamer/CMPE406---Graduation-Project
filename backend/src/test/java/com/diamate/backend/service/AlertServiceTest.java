@@ -308,6 +308,6 @@ class AlertServiceTest {
 
     private static CareTeamPatientRow row(long patientId, boolean canReceiveAlerts) {
         return new CareTeamPatientRow(patientId, "First" + patientId, "Last", true, true, true, true, true,
-                canReceiveAlerts, false);
+                canReceiveAlerts, false, false);
     }
 }

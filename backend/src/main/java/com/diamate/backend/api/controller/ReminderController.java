@@ -33,7 +33,9 @@ import jakarta.validation.Valid;
 /**
  * Medication (and other) reminders of a patient, and the Taken / Skipped / Missed answer for each occurrence.
  * Reading: the patient, or a clinician / caregiver whose ACTIVE relationship shares "medications" (checked in the
- * service, 404 otherwise). Writing: only the patient (PATIENT role here, own id in the service).
+ * service, 404 otherwise). Writing (create, update, delete, Taken / Skipped): the patient, or the caregiver who
+ * manages a dependent without an account (V12); the role check here lets caregivers through and
+ * HealthDataAccess.checkCanWrite in the service decides which patient (404 otherwise).
  */
 @RestController
 @RequestMapping("/api/v1/patients/{patientId}")
@@ -53,7 +55,7 @@ public class ReminderController {
 
     /** 201 + Location. */
     @PostMapping("/reminders")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<ReminderResponse> create(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @Valid @RequestBody ReminderRequest request) {
         ReminderResponse created = reminderService.create(CurrentUser.id(jwt), patientId, request);
@@ -70,7 +72,7 @@ public class ReminderController {
 
     /** Replaces all fields (send the whole reminder). active=false pauses it without losing its history. */
     @PutMapping("/reminders/{reminderId}")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ReminderResponse update(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @PathVariable long reminderId, @Valid @RequestBody ReminderRequest request) {
         return reminderService.update(CurrentUser.id(jwt), patientId, reminderId, request);
@@ -78,7 +80,7 @@ public class ReminderController {
 
     /** 204; the reminder's occurrences are deleted with it. */
     @DeleteMapping("/reminders/{reminderId}")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable long patientId,
             @PathVariable long reminderId) {
         reminderService.delete(CurrentUser.id(jwt), patientId, reminderId);
@@ -87,7 +89,7 @@ public class ReminderController {
 
     /** 201 for a new occurrence; 200 when that scheduledFor was already reported (its status is changed). */
     @PostMapping("/reminders/{reminderId}/events")
-    @PreAuthorize("hasRole('PATIENT')")
+    @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER')")
     public ResponseEntity<ReminderEventResponse> reportEvent(@AuthenticationPrincipal Jwt jwt,
             @PathVariable long patientId, @PathVariable long reminderId,
             @Valid @RequestBody ReminderEventRequest request) {

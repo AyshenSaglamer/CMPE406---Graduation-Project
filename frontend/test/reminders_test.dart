@@ -423,6 +423,79 @@ void main() {
       expect(find.text('No reminders yet'), findsOneWidget);
     });
   });
+
+  // A caregiver keeps the plan of a family member without an account
+  // (patient 7 here): same screen, but nothing goes on the caregiver's phone.
+  group('ReminderScreen for a family member', () {
+    DateTime now() => DateTime(2026, 11, 23, 9);
+
+    Future<void> pump(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: ReminderScreen(
+          store: store,
+          notifier: notifier,
+          now: now,
+          patientId: 7,
+          patientName: 'Deniz Kaya',
+        ),
+      ));
+      await settle(tester);
+    }
+
+    testWidgets('says whose plan it is and schedules no notifications',
+        (tester) async {
+      backend.add();
+
+      await pump(tester);
+
+      expect(find.text('For Deniz Kaya'), findsOneWidget);
+      expect(find.text('Their Reminders'), findsOneWidget);
+      expect(find.text('Metformin'), findsWidgets);
+      expect(find.textContaining('not shown as notifications'), findsOneWidget);
+      expect(notifier.scheduleCalls, 0);
+    });
+
+    testWidgets('the caregiver marks the dose and changes the plan',
+        (tester) async {
+      backend.add();
+      await pump(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Taken'));
+      await settle(tester);
+      final answer = backend.requests.lastWhere((r) => r.method == 'POST');
+      expect(answer.url.path, '/api/v1/patients/7/reminders/60/events');
+      expect(find.text('Taken'), findsOneWidget);
+
+      await tester.tap(find.byType(Switch));
+      await settle(tester);
+      expect(backend.reminders.single['active'], false);
+      expect(notifier.scheduleCalls, 0);
+    });
+
+    testWidgets('a new reminder is saved for them, not put on this phone',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.text('Create Reminder'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('reminder_name')), 'Insulin');
+      await tester.tap(find.text('Select time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add Reminder'));
+      await settle(tester);
+
+      final post = backend.requests.lastWhere((r) => r.method == 'POST');
+      expect(post.url.path, '/api/v1/patients/7/reminders');
+      expect((jsonDecode(post.body) as Map)['medicationName'], 'Insulin');
+      expect(find.text('Reminder saved for Deniz Kaya.'), findsOneWidget);
+      expect(notifier.scheduled, isNull);
+    });
+  });
 }
 
 Future<void> settle(WidgetTester tester) async {

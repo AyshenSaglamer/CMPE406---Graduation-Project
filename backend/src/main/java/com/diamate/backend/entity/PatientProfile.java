@@ -41,4 +41,8 @@ public class PatientProfile {
     public DiabetesType getDiabetesType() {
         return diabetesType;
     }
+
+    public void changeDiabetesType(DiabetesType diabetesType) {
+        this.diabetesType = diabetesType;
+    }
 }

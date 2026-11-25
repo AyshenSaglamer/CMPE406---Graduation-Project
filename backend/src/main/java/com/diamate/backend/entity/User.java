@@ -49,10 +49,11 @@ public class User {
     @Column(nullable = false, length = 20)
     private Role role;
     
-    @Column(nullable = false, length = 150)
+    // Both NULL for a dependent: a patient without an account, managed by a caregiver (V12). Such a user cannot log in.
+    @Column(length = 150)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Column(length = 30)
@@ -102,6 +103,14 @@ public class User {
     }
 
     
+    /**
+     * A family member without an account (e.g. a child), added by a caregiver who keeps their diary
+     * (POST /care-team/dependents). Role PATIENT, no email, no password: login is impossible (see hasLogin()).
+     */
+    public static User dependent(String firstName, String lastName, LocalDate dateOfBirth, Gender gender) {
+        return new User(firstName, lastName, dateOfBirth, gender, Role.PATIENT, null, null);
+    }
+
     public Long getId() {
         return id;
     }
@@ -168,6 +177,19 @@ public class User {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // False for a dependent (no email, no password): such a user can never log in or hold a session.
+    public boolean hasLogin() {
+        return email != null && passwordHash != null;
+    }
+
+    // A dependent's managing caregiver corrects the personal details (PUT /care-team/dependents/{id}).
+    public void changePersonalDetails(String firstName, String lastName, LocalDate dateOfBirth, Gender gender) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.dateOfBirth = dateOfBirth;
+        this.gender = gender;
     }
 
     // True while a lock caused by too many failed logins is still in force.

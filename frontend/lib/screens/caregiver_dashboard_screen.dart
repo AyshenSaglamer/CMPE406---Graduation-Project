@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../data/alert_store.dart';
 import '../data/care_patients_store.dart';
+import '../data/dependent_store.dart';
 import '../data/reminder_store.dart';
 import '../navigation/session_navigation.dart';
 import '../services/api_exception.dart';
+import '../services/auth_service.dart';
 import '../utils/form_helpers.dart';
+import '../utils/greeting.dart';
+import 'add_family_member_screen.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
 import 'care_patient_detail_screen.dart';
+import 'pdf_report_screen.dart';
 import '../widgets/care_reminders_view.dart';
 
 class CaregiverDashboardScreen extends StatefulWidget {
@@ -16,10 +21,15 @@ class CaregiverDashboardScreen extends StatefulWidget {
     super.key,
     this.patientsStore,
     this.reminderStoreFor,
+    this.dependentStore,
   });
 
   /// Defaults to [carePatientsStore]; tests pass one with a fake backend.
   final CarePatientsStore? patientsStore;
+
+  /// Adds and corrects family members without an account; defaults to the
+  /// /care-team/dependents API.
+  final DependentStore? dependentStore;
 
   /// Reminders of one family member; defaults to the reminders API.
   final ReminderStore Function(int patientId)? reminderStoreFor;
@@ -144,6 +154,27 @@ class _CaregiverDashboardScreenState
   }
 
   // ------------------------------------------------------------
+  // ADD / EDIT A FAMILY MEMBER WITHOUT AN ACCOUNT
+  // (e.g. a child): the caregiver keeps their diary.
+  // ------------------------------------------------------------
+
+  Future<void> _openAddFamilyMember({CarePatient? existing}) async {
+    final saved = await Navigator.push<Dependent>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddFamilyMemberScreen(
+          existing: existing,
+          store: widget.dependentStore,
+        ),
+      ),
+    );
+
+    if (saved != null && mounted) {
+      _loadFamily();
+    }
+  }
+
+  // ------------------------------------------------------------
   // OPEN FAMILY MEMBER
   // ------------------------------------------------------------
 
@@ -198,6 +229,9 @@ class _CaregiverDashboardScreenState
           child: _FamilyMemberCard(
             member: member,
             onTap: () => _openFamilyMember(member),
+            onEdit: member.managed
+                ? () => _openAddFamilyMember(existing: member)
+                : null,
           ),
         ),
     ];
@@ -300,6 +334,11 @@ class _CaregiverDashboardScreenState
             label: 'Reminders',
           ),
           NavigationDestination(
+            icon: Icon(Icons.description_outlined),
+            selectedIcon: Icon(Icons.description_rounded),
+            label: 'Reports',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.more_horiz_rounded),
             selectedIcon: Icon(Icons.more_horiz_rounded),
             label: 'More',
@@ -325,6 +364,9 @@ class _CaregiverDashboardScreenState
         return _buildReminderPage();
 
       case 3:
+        return _buildReportsPage();
+
+      case 4:
         return _buildMorePage();
 
       default:
@@ -373,10 +415,6 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 12),
 
           _buildFamilyInsight(),
-
-          const SizedBox(height: 18),
-
-          _buildQuickActions(),
         ],
       ),
       ),
@@ -406,19 +444,21 @@ class _CaregiverDashboardScreenState
 
         const SizedBox(width: 12),
 
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hello 👋',
-                style: TextStyle(
+                greetingFor(authService.currentUser),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   fontSize: 23,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              SizedBox(height: 3),
-              Text(
+              const SizedBox(height: 3),
+              const Text(
                 'Keep your family health on track.',
                 style: TextStyle(
                   fontSize: 13,
@@ -643,69 +683,6 @@ class _CaregiverDashboardScreenState
   }
 
   // ============================================================
-  // QUICK ACTIONS
-  // ============================================================
-
-  Widget _buildQuickActions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        Row(
-          children: [
-            // --------------------------------------------------
-            // REMINDERS
-            // --------------------------------------------------
-
-            Expanded(
-              child: _CaregiverActionCard(
-                icon: Icons.notifications_active_outlined,
-                title: 'Reminders',
-                background: const Color(0xFFFFF3DF),
-                iconColor: const Color(0xFFF0A126),
-                onTap: () {
-                  setState(() {
-                    selectedIndex = 2;
-                  });
-                },
-              ),
-            ),
-
-            const SizedBox(width: 10),
-
-            // --------------------------------------------------
-            // REPORTS
-            // --------------------------------------------------
-
-            Expanded(
-              child: _CaregiverActionCard(
-                icon: Icons.analytics_outlined,
-                title: 'Reports',
-                background: const Color(0xFFF0ECFF),
-                iconColor: const Color(0xFF765BD4),
-                onTap: () {
-                  _showFeatureMessage(
-                    'Family reports will be available here.',
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
   // FAMILY PAGE
   // ============================================================
 
@@ -731,7 +708,8 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 6),
 
           const Text(
-            'People who share their health data with you.',
+            'People you care for: those who share their health data '
+            'with you and those you added yourself.',
             style: TextStyle(
               fontSize: 13,
               color: Color(0xFF718096),
@@ -745,13 +723,39 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 12),
 
           // ----------------------------------------------------
-          // A family member is added by accepting their invitation.
+          // Someone without an account (e.g. a child) is added
+          // here; someone with an account invites the caregiver
+          // and is accepted under Invitations.
           // ----------------------------------------------------
 
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton.icon(
+              onPressed: () => _openAddFamilyMember(),
+              icon: const Icon(
+                Icons.person_add_alt_1_rounded,
+              ),
+              label: const Text(
+                'Add Family Member',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF765BD4),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: OutlinedButton.icon(
               onPressed: _openInvitations,
               icon: const Icon(
                 Icons.mark_email_unread_outlined,
@@ -759,10 +763,9 @@ class _CaregiverDashboardScreenState
               label: const Text(
                 'Invitations',
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF765BD4),
-                foregroundColor: Colors.white,
-                elevation: 0,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF765BD4),
+                side: const BorderSide(color: Color(0xFFD9CFFA)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(17),
                 ),
@@ -783,6 +786,81 @@ class _CaregiverDashboardScreenState
       members: familyMembers,
       membersLoading: familyLoading,
       storeFor: widget.reminderStoreFor,
+    );
+  }
+
+  // ============================================================
+  // REPORTS
+  // The health report (PDF / CSV) of a family member, with only the
+  // kinds of logs they share.
+  // ============================================================
+
+  Widget _buildReportsPage() {
+    final withData = familyMembers
+        .where((m) =>
+            m.canViewGlucose ||
+            m.canViewMedications ||
+            m.canViewMeals ||
+            m.canViewActivity)
+        .toList();
+
+    final Widget body;
+    if (familyLoading && familyMembers.isEmpty) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (withData.isEmpty) {
+      body = Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            familyMembers.isEmpty
+                ? 'No family members yet. Add one on the Family tab, or '
+                    'accept an invitation there.'
+                : 'Your family members do not share any logs with you yet.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF718096)),
+          ),
+        ),
+      );
+    } else {
+      body = Column(
+        children: [
+          for (final member in withData)
+            _MoreOption(
+              icon: Icons.description_outlined,
+              iconColor: const Color(0xFF765BD4),
+              background: const Color(0xFFF0ECFF),
+              title: member.name,
+              subtitle: 'Health report as PDF or CSV',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PdfReportScreen(patient: member),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+      children: [
+        const Text(
+          'Reports',
+          style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'A summary of a family member\'s logs for any period, to keep or '
+          'send to their doctor.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF718096)),
+        ),
+        const SizedBox(height: 20),
+        body,
+      ],
     );
   }
 
@@ -819,23 +897,7 @@ class _CaregiverDashboardScreenState
 
         const SizedBox(height: 20),
 
-        _MoreOption(
-          icon: Icons.people_outline_rounded,
-          title: 'Family Members',
-          subtitle: 'Manage family profiles',
-          onTap: () {
-            setState(() {
-              selectedIndex = 1;
-            });
-          },
-        ),
-
-        _MoreOption(
-          icon: Icons.mark_email_unread_outlined,
-          title: 'Invitations',
-          subtitle: 'Accept patients who invited you',
-          onTap: _openInvitations,
-        ),
+        // Family Members and Invitations are on the Family tab.
 
         _MoreOption(
           icon: Icons.security_outlined,
@@ -882,9 +944,13 @@ class _FamilyMemberCard extends StatelessWidget {
   final CarePatient member;
   final VoidCallback onTap;
 
+  /// Only for a family member this caregiver added and manages.
+  final VoidCallback? onEdit;
+
   const _FamilyMemberCard({
     required this.member,
     required this.onTap,
+    this.onEdit,
   });
 
   @override
@@ -931,6 +997,28 @@ class _FamilyMemberCard extends StatelessWidget {
                       ),
                     ),
 
+                    if (member.managed) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0ECFF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Managed by you',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: iconColor,
+                          ),
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 4),
 
                     Text(
@@ -973,6 +1061,17 @@ class _FamilyMemberCard extends StatelessWidget {
                   ],
                 ),
               ),
+
+              if (onEdit != null)
+                IconButton(
+                  onPressed: onEdit,
+                  tooltip: 'Edit details',
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: iconColor,
+                  ),
+                ),
 
               const Icon(
                 Icons.chevron_right_rounded,
@@ -1031,8 +1130,10 @@ class _EmptyFamilyCard extends StatelessWidget {
             const SizedBox(height: 7),
 
             const Text(
-              'Ask your family member to invite you from More → Care Team '
-              'in their DiaMate app, then accept it under Invitations.',
+              'Add someone without an account (e.g. a child) with '
+              'Add Family Member on the Family tab. Someone with their own '
+              'DiaMate app invites you from More → Care Team; accept it '
+              'under Invitations.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -1041,72 +1142,6 @@ class _EmptyFamilyCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// QUICK ACTION CARD
-// ============================================================================
-
-class _CaregiverActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Color background;
-  final Color iconColor;
-  final VoidCallback onTap;
-
-  const _CaregiverActionCard({
-    required this.icon,
-    required this.title,
-    required this.background,
-    required this.iconColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(19),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(19),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: 7,
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: background,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 21,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

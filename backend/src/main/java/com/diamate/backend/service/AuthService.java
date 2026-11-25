@@ -150,7 +150,10 @@ public class AuthService {
         Instant now = clock.instant();
         
         // Row lock until the end of this transaction: the lock check, the counter and the reset are one step per account.
-        Optional<User> found = userRepository.findByEmailForLogin(normalizeEmail(request.email()));
+        // filter(hasLogin): a dependent (no email, no password, V12) is never found by an email; filtered anyway, so
+        // such a record is an unknown login even if the data were wrong. The database also refuses its session.
+        Optional<User> found = userRepository.findByEmailForLogin(normalizeEmail(request.email()))
+                .filter(User::hasLogin);
         if (found.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
             auditService.loginFailed(null, LoginFailure.UNKNOWN_EMAIL);
@@ -196,7 +199,8 @@ public class AuthService {
     public AuthResponse refresh(RefreshRequest request) {
         return switch (sessions.find(request.refreshToken())) {
             case AuthSessionService.Lookup.Open open -> {
-                Optional<User> user = userRepository.findById(open.session().getUserId()).filter(User::isActive);
+                Optional<User> user = userRepository.findById(open.session().getUserId())
+                        .filter(User::isActive).filter(User::hasLogin);
                 if (user.isEmpty()) {
                     sessions.revoke(open.session(), RevokeReason.ACCOUNT_DISABLED);
                     throw new InvalidRefreshTokenException();

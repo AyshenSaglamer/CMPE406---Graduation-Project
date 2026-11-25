@@ -65,6 +65,7 @@ import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.RoleAccessDeniedEvent;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AlertService;
+import com.diamate.backend.service.DependentService;
 import com.diamate.backend.service.PatientService;
 import com.diamate.backend.service.UserService;
 
@@ -106,6 +107,9 @@ class RbacWebTest {
 
     @MockitoBean
     private AlertService alertService;
+
+    @MockitoBean
+    private DependentService dependentService;
 
     @MockitoBean
     private UserRepository userRepository;
@@ -355,7 +359,7 @@ class RbacWebTest {
     @Test
     void clinicianAndCaregiverGetTheirOwnPatients() throws Exception {
         when(patientService.getCareTeamPatients(anyLong())).thenReturn(List.of(new CareTeamPatientResponse(
-                PATIENT_ID, "Demo Patient", "01", true, true, true, true, true, true, false)));
+                PATIENT_ID, "Demo Patient", "01", true, true, true, true, true, true, false, false)));
 
         for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID }) {
             as(get("/api/v1/care-team/patients"), id, roleOf(id))

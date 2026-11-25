@@ -142,8 +142,9 @@ class HealthLogWebTest {
     }
 
     @Test
-    void onlyPatientsCanWriteLogs() throws Exception {
-        for (long id : new long[] { CLINICIAN_ID, CAREGIVER_ID, ADMIN_ID }) {
+    void cliniciansAndAdminsCannotWriteLogs() throws Exception {
+        // A caregiver passes the role check (they may manage a dependent, V12); the service decides which patient.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
             as(post(GLUCOSE_URL, PATIENT_ID).contentType(MediaType.APPLICATION_JSON).content(VALID_GLUCOSE), id)
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
@@ -442,11 +443,19 @@ class HealthLogWebTest {
     // ---------- AI ----------
 
     @Test
-    void aiParseIsForPatientsOnly() throws Exception {
+    void aiParseIsForPatientsAndCaregiversOnly() throws Exception {
+        // A caregiver may use the assistant for the family member they manage; nothing is saved here.
+        for (long id : new long[] { CLINICIAN_ID, ADMIN_ID }) {
+            as(post("/api/v1/ai/parse").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"glucose 130\"}"),
+                    id)
+                    .andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(aiService);
+
+        when(aiService.parse("glucose 130")).thenReturn(new AiParseResponse("SUCCESS", 0, List.of(), null));
         as(post("/api/v1/ai/parse").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"glucose 130\"}"),
                 CAREGIVER_ID)
-                .andExpect(status().isForbidden());
-        verifyNoInteractions(aiService);
+                .andExpect(status().isOk());
     }
 
     @Test

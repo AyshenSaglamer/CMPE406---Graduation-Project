@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../widgets/date_time_tile.dart';
+import '../widgets/entry_title.dart';
 import '../widgets/glucose_alert_sheet.dart';
 
 class GlucoseEntryScreen extends StatefulWidget {
@@ -18,9 +19,18 @@ class GlucoseEntryScreen extends StatefulWidget {
     this.existing,
     this.store,
     this.alerts,
+    this.patientId,
+    this.patientName,
   });
 
   final GlucoseRecord? existing;
+
+  /// A family member the logged-in caregiver manages; null = the logged-in
+  /// patient.
+  final int? patientId;
+
+  /// Shown under the title when logging for [patientId].
+  final String? patientName;
 
   /// Default to [glucoseStore] and [alertStore]; tests pass fakes.
   final LogStore<GlucoseRecord>? store;
@@ -117,7 +127,7 @@ class _GlucoseEntryScreenState extends State<GlucoseEntryScreen> {
       final existing = widget.existing;
 
       if (existing == null) {
-        saved = await store.create(body);
+        saved = await store.create(body, patientId: widget.patientId);
         savedOffline = saved == null;
       } else {
         saved = await store.update(existing.id, body);
@@ -165,7 +175,7 @@ class _GlucoseEntryScreenState extends State<GlucoseEntryScreen> {
   /// "Got it" marks it as seen; offline, the default thresholds are used.
   Future<void> _showAlertIfOutOfRange(int value, GlucoseRecord? saved) async {
     final alerts = widget.alerts ?? alertStore;
-    final patientId = authService.currentUser?.id;
+    final patientId = widget.patientId ?? authService.currentUser?.id;
 
     PatientAlert? alert;
     String? type;
@@ -241,9 +251,9 @@ class _GlucoseEntryScreenState extends State<GlucoseEntryScreen> {
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        title: Text(
+        title: EntryTitle(
           isEditing ? 'Edit Blood Glucose' : 'Add Blood Glucose',
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          forName: widget.patientName,
         ),
       ),
       body: SafeArea(

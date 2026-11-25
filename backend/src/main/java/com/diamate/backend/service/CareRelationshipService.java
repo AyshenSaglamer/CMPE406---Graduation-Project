@@ -221,6 +221,10 @@ public class CareRelationshipService {
         if (!isOpen(current.status())) {
             throw closed(current.status());
         }
+        // The managing caregiver of a dependent cannot just leave: nobody else could ever see or keep that diary.
+        if (repository.isManaging(id)) {
+            throw new ResourceConflictException("You manage this family member; their record cannot be left");
+        }
         if (repository.revokeIfOpen(id) == 0) {
             String now = find(id).status();
             if (REVOKED.equals(now)) {
