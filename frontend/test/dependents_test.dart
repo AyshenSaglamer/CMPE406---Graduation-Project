@@ -461,9 +461,11 @@ void main() {
         (tester) async {
       await pumpDetail(tester, patient(managed: false));
       expect(find.text('Add Entry'), findsNothing);
+      expect(find.text('Reminders'), findsNothing);
 
       await pumpDetail(tester, patient(managed: true));
       expect(find.text('Add Entry'), findsOneWidget);
+      expect(find.text('Reminders'), findsOneWidget);
       for (final label in ['Glucose', 'Insulin', 'Meal', 'Activity']) {
         expect(find.text(label), findsOneWidget);
       }

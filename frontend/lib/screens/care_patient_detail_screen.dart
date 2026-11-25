@@ -4,6 +4,7 @@ import '../data/ai_insights_store.dart';
 import '../data/care_patients_store.dart';
 import '../data/glucose_store.dart';
 import '../data/log_store.dart';
+import '../data/reminder_store.dart';
 import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/ai_insights_card.dart';
@@ -11,6 +12,7 @@ import 'activity_entry_screen.dart';
 import 'glucose_entry_screen.dart';
 import 'insulin_entry_screen.dart';
 import 'meal_entry_screen.dart';
+import 'reminder_screen.dart';
 
 /// Colour of a glucose status, shared by the doctor and caregiver screens.
 Color glucoseStatusColor(GlucoseStatus status) => switch (status) {
@@ -31,7 +33,11 @@ class CarePatientDetailScreen extends StatefulWidget {
     required this.patient,
     this.glucose,
     this.insightsStore,
+    this.reminderStoreFor,
   });
+
+  /// The managed family member's reminders; defaults to the reminders API.
+  final ReminderStore Function(int patientId)? reminderStoreFor;
 
   final CarePatient patient;
 
@@ -146,6 +152,8 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
             const SizedBox(height: 18),
             if (patient.managed) ...[
               _buildAddEntry(),
+              const SizedBox(height: 12),
+              _buildRemindersTile(),
               const SizedBox(height: 18),
             ],
             if (!patient.canViewGlucose)
@@ -292,6 +300,47 @@ class _CarePatientDetailScreenState extends State<CarePatientDetailScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  /// The family member's reminder plan, kept by the caregiver.
+  Widget _buildRemindersTile() {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF3DF),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.notifications_active_outlined,
+            color: Color(0xFFF0A126),
+          ),
+        ),
+        title: const Text(
+          'Reminders',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: const Text(
+          'Medicines, glucose checks and what was taken',
+          style: TextStyle(fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReminderScreen(
+              patientId: patient.id,
+              patientName: patient.name,
+              store: widget.reminderStoreFor?.call(patient.id),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

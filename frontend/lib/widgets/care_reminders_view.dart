@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../data/care_patients_store.dart';
 import '../data/reminder_store.dart';
+import '../screens/reminder_screen.dart';
 import '../services/api_exception.dart';
 
 /// Reminders tab of the caregiver: today's reminders of every family member
 /// who shares medications, with what they answered (Taken / Skipped /
 /// Missed), and each member's reminder plan below.
 ///
-/// Read only: the patient creates and answers reminders in their own app.
+/// A patient with an account creates and answers their reminders in their own
+/// app, so here they are read only. A family member without an account whom
+/// the caregiver manages has a Manage button: the caregiver keeps that plan
+/// (ReminderScreen for that patient).
 class CareRemindersView extends StatefulWidget {
   const CareRemindersView({
     super.key,
@@ -190,8 +194,8 @@ class _CareRemindersViewState extends State<CareRemindersView> {
       return const [
         _InfoCard(
           icon: Icons.group_add_outlined,
-          text: 'No family members yet. When a patient invites you and you '
-              'accept under Invitations, their reminders show here.',
+          text: 'No family members yet. Add one on the Family tab, or accept '
+              'a patient\'s invitation; their reminders show here.',
         ),
       ];
     }
@@ -228,7 +232,16 @@ class _CareRemindersViewState extends State<CareRemindersView> {
 
     for (final m in data) {
       widgets.add(const SizedBox(height: 18));
-      widgets.add(_SectionTitle("${m.member.name}'s plan"));
+      widgets.add(_SectionTitle(
+        "${m.member.name}'s plan",
+        action: m.member.managed
+            ? TextButton.icon(
+                onPressed: () => _manage(m.member),
+                icon: const Icon(Icons.edit_notifications_outlined, size: 18),
+                label: const Text('Manage'),
+              )
+            : null,
+      ));
       if (m.error != null) {
         widgets.add(_InfoCard(
           icon: Icons.error_outline_rounded,
@@ -269,6 +282,24 @@ class _CareRemindersViewState extends State<CareRemindersView> {
     return widgets;
   }
 
+  /// Opens the plan of a family member the caregiver manages, then shows
+  /// what was changed there.
+  Future<void> _manage(CarePatient member) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReminderScreen(
+          patientId: member.id,
+          patientName: member.name,
+          store: widget.storeFor?.call(member.id),
+        ),
+      ),
+    );
+    if (mounted) {
+      _load();
+    }
+  }
+
   _Status _statusOf(_TodayItem item) {
     switch (item.answer?.status) {
       case ReminderAnswer.taken:
@@ -298,17 +329,25 @@ enum _Status {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
+  const _SectionTitle(this.text, {this.action});
 
   final String text;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
+          ?action,
+        ],
       ),
     );
   }
