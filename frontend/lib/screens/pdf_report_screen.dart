@@ -469,7 +469,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                       ? 'Export your glucose, insulin, meal and activity records as '
                           'a PDF for your doctor or a CSV for a spreadsheet.'
                       : 'Export their glucose, insulin, meal and activity records as '
-                          'a PDF for their doctor or a CSV for a spreadsheet.',
+                          'a PDF to keep or share, or a CSV for a spreadsheet.',
                   style: const TextStyle(
                     fontSize: 12,
                     height: 1.4,
