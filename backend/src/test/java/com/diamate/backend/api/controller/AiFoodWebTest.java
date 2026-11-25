@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -32,7 +33,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 
+import com.diamate.backend.api.dto.response.FoodNutritionResponse;
 import com.diamate.backend.api.dto.response.FoodRecognitionResponse;
+import com.diamate.backend.api.dto.response.FoodSearchResult;
 import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
 import com.diamate.backend.entity.User;
@@ -96,7 +99,13 @@ class AiFoodWebTest {
     void thePatientGetsTheGuessesWithApproximateNutrition() throws Exception {
         when(foodRecognitionService.recognize(any())).thenReturn(new FoodRecognitionResponse("ResNet50", false, true,
                 List.of(new FoodRecognitionResponse.Prediction("pizza", "Pizza", 0.91, 76L, new BigDecimal("266.0"),
-                        new BigDecimal("33.0"), new BigDecimal("200.0"), new BigDecimal("66.0"), false)),
+                        new BigDecimal("33.0"), new BigDecimal("11.0"), new BigDecimal("10.4"),
+                        new BigDecimal("200.0"), new BigDecimal("66.0"), new BigDecimal("532.0"),
+                        new BigDecimal("22.0"), new BigDecimal("20.8"),
+                        List.of(new FoodRecognitionResponse.PortionOption("SMALL", new BigDecimal("100.0"),
+                                new BigDecimal("33.0"), new BigDecimal("266.0"), new BigDecimal("11.0"),
+                                new BigDecimal("10.4"))),
+                        false)),
                 "Photo recognition can be wrong."));
 
         as(PATIENT_ID, multipart(URL).file(PHOTO))
@@ -108,7 +117,64 @@ class AiFoodWebTest {
                 .andExpect(jsonPath("$.predictions[0].displayName").value("Pizza"))
                 .andExpect(jsonPath("$.predictions[0].confidence").value(0.91))
                 .andExpect(jsonPath("$.predictions[0].carbsGPerServing").value(66.0))
-                .andExpect(jsonPath("$.predictions[0].nutritionVerified").value(false));
+                .andExpect(jsonPath("$.predictions[0].proteinGPerServing").value(22.0))
+                .andExpect(jsonPath("$.predictions[0].fatGPerServing").value(20.8))
+                .andExpect(jsonPath("$.predictions[0].portionOptions[0].size").value("SMALL"))
+                .andExpect(jsonPath("$.predictions[0].portionOptions[0].carbsG").value(33.0))
+                .andExpect(jsonPath("$.predictions[0].nutritionVerified").value(false))
+                .andExpect(jsonPath("$.multipleFoods").value(false))
+                .andExpect(jsonPath("$.items").isEmpty());
+    }
+
+    @Test
+    void nutritionOfTheConfirmedFoods() throws Exception {
+        when(foodRecognitionService.nutrition(any())).thenReturn(new FoodNutritionResponse(
+                List.of(new FoodNutritionResponse.Item(76, "pizza", "Pizza", new BigDecimal("150"),
+                        new BigDecimal("49.5"), new BigDecimal("399.0"), new BigDecimal("16.5"),
+                        new BigDecimal("15.6"), true, false)),
+                new FoodNutritionResponse.Totals(new BigDecimal("150"), new BigDecimal("49.5"),
+                        new BigDecimal("399.0"), new BigDecimal("16.5"), new BigDecimal("15.6"), true, false),
+                "Rough estimates."));
+
+        as(PATIENT_ID, post(URL + "/nutrition").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"foodCatalogId\":76,\"grams\":150}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].carbsG").value(49.5))
+                .andExpect(jsonPath("$.totals.carbsG").value(49.5))
+                .andExpect(jsonPath("$.totals.complete").value(true));
+    }
+
+    @Test
+    void nutritionRequestIsValidated() throws Exception {
+        for (String body : new String[] { "{\"items\":[]}", "{}", "{\"items\":[{\"foodCatalogId\":76}]}",
+                "{\"items\":[{\"foodCatalogId\":76,\"grams\":0}]}",
+                "{\"items\":[{\"foodCatalogId\":76,\"grams\":2001}]}",
+                "{\"items\":[{\"grams\":100}]}", "{\"items\":[null]}" }) {
+            as(PATIENT_ID, post(URL + "/nutrition").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(foodRecognitionService);
+    }
+
+    @Test
+    void onlyPatientsMayUseNutritionAndSearch() throws Exception {
+        as(CLINICIAN_ID, post(URL + "/nutrition").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"foodCatalogId\":76,\"grams\":150}]}")).andExpect(status().isForbidden());
+        as(CAREGIVER_ID, get(URL + "/search").param("q", "piz")).andExpect(status().isForbidden());
+        mockMvc.perform(get(URL + "/search").param("q", "piz")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(foodRecognitionService);
+    }
+
+    @Test
+    void thePatientSearchesTheCatalog() throws Exception {
+        when(foodRecognitionService.search("lahm")).thenReturn(List.of(new FoodSearchResult(130, "lahmacun",
+                "Lahmacun", new BigDecimal("230"), new BigDecimal("30"), new BigDecimal("10"), new BigDecimal("7.2"),
+                new BigDecimal("150"), false)));
+
+        as(PATIENT_ID, get(URL + "/search").param("q", "lahm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].foodCatalogId").value(130))
+                .andExpect(jsonPath("$[0].displayName").value("Lahmacun"));
     }
 
     @Test

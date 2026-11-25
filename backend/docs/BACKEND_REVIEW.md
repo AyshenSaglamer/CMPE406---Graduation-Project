@@ -18,8 +18,8 @@ Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayı
 
 | Ölçü | Değer |
 |---|---|
-| Endpoint | **58**: oturum 2 (24 Kasım'da, `POST /auth/refresh` ve `/auth/logout`, bölüm 18), hatırlatıcılar 7 (23 Kasım'da, Nilsu: tanımlar ve Alındı/Atlandı/Kaçırıldı cevapları), yemek fotoğrafı 1 (23 Kasım'da, `POST /ai/food`, bölüm 17), yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
-| Otomatik test | **506**, hepsi geçiyor (`mvn test`; 12'si Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 23 Kasım'da 448 (yemek fotoğrafı 37 test), sonra 452 (`AI_PHOTO` öğün kaydı 4 test), sonra 453 (V10 veritabanı testi), main birleştirmesinde 483 (Nilsu’nun hatırlatıcıları 30 test), 24 Kasım'da 506 (refresh token ve logout 23 test). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
+| Endpoint | **60**: Food Vision 2 (25 Kasım, Ayşenur: `POST /ai/food/nutrition`, `GET /ai/food/search`, bölüm 19), oturum 2 (24 Kasım'da, `POST /auth/refresh` ve `/auth/logout`, bölüm 18), hatırlatıcılar 7 (23 Kasım'da, Nilsu: tanımlar ve Alındı/Atlandı/Kaçırıldı cevapları), yemek fotoğrafı 1 (23 Kasım'da, `POST /ai/food`, bölüm 17), yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
+| Otomatik test | **530**, hepsi geçiyor (`mvn test`; 15'i Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 23 Kasım'da 448 (yemek fotoğrafı 37 test), sonra 452 (`AI_PHOTO` öğün kaydı 4 test), sonra 453 (V10 veritabanı testi), main birleştirmesinde 483 (Nilsu’nun hatırlatıcıları 30 test), 24 Kasım'da 506 (refresh token ve logout 23 test), 25 Kasım'da 530 (Food Vision 3 haftalık plan, Ayşenur; bölüm 19). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
 | Postman | 18 klasörde **465** istek ve 711 assertion; yerel veritabanında ve gerçek FastAPI ile hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66), "Time-limited sharing" (20), "Audit log" (31), "OWASP Top 10" (73), "AI analyses and voice" (36). 1. günde 7 klasör, 105 istek |
 | Şema sürümü | Flyway V11 (V11 24 Kasım'da: `auth_sessions`, refresh token ve logout; `V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı; V9 23 Kasım'da: fotoğraf modelinin 24 Türk yemeği `food_catalog`'a; V10 23 Kasım'da: Food-101'in 101 yemeği, research yüklemesi olmayan veritabanları için) |
 | Takım reposu | `backend` dalı GP ile aynı kodu taşıyor (yalnız `README.md` farklı). `backend`, `frontend` ve `ai` dalları henüz `main`'e merge edilmedi |
@@ -649,7 +649,7 @@ Rol seviyesi `@PreAuthorize` ile korunur. Tablodaki ✓ yalnızca rol kontrolün
 | Kayıtlar: `GET` liste ve tek kayıt (×4 tür) | ✓ (kendisi) | ✓ (ilgili izin) | ✓ (ilgili izin) | ✓ → 404 |
 | Kayıtlar: `POST`, `PUT`, `DELETE` (×4 tür) | ✓ (kendisi) | 403 | 403 | 403 |
 | `GET …/alerts`, `GET …/alerts/{id}`, `PATCH …/alerts/{id}` | ✓ (kendisi) | ✓ (`alerts` izni) | ✓ (`alerts` izni) | ✓ → 404 |
-| `POST /ai/parse`, `POST /ai/voice`, `POST /ai/food`, `POST /patients/{id}/ai-entries` | ✓ (kendisi) | 403 | 403 | 403 |
+| `POST /ai/parse`, `POST /ai/voice`, `POST /ai/food`, `POST /ai/food/nutrition`, `GET /ai/food/search`, `POST /patients/{id}/ai-entries` | ✓ (kendisi) | 403 | 403 | 403 |
 | `GET /care-team/patients`, `GET /care-team/alerts` | 403 | ✓ | ✓ | 403 |
 | `GET /admin/users`, `PATCH /admin/users/{id}/status` | 403 | 403 | 403 | ✓ |
 
@@ -976,3 +976,16 @@ Takım reposunun `main`'i (`b6d9063`, Nilsu'nun hatırlatıcıları ve fotoğraf
 
 Endpoint sayısı 56 → 58, test sayısı 483 → 506.
 
+## 19. Food Vision 3 haftalık plan: çoklu yemek, besin değerleri, onayla/düzenle (25 Kasım, Ayşenur)
+
+`feature/food-vision` dalı. Bölüm 17'deki "Ayşenur için" maddeleri ve planın eksikleri.
+
+| Hafta | Ne eklendi |
+|---|---|
+| 1 | **Çoklu yemek:** servis YOLO ile tabaktaki yemek bölgelerini bulur, her birini ResNet50 ile sınıflandırır (`items`, `multiple_foods`). Üç yemekli test tabağında bütün fotoğraf "pizza %52" derken bölgeler hamburger %99.99, pizza %99.5, spaghetti bolognese %71 buldu. Servisin ilk testleri (pytest, 18 test, sahte model ve sahte YOLO) |
+| 2 | **Besin değerleri:** V12 ile protein ve yağ (125 yemek) ve Türk yemeklerinin kalori, karbonhidrat, porsiyonu (kaba tahmin, `is_verified = false`). Cevapta porsiyon başına dört değer ve `portionOptions` (küçük / orta / büyük) |
+| 3 | **Onayla / düzenle:** `POST /ai/food/nutrition` (seçilen yemek ve miktarlar → değerler ve toplam; bilinmeyen değer 0 sayılmaz), `GET /ai/food/search` ("yanlış yemek mi?"). Flutter: tabakta her yemek için işaret kutusu, isim düzeltme ve porsiyon seçimi; tek yemekte porsiyon seçimi; karbonhidrat tahmini seçilen porsiyonların toplamı, `aiConfidence` onaylanan yemeklerin en düşüğü |
+
+Kapanan bulgular: **F-2** (`/upload-image` diske yazıyordu: kaldırıldı), **F-4** (`/predict-food` `async def` içinde senkron model: artık thread pool'da, YOLO bir kilitle), **F-6** (`requirements.txt` sürümleri sabit), "servisin testi yok". Ek olarak servis 50 MP üstü fotoğrafı açmadan reddeder (Pillow 1×–2× sınır arasında yalnız uyarıyordu) ve Docker `HEALTHCHECK` var.
+
+**Birleştirme notu:** `main` (Melih'in V11'i `auth_sessions` ve `/auth/refresh`, `/auth/logout`) bu dala birleştirildi (25 Kasım). Flyway sırası V11 → V12. İki dal `ProtectedRoutesTest.ENDPOINT_COUNT`'u ayrı ayrı 58 yapmıştı; Git aynı değişikliği çakışmasız aldığı halde birleşmiş kodda 60 endpoint vardı ve test kırılıyordu. Sayı 60 yapıldı.

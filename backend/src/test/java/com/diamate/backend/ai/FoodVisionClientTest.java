@@ -58,7 +58,30 @@ class FoodVisionClientTest {
         assertThat(result.topPredictions()).extracting(FastApiFoodResult.Prediction::food)
                 .containsExactly("pizza", "lahmacun", "garlic_bread");
         assertThat(result.topPredictions().getFirst().confidence()).isEqualTo(0.9123);
+        assertThat(result.items()).isNull(); // an answer without food regions
         server.verify();
+    }
+
+    @Test
+    void readsTheFoodRegions() {
+        server.expect(requestTo(BASE_URL + "/predict-food"))
+                .andRespond(withSuccess("""
+                        {"success":true,"model":"ResNet50","top_predictions":[{"food":"pizza","confidence":0.52}],
+                         "items":[{"box":[0.0504,0.1754,0.2733,0.8135],"detector_label":"sandwich",
+                                   "detector_confidence":0.88,
+                                   "top_predictions":[{"food":"hamburger","confidence":0.9999}]},
+                                  {"box":[0.36,0.16,0.65,0.76],"detector_label":"hot dog",
+                                   "top_predictions":[{"food":"pizza","confidence":0.99}]}],
+                         "multiple_foods":true,"requires_user_confirmation":true}
+                        """, MediaType.APPLICATION_JSON));
+
+        FastApiFoodResult result = client().predict(IMAGE, "meal.jpg", MediaType.IMAGE_JPEG);
+
+        assertThat(result.items()).hasSize(2);
+        assertThat(result.items().getFirst().box()).containsExactly(0.0504, 0.1754, 0.2733, 0.8135);
+        assertThat(result.items().getFirst().detectorLabel()).isEqualTo("sandwich");
+        assertThat(result.items().getFirst().topPredictions().getFirst().food()).isEqualTo("hamburger");
+        assertThat(result.items().get(1).detectorLabel()).isEqualTo("hot dog");
     }
 
     @Test
@@ -134,6 +157,13 @@ class FoodVisionClientTest {
             "{\"success\":true,\"top_predictions\":[{\"food\":\"<script>alert(1)</script>\",\"confidence\":0.9}]}",
             "{\"success\":true,\"top_predictions\":[{\"food\":\"Pizza Margherita\",\"confidence\":0.9}]}",
             "{\"success\":true,\"top_predictions\":[null]}",
+            // Food regions: box outside the photo, upside down, wrong length; bad guesses; odd label; a null item.
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[{\"box\":[0,0,1.2,1],\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}]}]}",
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[{\"box\":[0.5,0,0.2,1],\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}]}]}",
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[{\"box\":[0,0,1],\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}]}]}",
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[{\"box\":[0,0,1,1],\"top_predictions\":[]}]}",
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[{\"box\":[0,0,1,1],\"detector_label\":\"<b>\",\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}]}]}",
+            "{\"success\":true,\"top_predictions\":[{\"food\":\"pizza\",\"confidence\":0.9}],\"items\":[null]}",
             "[]",
             "not json"
     })

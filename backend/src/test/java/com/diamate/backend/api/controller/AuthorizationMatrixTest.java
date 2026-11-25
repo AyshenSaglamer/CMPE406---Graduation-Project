@@ -127,6 +127,8 @@ class AuthorizationMatrixTest {
         RULES.put("POST /api/v1/ai/parse", WRITERS);
         RULES.put("POST /api/v1/ai/voice", WRITERS);
         RULES.put("POST /api/v1/ai/food", WRITERS);
+        RULES.put("POST /api/v1/ai/food/nutrition", PATIENT);
+        RULES.put("GET /api/v1/ai/food/search", PATIENT);
         // Patient-history analyses: like the log lists, fn_can_access (reports + glucose) decides who sees what.
         for (String analysis : new String[] { "summary", "anomaly", "data-quality", "drift", "prediction" }) {
             RULES.put("GET /api/v1/ai/patients/{patientId}/" + analysis, EVERYONE);
@@ -167,6 +169,7 @@ class AuthorizationMatrixTest {
                     "{\"scheduledFor\":\"2026-10-05T05:00:00Z\",\"status\":\"TAKEN\"}"),
             Map.entry("ai-entries", "{\"entries\":[{\"intent\":\"LOG_GLUCOSE\",\"value\":120}]}"),
             Map.entry("POST /api/v1/ai/parse", "{\"text\":\"my glucose is 120\"}"),
+            Map.entry("POST /api/v1/ai/food/nutrition", "{\"items\":[{\"foodCatalogId\":76,\"grams\":150}]}"),
             Map.entry("PATCH /api/v1/admin/users/{userId}/status", "{\"active\":false}"),
             Map.entry("POST /api/v1/care-relationships", "{\"memberEmail\":\"dr@example.com\"}"),
             Map.entry("POST /api/v1/care-relationships/{id}/accept", "{}"),
@@ -278,6 +281,10 @@ class AuthorizationMatrixTest {
             // A meal photo, not JSON (same reason).
             return multipart(path).file(new MockMultipartFile("image", "meal.jpg", "image/jpeg", new byte[] { 1 }))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(role));
+        }
+        if (endpoint.equals("GET /api/v1/ai/food/search")) {
+            // q is required: without it every role would get 400 before the role check.
+            request.param("q", "pizza");
         }
         if (!methodAndPath[0].equals("GET") && !methodAndPath[0].equals("DELETE")) {
             request.contentType(MediaType.APPLICATION_JSON).content(bodyFor(endpoint));

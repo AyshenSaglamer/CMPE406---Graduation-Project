@@ -4,3 +4,6 @@ venv/
 uploads/
 .env
 reports/
+tests/
+requirements-dev.txt
+*.pt

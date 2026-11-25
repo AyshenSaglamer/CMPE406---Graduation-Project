@@ -23,8 +23,7 @@ import com.diamate.backend.exception.FoodVisionException;
  * only from the backend (Docker network, no port on the host) and has no login of its own: the backend checks the
  * user and the file first.
  *
- * Only /predict-food is used. The service's older /upload-image (YOLO) writes every photo to its disk; this one keeps
- * the photo in memory.
+ * Only /predict-food is used; the service keeps the photo in memory and never writes it to disk.
  *
  * Errors become FoodVisionException: 503 when the service cannot be reached (or says it is unavailable), 422 when it
  * refuses the image (its 400 / 413 / 422, e.g. a file Pillow cannot open), 502 for anything else, including an
@@ -35,6 +34,12 @@ public class FoodVisionClient {
 
     /** Class names of the model: lower case with underscores ("apple_pie", "cig_kofte"). */
     private static final Pattern FOOD_NAME = Pattern.compile("[a-z0-9_]{1,100}");
+
+    /** Detector labels: COCO names such as "bowl" or "hot dog". */
+    private static final Pattern DETECTOR_LABEL = Pattern.compile("[a-z0-9 _]{1,50}");
+
+    /** The service sends at most 5 food regions; more is not an answer of ours. */
+    static final int MAX_ITEMS = 10;
 
     private final RestClient restClient;
 
@@ -93,7 +98,24 @@ public class FoodVisionClient {
         if (result == null || Boolean.FALSE.equals(result.success())) {
             return false;
         }
-        List<FastApiFoodResult.Prediction> predictions = result.topPredictions();
+        if (!validPredictions(result.topPredictions())) {
+            return false;
+        }
+        List<FastApiFoodResult.Item> items = result.items();
+        return items == null || items.size() <= MAX_ITEMS && items.stream().allMatch(FoodVisionClient::isValid);
+    }
+
+    private static boolean isValid(FastApiFoodResult.Item item) {
+        return item != null && validBox(item.box()) && validPredictions(item.topPredictions())
+                && (item.detectorLabel() == null || DETECTOR_LABEL.matcher(item.detectorLabel()).matches());
+    }
+
+    private static boolean validBox(List<Double> box) {
+        return box != null && box.size() == 4 && box.stream().allMatch(v -> v != null && v >= 0 && v <= 1)
+                && box.get(0) < box.get(2) && box.get(1) < box.get(3);
+    }
+
+    private static boolean validPredictions(List<FastApiFoodResult.Prediction> predictions) {
         if (predictions == null || predictions.isEmpty()) {
             return false;
         }
