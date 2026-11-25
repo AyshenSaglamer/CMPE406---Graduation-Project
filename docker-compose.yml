@@ -74,7 +74,7 @@ services:
   # Flyway version and baseline settings as the backend's own (spring.flyway in application.yml), so a database that
   # the backend migrated before (e.g. Neon) and one migrated here have the same history.
   migrate:
-    image: flyway/flyway:12.4.0
+    image: flyway/flyway:13.13.0
     command: migrate
     environment:
       FLYWAY_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-diamate}
