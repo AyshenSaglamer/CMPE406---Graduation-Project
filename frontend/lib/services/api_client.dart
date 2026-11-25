@@ -8,10 +8,19 @@ import 'api_exception.dart';
 import 'token_storage.dart';
 
 class ApiClient {
-  ApiClient({http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  /// [timeout] and [uploadTimeout] default to [ApiConfig.timeout] and
+  /// [ApiConfig.uploadTimeout]; tests pass short ones.
+  ApiClient({
+    http.Client? httpClient,
+    Duration? timeout,
+    Duration? uploadTimeout,
+  })  : _http = httpClient ?? http.Client(),
+        _timeout = timeout ?? ApiConfig.timeout,
+        _uploadTimeout = uploadTimeout ?? ApiConfig.uploadTimeout;
 
   final http.Client _http;
+  final Duration _timeout;
+  final Duration _uploadTimeout;
 
   static void Function()? onUnauthorized;
 
@@ -83,7 +92,9 @@ class ApiClient {
 
   /// POST multipart/form-data with one file in [field] (e.g. a voice
   /// recording). The file is sent as application/octet-stream; the backend
-  /// decides its type by the extension of [filename].
+  /// decides its type by the extension of [filename]. Waits up to
+  /// [ApiConfig.uploadTimeout], since recognising the file takes longer than
+  /// an ordinary request.
   Future<dynamic> postFile(
     String path, {
     required String field,
@@ -100,6 +111,7 @@ class ApiClient {
           filename: filename,
         )),
       auth: auth,
+      timeout: _uploadTimeout,
     );
   }
 
@@ -132,7 +144,7 @@ class ApiClient {
             },
             body: jsonEncode({'refreshToken': refreshToken}),
           )
-          .timeout(ApiConfig.timeout);
+          .timeout(_timeout);
     } on TimeoutException {
       return false;
     } on http.ClientException {
@@ -223,10 +235,11 @@ class ApiClient {
   /// Sends the request built by [build]. A 401 on an authenticated request
   /// (the access token was revoked or ran out on the way) gets one refresh
   /// and one retry with the new token; a request can be sent only once, so
-  /// [build] makes a fresh one.
+  /// [build] makes a fresh one. [timeout] defaults to the ordinary one.
   Future<dynamic> _execute(
     Future<http.BaseRequest> Function() build, {
     required bool auth,
+    Duration? timeout,
     bool retried = false,
   }) async {
     final request = await build();
@@ -235,7 +248,7 @@ class ApiClient {
     try {
       final streamed = await _http
           .send(request)
-          .timeout(ApiConfig.timeout);
+          .timeout(timeout ?? _timeout);
 
       response = await http.Response.fromStream(streamed);
     } on TimeoutException {
@@ -261,7 +274,7 @@ class ApiClient {
 
     if (response.statusCode == 401 && auth) {
       if (!retried && await refreshSession()) {
-        return _execute(build, auth: auth, retried: true);
+        return _execute(build, auth: auth, timeout: timeout, retried: true);
       }
       await TokenStorage.clear();
       onUnauthorized?.call();
