@@ -12,7 +12,8 @@ import jakarta.validation.constraints.NotNull;
  * Binds the diamate.jwt.* settings from application.yml.
  *
  * @param secret     base64-encoded HMAC key (at least 32 bytes once decoded)
- * @param expiration access token lifetime
+ * @param expiration        access token lifetime
+ * @param refreshExpiration refresh token lifetime; every refresh starts it again, so an app in daily use stays logged in
  * @param issuer     value of the "iss" claim; tokens from any other issuer are rejected
  */
 @Validated
@@ -20,6 +21,7 @@ import jakarta.validation.constraints.NotNull;
 public record JwtProperties(
         @NotBlank String secret,
         @NotNull Duration expiration,
+        @NotNull Duration refreshExpiration,
         @NotBlank String issuer) {
 	
 }

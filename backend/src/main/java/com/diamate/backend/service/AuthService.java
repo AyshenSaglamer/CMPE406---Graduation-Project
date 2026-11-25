@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diamate.backend.api.dto.request.LoginRequest;
+import com.diamate.backend.api.dto.request.RefreshRequest;
 import com.diamate.backend.api.dto.request.RegisterRequest;
+import com.diamate.backend.entity.AuthSession.RevokeReason;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
 import com.diamate.backend.entity.ClinicianProfile;
@@ -27,6 +30,7 @@ import com.diamate.backend.exception.AccountLockedException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
 import com.diamate.backend.exception.InvalidFieldException;
+import com.diamate.backend.exception.InvalidRefreshTokenException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
 import com.diamate.backend.repository.ClinicianProfileRepository;
 import com.diamate.backend.repository.PatientProfileRepository;
@@ -57,6 +61,7 @@ public class AuthService {
     private final PasswordPolicy passwordPolicy;
     private final JwtService jwtService;
     private final AuditService auditService;
+    private final AuthSessionService sessions;
     private final Clock clock;
 
     // Checked against when the email is unknown, so that a login for an unknown email
@@ -66,7 +71,8 @@ public class AuthService {
     // Constructor
     public AuthService(UserRepository userRepository, PatientProfileRepository patientProfileRepository,
             ClinicianProfileRepository clinicianProfileRepository, PasswordEncoder passwordEncoder,
-            PasswordPolicy passwordPolicy, JwtService jwtService, AuditService auditService, Clock clock) {
+            PasswordPolicy passwordPolicy, JwtService jwtService, AuditService auditService,
+            AuthSessionService sessions, Clock clock) {
         this.userRepository = userRepository;
         this.patientProfileRepository = patientProfileRepository;
         this.clinicianProfileRepository = clinicianProfileRepository;
@@ -74,6 +80,7 @@ public class AuthService {
         this.passwordPolicy = passwordPolicy;
         this.jwtService = jwtService;
         this.auditService = auditService;
+        this.sessions = sessions;
         this.clock = clock;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
@@ -177,8 +184,48 @@ public class AuthService {
         user.recordSuccessfulLogin(now);
         auditService.loginSucceeded(user.getId());
 
-        String token = jwtService.generateToken(user);
-        return new AuthResponse(token, TOKEN_TYPE, jwtService.getExpirationSeconds(), UserResponse.from(user));
+        return tokens(user, sessions.open(user.getId()));
+    }
+
+    /**
+     * New access and refresh tokens for an open session; the refresh token sent here stops working. A refresh token
+     * that was already replaced closes its session (somebody else has a copy) and is audited.
+     * noRollbackFor: closing the session must be committed although the answer is a 401.
+     */
+    @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
+    public AuthResponse refresh(RefreshRequest request) {
+        return switch (sessions.find(request.refreshToken())) {
+            case AuthSessionService.Lookup.Open open -> {
+                Optional<User> user = userRepository.findById(open.session().getUserId()).filter(User::isActive);
+                if (user.isEmpty()) {
+                    sessions.revoke(open.session(), RevokeReason.ACCOUNT_DISABLED);
+                    throw new InvalidRefreshTokenException();
+                }
+                yield tokens(user.get(), sessions.rotate(open.session()));
+            }
+            case AuthSessionService.Lookup.Reused reused -> {
+                auditService.refreshTokenReused(reused.session().getUserId(), reused.session().getId());
+                throw new InvalidRefreshTokenException();
+            }
+            case AuthSessionService.Lookup.Invalid invalid -> throw new InvalidRefreshTokenException();
+        };
+    }
+
+    /**
+     * Ends the session of the token: the access token and the refresh token stop working at once (other devices of
+     * the same user stay logged in). Calling it again does nothing.
+     */
+    @Transactional
+    public void logout(long userId, UUID sessionId) {
+        if (sessions.logout(userId, sessionId)) {
+            auditService.loggedOut(userId, sessionId);
+        }
+    }
+
+    private AuthResponse tokens(User user, AuthSessionService.Issued session) {
+        String accessToken = jwtService.generateToken(user, session.sessionId());
+        return new AuthResponse(accessToken, TOKEN_TYPE, jwtService.getExpirationSeconds(), session.refreshToken(),
+                jwtService.getRefreshExpirationSeconds(), UserResponse.from(user));
     }
 
     /**

@@ -3,6 +3,7 @@ package com.diamate.backend.repository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -36,9 +37,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByOrderByIdAsc();
 
     // Checked on every request with a token (ActiveAccountValidator): the role of the user if the account exists and
-    // is active, otherwise empty. One small query instead of loading the whole user.
-    @Query("select u.role from User u where u.id = :id and u.active = true")
-    Optional<Role> findActiveUserRole(@Param("id") long id);
+    // is active and the token's login session is still open (not logged out, not expired), otherwise empty. One small
+    // query instead of loading the whole user.
+    @Query("""
+            select u.role from User u, AuthSession s
+            where u.id = :id and u.active = true
+              and s.id = :sessionId and s.userId = u.id and s.revokedAt is null and s.expiresAt > :now""")
+    Optional<Role> findRoleForOpenSession(@Param("id") long id, @Param("sessionId") UUID sessionId,
+            @Param("now") Instant now);
 
     // Failed logins are counted in the database with "+ 1" instead of read-change-write in Java: parallel attempts
     // wait for each other's row lock, so none of them can overwrite another's count and slip past the limit.

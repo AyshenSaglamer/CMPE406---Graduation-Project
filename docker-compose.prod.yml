@@ -1,0 +1,43 @@
+# Production overrides for a server with a real domain name: standard ports 80/443 and a Let's Encrypt certificate
+# that renews itself. Used together with docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# First time on a new server: deploy/init-letsencrypt.sh gets the certificate (Nginx cannot start without one).
+# Full guide: deploy/DEPLOYMENT.md. Needed in .env: DOMAIN, LETSENCRYPT_EMAIL, and the secrets of .env.example.
+
+services:
+  nginx:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    environment:
+      HTTPS_PORT: 443
+      SERVER_NAME: ${DOMAIN:?Set DOMAIN in .env (e.g. api.diamate.example)}
+      SSL_CERTIFICATE: /etc/letsencrypt/live/${DOMAIN}/fullchain.pem
+      SSL_CERTIFICATE_KEY: /etc/letsencrypt/live/${DOMAIN}/privkey.pem
+    volumes: !override
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - acme-webroot:/var/www/certbot:ro
+    # Reload every 6 hours, so a certificate renewed by the certbot service is picked up without downtime.
+    command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
+
+  # Renews the certificate when it has less than 30 days left (Let's Encrypt certificates last 90 days). Checks twice
+  # a day; the challenge files are written to acme-webroot, which Nginx serves on port 80.
+  certbot:
+    image: certbot/certbot:v3.1.0
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - acme-webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"]
+    restart: unless-stopped
+
+  backend:
+    environment:
+      # Never publish the API description in production.
+      API_DOCS_ENABLED: "false"
+
+volumes:
+  letsencrypt:
+  acme-webroot:

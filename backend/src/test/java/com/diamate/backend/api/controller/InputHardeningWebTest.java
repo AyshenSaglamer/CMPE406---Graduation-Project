@@ -90,7 +90,7 @@ class InputHardeningWebTest {
 
     @BeforeEach
     void thePatientIsActive() {
-        when(userRepository.findActiveUserRole(anyLong())).thenReturn(Optional.of(Role.PATIENT));
+        when(userRepository.findRoleForOpenSession(anyLong(), any(), any())).thenReturn(Optional.of(Role.PATIENT));
     }
 
     // ---------- S-1: a short number that would expand into a huge one ----------
@@ -178,7 +178,7 @@ class InputHardeningWebTest {
     private ResultActions asPatient(MockHttpServletRequestBuilder request) throws Exception {
         User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, Role.PATIENT, "p@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", PATIENT_ID);
-        String token = new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+        String token = new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, java.util.UUID.randomUUID());
         return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
     }
 }

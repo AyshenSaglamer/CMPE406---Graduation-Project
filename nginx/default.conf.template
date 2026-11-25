@@ -1,6 +1,8 @@
-# Nginx in front of the DiaMate backend (docker-compose.yml). ${HTTPS_PORT}, ${AUTH_RATE_LIMIT} and
-# ${AUTH_RATE_BURST} are filled in by the nginx image's envsubst at start; Nginx's own variables ($host, $remote_addr,
-# ...) are left alone because they are not set in the container's environment.
+# Nginx in front of the DiaMate backend (docker-compose.yml). ${SERVER_NAME}, ${HTTPS_PORT}, ${SSL_CERTIFICATE},
+# ${SSL_CERTIFICATE_KEY}, ${AUTH_RATE_LIMIT} and ${AUTH_RATE_BURST} are filled in by the nginx image's envsubst at start
+# (docker-compose.yml gives each a default); Nginx's own variables ($host, $remote_addr, ...) are left alone because
+# they are not set in the container's environment. Production (real domain, Let's Encrypt): docker-compose.prod.yml
+# and deploy/DEPLOYMENT.md.
 
 # Do not tell clients the Nginx version.
 server_tokens off;
@@ -15,7 +17,13 @@ limit_req_status 429;
 # POST stays a POST. The JWT is never sent over plain HTTP to the backend.
 server {
     listen 80;
-    server_name _;
+    server_name ${SERVER_NAME};
+
+    # Let's Encrypt HTTP-01 challenge (certbot --webroot, docker-compose.prod.yml). The only thing served over HTTP;
+    # without the prod volume the folder is empty and this answers 404.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
 
     location / {
         return 308 https://$host:${HTTPS_PORT}$request_uri;
@@ -24,10 +32,11 @@ server {
 
 server {
     listen 443 ssl;
-    server_name _;
+    server_name ${SERVER_NAME};
 
-    ssl_certificate     /etc/nginx/ssl/server.crt;
-    ssl_certificate_key /etc/nginx/ssl/server.key;
+    # Development: nginx/make-dev-cert.sh (nginx/ssl). Production: the Let's Encrypt certificate of the domain.
+    ssl_certificate     ${SSL_CERTIFICATE};
+    ssl_certificate_key ${SSL_CERTIFICATE_KEY};
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 1h;
@@ -87,8 +96,10 @@ server {
         return 503 '{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"The DiaMate service is currently unavailable"}';
     }
 
-    # POST /api/v1/auth/login and /register (the only public endpoints that do work), rate limited per IP.
-    location /api/v1/auth/ {
+    # POST /api/v1/auth/login and /register, rate limited per IP. /auth/refresh and /auth/logout are not: the app
+    # refreshes its short-lived token on its own, and users behind one NAT (a school network) must not use up each
+    # other's login quota with it. A refresh token is 256 random bits, so it cannot be guessed.
+    location ~ ^/api/v1/auth/(login|register)$ {
         limit_req zone=diamate_auth burst=${AUTH_RATE_BURST} nodelay;
         proxy_pass http://backend:8080;
     }

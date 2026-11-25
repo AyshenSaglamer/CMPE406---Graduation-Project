@@ -23,6 +23,10 @@ services:
     environment:
       # The redirect from HTTP must point at the host's HTTPS port, not at 443 inside the container.
       HTTPS_PORT: ${HTTPS_PORT:-8443}
+      # "_" answers any host name (development). Production sets the domain (docker-compose.prod.yml).
+      SERVER_NAME: ${SERVER_NAME:-_}
+      SSL_CERTIFICATE: /etc/nginx/ssl/server.crt
+      SSL_CERTIFICATE_KEY: /etc/nginx/ssl/server.key
       # Rate limit for /api/v1/auth/ (login, register) per client IP; see nginx/default.conf.template.
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-10r/m}
       AUTH_RATE_BURST: ${AUTH_RATE_BURST:-5}
@@ -49,7 +53,12 @@ services:
       # Migrations are applied by the migrate service with the owner account; diamate_app could not run them anyway.
       SPRING_FLYWAY_ENABLED: "false"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (openssl rand -base64 64)}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-1h}
+      # Access token lifetime. The app gets a new one with its refresh token (POST /api/v1/auth/refresh), so it can
+      # be short; a logout ends both at once (auth_sessions, V11).
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-30d}
+      # Swagger UI and /v3/api-docs: off unless asked for (see DiaMate/docs/DEVELOPER_GUIDE.md).
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
       AI_SERVICE_BASE_URL: http://ai-service:8000
       FOOD_VISION_BASE_URL: http://food-vision:8001
     expose:

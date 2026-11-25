@@ -12,16 +12,16 @@
 
 Bu doküman her gün güncellenir. Bölüm 0–7 1. günün incelemesidir; sayılar ve bulguların durumu 6. günün sonuna göre güncellendi.
 
-> **Güncel güvenlik durumu `SECURITY.md`'dedir (23 Kasım, final checklist).** Bu dokümanın güvenlik bölümleri (12, 14, 15) o günün kaydıdır. Örneğin 12.6'daki takım compose, Nginx ve giriş hız sınırı önerileri 23 Kasım'da uygulandı, B-9 doktor onayı 17 Kasım'da kaldırıldı. İkisi çelişirse `SECURITY.md` geçerlidir.
+> **Güncel güvenlik durumu `SECURITY.md`'dedir (24 Kasım).** Bu dokümanın güvenlik bölümleri (12, 14, 15) o günün kaydıdır. Örneğin 12.6'daki takım compose, Nginx ve giriş hız sınırı önerileri 23 Kasım'da uygulandı, B-9 doktor onayı 17 Kasım'da kaldırıldı. İkisi çelişirse `SECURITY.md` geçerlidir.
 
 ## 0. Özet
 
 | Ölçü | Değer |
 |---|---|
-| Endpoint | **56**: hatırlatıcılar 7 (23 Kasım'da, Nilsu: tanımlar ve Alındı/Atlandı/Kaçırıldı cevapları), yemek fotoğrafı 1 (23 Kasım'da, `POST /ai/food`, bölüm 17), yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
-| Otomatik test | **483**, hepsi geçiyor (`mvn test`; 8'i Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 23 Kasım'da 448 (yemek fotoğrafı 37 test), sonra 452 (`AI_PHOTO` öğün kaydı 4 test), sonra 453 (V10 veritabanı testi), sonra 483 (hatırlatıcılar 30 test, Nilsu). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
+| Endpoint | **58**: oturum 2 (24 Kasım'da, `POST /auth/refresh` ve `/auth/logout`, bölüm 18), hatırlatıcılar 7 (23 Kasım'da, Nilsu: tanımlar ve Alındı/Atlandı/Kaçırıldı cevapları), yemek fotoğrafı 1 (23 Kasım'da, `POST /ai/food`, bölüm 17), yapay zekâ 5 (22 Kasım'da, Ayşen'in entegrasyonu: ses, anomaly, data-quality, drift, prediction), denetim kaydı okuma 2 (17 Kasım'da: hastanın erişim geçmişi, admin araması), bakım ilişkileri 6 (17 Kasım'da), health 2, auth 2, kullanıcı/rol 4 (`PATCH /admin/users/{id}/status` 5. günde), hasta özeti 1, sağlık kayıtları 4 × 5 = 20, uyarılar 4 (Nilsu'nun 3'ü + `GET /care-team/alerts` 5. günde), yapay zekâ 2 |
+| Otomatik test | **506**, hepsi geçiyor (`mvn test`; 12'si Testcontainers ile Docker'da PostgreSQL'e karşı çalışan veritabanı testi, Docker yoksa atlanır). 23 Kasım'da 448 (yemek fotoğrafı 37 test), sonra 452 (`AI_PHOTO` öğün kaydı 4 test), sonra 453 (V10 veritabanı testi), main birleştirmesinde 483 (Nilsu’nun hatırlatıcıları 30 test), 24 Kasım'da 506 (refresh token ve logout 23 test). 22 Kasım'da 375, sonra 411 (yapay zekâ entegrasyonu 36 test) (veritabanı testleri ve düşük bulguların testleri). 17 Kasım'da 268 (bakım ilişkileri 17 test), sonra 292 (`HealthDataAccessTest` 24 test), sonra 302 (süreli paylaşım 10 test), sonra 317 (denetim kaydı 15 test), sonra 356 (`StrictJsonWebTest` 39 test, bölüm 14). Ayrıca gerçek veritabanında `fn_can_access` için 54 kontrol (`Database/tools/access_rules_test.sql`). 1. günde 139, 2. günde 148, 3. günde 188, 4. günde 205, birleştirmede 210, 5. günde 234 |
 | Postman | 18 klasörde **465** istek ve 711 assertion; yerel veritabanında ve gerçek FastAPI ile hepsi geçiyor. 3. haftada eklenen klasörler: "Care relationships" (34 istek), "Permissions" (66), "Time-limited sharing" (20), "Audit log" (31), "OWASP Top 10" (73), "AI analyses and voice" (36). 1. günde 7 klasör, 105 istek |
-| Şema sürümü | Flyway V10 (`V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı; V9 23 Kasım'da: fotoğraf modelinin 24 Türk yemeği `food_catalog`'a; V10 23 Kasım'da: Food-101'in 101 yemeği, research yüklemesi olmayan veritabanları için) |
+| Şema sürümü | Flyway V11 (V11 24 Kasım'da: `auth_sessions`, refresh token ve logout; `V1` = `Database/sql` paketi; V5 3. günde, V6 4. günde, V7 5. günde, V8 3. haftada: durdurulmuş hastanın verisi bakım ekibine kapalı; V9 23 Kasım'da: fotoğraf modelinin 24 Türk yemeği `food_catalog`'a; V10 23 Kasım'da: Food-101'in 101 yemeği, research yüklemesi olmayan veritabanları için) |
 | Takım reposu | `backend` dalı GP ile aynı kodu taşıyor (yalnız `README.md` farklı). `backend`, `frontend` ve `ai` dalları henüz `main`'e merge edilmedi |
 
 **Öne çıkan bulgular** (ayrıntı: [bölüm 5](#5-bulgular)):
@@ -962,3 +962,17 @@ Ayşenur'un `feature/food-vision` dalı (`9742f8f`, 23 Kasım) YOLO'nun yanına 
 - **Türk yemeklerinin besin değerleri:** V9'da boş; doğrulanmış bir kaynakla doldurulabilir.
 
 **Tam yığın uçtan uca (23 Kasım, Docker, ayrı proje ve volume, test ağırlıklarıyla):** 17/17 API kontrolü (fotoğraf 200, PDF 400, 7 MB 413, doktor 403, token yok 401, `AI_PHOTO` kaydı 201 ve `PUT`'ta korunuyor, `AI_PHOTO` olmadan güven 400, glukozda `AI_PHOTO` 400). S-A: migrate exit 0, backend `diamate_app` ile bağlı, `flyway_schema_history` okunamıyor. Yalnız Nginx portu açık, HTTP → HTTPS `308`. food-vision `uploads/` boş kaldı. food-vision durunca `/ai/food` 503, diğerleri UP; yeniden açılınca 200. **Bulgu:** `food_catalog`'da yalnız V9'un 24 satırı vardı (research CSV yüklemesi compose'da yok), hiçbir yemek için besin değeri dönmüyordu → V10.
+
+## 18. 4. hafta: oturum yönetimi, API dokümanı, bağımlılık taraması ve production hazırlığı (24 Kasım)
+
+Takım reposunun `main`'i (`b6d9063`, Nilsu'nun hatırlatıcıları ve fotoğraflı öğün ekranı) GP'ye birleştirildi; backend ve Flutter kodu iki repoda aynı. Kalan maddeler kapatıldı:
+
+| Madde | Ne yapıldı | Doğrulama |
+|---|---|---|
+| Refresh token + sunucuda logout (S-C, B-6) | V11 `auth_sessions`; access token 15 dk ve `sid` taşır; `POST /auth/refresh` (rotation, tekrar kullanımda oturum kapanır, `REFRESH_TOKEN_REUSED`), `POST /auth/logout` (204, access token hemen 401). Flutter: `api_client.dart` tek seferde yeniler, 401'de bir kez yenileyip tekrar dener, offline'da oturumu silmez; çıkışta `/auth/logout` | `AuthSessionServiceTest` (8), `AuthServiceTest` (+5), `AuthControllerTest` (+5), `ActiveAccountValidatorTest` (+1), `RefreshTokenIntegrationTest` (4, gerçek PostgreSQL); Flutter `token_refresh_test.dart` (7); Postman "Sessions: refresh and logout (Week 4)" (14 istek) |
+| API dokümanı | springdoc 3.2.1: Swagger UI `/swagger-ui.html`, `/v3/api-docs`, Bearer şeması; `API_DOCS_ENABLED` ile açılır, varsayılan ve production'da kapalı. `docs/DEVELOPER_GUIDE.md` | Tam stack'te bakıldı (bölüm 10 SECURITY.md) |
+| Bağımlılık taraması (S-J) | `.github/dependabot.yml`, `.github/workflows/dependency-audit.yml` (OSV-Scanner, pip-audit) | GitHub'da ilk çalıştırma bekleniyor |
+| Production (HTTPS/TLS) | `docker-compose.prod.yml` (80/443, Let's Encrypt + otomatik yenileme), `deploy/init-letsencrypt.sh`, `deploy/backup-db.sh`, `deploy/DEPLOYMENT.md`. Nginx'te sertifika ve sunucu adı değişkenle; hız sınırı yalnız login/register | `docker compose config`, `nginx -t`; sunucu ve alan adı henüz yok |
+
+Endpoint sayısı 56 → 58, test sayısı 483 → 506.
+

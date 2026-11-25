@@ -42,6 +42,8 @@ public class AuditService {
     static final String ACCESS_DENIED = "ACCESS_DENIED";
     static final String AUDIT_LOG_VIEWED = "AUDIT_LOG_VIEWED";
     static final String CARE_INVITE_REFUSED = "CARE_INVITE_REFUSED";
+    static final String LOGOUT = "LOGOUT";
+    static final String REFRESH_TOKEN_REUSED = "REFRESH_TOKEN_REUSED";
 
     /** Longest request path stored for ACCESS_DENIED; a path is short in practice, an attacker's may not be. */
     static final int PATH_MAX_LENGTH = 200;
@@ -83,6 +85,20 @@ public class AuditService {
     @Transactional
     public void loginFailed(Long userId, LoginFailure reason) {
         write(userId, null, LOGIN_FAILED, null, null, false, Map.of("reason", reason.name()));
+    }
+
+    @Transactional
+    public void loggedOut(long userId, java.util.UUID sessionId) {
+        write(userId, null, LOGOUT, "AUTH_SESSION", sessionId.toString(), true, null);
+    }
+
+    /**
+     * A refresh token that had already been replaced came back: someone else has a copy of it. The session has been
+     * closed; success = false marks it as a security event next to LOGIN_FAILED and ACCESS_DENIED.
+     */
+    @Transactional
+    public void refreshTokenReused(long userId, java.util.UUID sessionId) {
+        write(userId, null, REFRESH_TOKEN_REUSED, "AUTH_SESSION", sessionId.toString(), false, null);
     }
 
     @Transactional
