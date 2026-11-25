@@ -367,7 +367,7 @@ DiaMate/
 ├── deploy/                 production guide, first-certificate and database backup scripts
 ├── .env.example            copy to .env (database password, JWT key); .env is never committed
 ├── .github/workflows/      backend, AI service and frontend CI; weekly dependency audit (OSV-Scanner, pip-audit)
-├── .github/dependabot.yml  weekly dependency update PRs
+├── .github/dependabot.yml  security update PRs only
 │
 ├── nginx/
 │   ├── default.conf.template   HTTPS reverse proxy in front of the backend

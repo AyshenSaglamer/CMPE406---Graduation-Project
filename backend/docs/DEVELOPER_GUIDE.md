@@ -157,7 +157,7 @@ npx -y newman@6.2.1 run postman/DiaMate.postman_collection.json   # API uçtan u
 python3 tools/api_fuzz_scan.py --base http://localhost:8080/api/v1  # "500 yok" taraması
 ```
 
-GitHub Actions: `ci.yml` her push/PR'da üç test takımını, `dependency-audit.yml` bağımlılıklardaki bilinen açıkları (OSV-Scanner, pip-audit) çalıştırır; Dependabot haftalık güncelleme PR'ları açar.
+GitHub Actions: `ci.yml` her push/PR'da üç test takımını, `dependency-audit.yml` bağımlılıklardaki bilinen açıkları (OSV-Scanner, pip-audit) çalıştırır; Dependabot yalnızca bilinen açığı olan bağımlılıklar için PR açar (`open-pull-requests-limit: 0` rutin sürüm PR'larını kapatır).
 
 ## 11. Sık karşılaşılan sorunlar
 
