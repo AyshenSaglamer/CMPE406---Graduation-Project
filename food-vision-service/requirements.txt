@@ -1,5 +1,8 @@
-fastapi
-uvicorn
-python-multipart
-pillow
-ultralytics
+# Versions the trained weights were checked with (25 Nov). The Dockerfile installs torch/torchvision from the
+# CPU-only index first; pip then sees them as already satisfied.
+torch==2.12.0
+torchvision==0.27.0
+fastapi==0.143.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pillow==12.2.0
