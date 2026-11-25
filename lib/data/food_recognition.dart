@@ -1,6 +1,44 @@
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
 
+/// A one-tap portion of a food: SMALL (half a typical serving), MEDIUM (a
+/// typical serving) or LARGE (one and a half), with its rough nutrition.
+class PortionOption {
+  final String size;
+  final double grams;
+  final double? carbsG;
+  final double? kcal;
+
+  const PortionOption({
+    required this.size,
+    required this.grams,
+    this.carbsG,
+    this.kcal,
+  });
+
+  static PortionOption? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) {
+      return null;
+    }
+    final size = json['size'] as String?;
+    final grams = (json['grams'] as num?)?.toDouble();
+    if (size == null || grams == null) {
+      return null;
+    }
+    return PortionOption(
+      size: size,
+      grams: grams,
+      carbsG: (json['carbsG'] as num?)?.toDouble(),
+      kcal: (json['kcal'] as num?)?.toDouble(),
+    );
+  }
+
+  /// "Small", "Medium", "Large".
+  String get label => size.isEmpty
+      ? size
+      : size[0].toUpperCase() + size.substring(1).toLowerCase();
+}
+
 /// One guess of the photo model for the whole plate.
 class FoodPrediction {
   /// The model's class name, e.g. "apple_pie".
@@ -21,6 +59,14 @@ class FoodPrediction {
   /// The typical serving the estimate is for, null if unknown.
   final double? typicalServingG;
 
+  /// Rough calories, protein and fat of a typical serving, null if unknown.
+  final double? kcalPerServing;
+  final double? proteinGPerServing;
+  final double? fatGPerServing;
+
+  /// Small / medium / large, empty when the serving is not known.
+  final List<PortionOption> portionOptions;
+
   /// false = rough estimate, never to be used for insulin dosing.
   final bool nutritionVerified;
 
@@ -31,8 +77,27 @@ class FoodPrediction {
     this.foodCatalogId,
     this.carbsGPerServing,
     this.typicalServingG,
+    this.kcalPerServing,
+    this.proteinGPerServing,
+    this.fatGPerServing,
+    this.portionOptions = const [],
     this.nutritionVerified = false,
   });
+
+  /// The portion of [size], or null when there are no portion options.
+  PortionOption? portion(String size) {
+    for (final option in portionOptions) {
+      if (option.size == size) {
+        return option;
+      }
+    }
+    return null;
+  }
+
+  /// Rough carbs of the portion of [size]; the typical serving's when the
+  /// backend sent no portion options.
+  double? carbsFor(String size) =>
+      portion(size)?.carbsG ?? (size == 'MEDIUM' ? carbsGPerServing : null);
 
   factory FoodPrediction.fromJson(Map<String, dynamic> json) {
     final food = (json['food'] as String? ?? '').trim();
@@ -45,6 +110,13 @@ class FoodPrediction {
       foodCatalogId: (json['foodCatalogId'] as num?)?.toInt(),
       carbsGPerServing: (json['carbsGPerServing'] as num?)?.toDouble(),
       typicalServingG: (json['typicalServingG'] as num?)?.toDouble(),
+      kcalPerServing: (json['kcalPerServing'] as num?)?.toDouble(),
+      proteinGPerServing: (json['proteinGPerServing'] as num?)?.toDouble(),
+      fatGPerServing: (json['fatGPerServing'] as num?)?.toDouble(),
+      portionOptions: [
+        for (final option in json['portionOptions'] as List<dynamic>? ?? const [])
+          ?PortionOption.fromJson(option),
+      ],
       nutritionVerified: json['nutritionVerified'] as bool? ?? false,
     );
   }
@@ -72,6 +144,58 @@ class FoodPrediction {
   static String _number(double value) => value == value.roundToDouble()
       ? value.toStringAsFixed(0)
       : value.toStringAsFixed(1);
+
+  /// "20 g protein · 18 g fat · 480 kcal", null when none is known.
+  String? get macrosText {
+    final parts = [
+      if (proteinGPerServing != null) '${_number(proteinGPerServing!)} g protein',
+      if (fatGPerServing != null) '${_number(fatGPerServing!)} g fat',
+      if (kcalPerServing != null) '${_number(kcalPerServing!)} kcal',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+}
+
+/// One food region of the photo (several foods on one plate), with its own
+/// guesses, best first.
+class DetectedFood {
+  /// [x1, y1, x2, y2], each 0..1 of the photo, or null.
+  final List<double>? box;
+
+  /// Even the best guess for this region is below 50 %.
+  final bool lowConfidence;
+
+  final List<FoodPrediction> predictions;
+
+  const DetectedFood({
+    this.box,
+    required this.lowConfidence,
+    required this.predictions,
+  });
+
+  static DetectedFood? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) {
+      return null;
+    }
+    final predictions = [
+      for (final item in json['predictions'] as List<dynamic>? ?? const [])
+        if (item is Map<String, dynamic>) FoodPrediction.fromJson(item),
+    ].where((p) => p.food.isNotEmpty).toList()
+      ..sort((a, b) => b.confidence.compareTo(a.confidence));
+    if (predictions.isEmpty) {
+      return null;
+    }
+    final box = [
+      for (final v in json['box'] as List<dynamic>? ?? const [])
+        if (v is num) v.toDouble(),
+    ];
+    return DetectedFood(
+      box: box.length == 4 ? box : null,
+      lowConfidence: json['lowConfidence'] as bool? ??
+          predictions.first.confidence < 0.5,
+      predictions: predictions,
+    );
+  }
 }
 
 /// The answer of POST /api/v1/ai/food. Nothing is saved by it.
@@ -89,11 +213,20 @@ class FoodRecognition {
   /// What the numbers are, shown to the patient.
   final String? note;
 
+  /// The service found two or more separate foods on the plate: [items] is
+  /// then the better answer than [predictions].
+  final bool multipleFoods;
+
+  /// Each food region with its own guesses; empty for one dish.
+  final List<DetectedFood> items;
+
   const FoodRecognition({
     this.model,
     required this.lowConfidence,
     required this.predictions,
     this.note,
+    this.multipleFoods = false,
+    this.items = const [],
   });
 
   factory FoodRecognition.fromJson(Map<String, dynamic> json) {
@@ -109,8 +242,16 @@ class FoodRecognition {
           (predictions.isEmpty || predictions.first.confidence < 0.5),
       predictions: predictions,
       note: json['note'] as String?,
+      multipleFoods: json['multipleFoods'] as bool? ?? false,
+      items: [
+        for (final item in json['items'] as List<dynamic>? ?? const [])
+          ?DetectedFood.fromJson(item),
+      ],
     );
   }
+
+  /// Show the foods on the plate one by one instead of one guess list.
+  bool get showsPlate => multipleFoods && items.length >= 2;
 
   /// The guess to pre-select, or null when the model is not sure enough.
   FoodPrediction? get suggested =>
