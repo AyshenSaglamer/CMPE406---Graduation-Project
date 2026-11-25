@@ -8,12 +8,16 @@ class PortionOption {
   final double grams;
   final double? carbsG;
   final double? kcal;
+  final double? proteinG;
+  final double? fatG;
 
   const PortionOption({
     required this.size,
     required this.grams,
     this.carbsG,
     this.kcal,
+    this.proteinG,
+    this.fatG,
   });
 
   static PortionOption? fromJson(Object? json) {
@@ -30,6 +34,8 @@ class PortionOption {
       grams: grams,
       carbsG: (json['carbsG'] as num?)?.toDouble(),
       kcal: (json['kcal'] as num?)?.toDouble(),
+      proteinG: (json['proteinG'] as num?)?.toDouble(),
+      fatG: (json['fatG'] as num?)?.toDouble(),
     );
   }
 
@@ -98,6 +104,19 @@ class FoodPrediction {
   /// backend sent no portion options.
   double? carbsFor(String size) =>
       portion(size)?.carbsG ?? (size == 'MEDIUM' ? carbsGPerServing : null);
+
+  /// Rough kcal of the portion of [size], like [carbsFor].
+  double? kcalFor(String size) =>
+      portion(size)?.kcal ?? (size == 'MEDIUM' ? kcalPerServing : null);
+
+  /// Rough protein of the portion of [size], like [carbsFor].
+  double? proteinFor(String size) =>
+      portion(size)?.proteinG ??
+      (size == 'MEDIUM' ? proteinGPerServing : null);
+
+  /// Rough fat of the portion of [size], like [carbsFor].
+  double? fatFor(String size) =>
+      portion(size)?.fatG ?? (size == 'MEDIUM' ? fatGPerServing : null);
 
   factory FoodPrediction.fromJson(Map<String, dynamic> json) {
     final food = (json['food'] as String? ?? '').trim();

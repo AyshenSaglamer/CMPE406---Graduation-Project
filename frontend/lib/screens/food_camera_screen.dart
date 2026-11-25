@@ -55,6 +55,11 @@ class ConfirmedFood {
 
   /// Rough carbs of the chosen portion, null if unknown.
   double? get carbsG => prediction.carbsFor(portion);
+
+  /// Rough kcal, protein and fat of the chosen portion, null if unknown.
+  double? get kcal => prediction.kcalFor(portion);
+  double? get proteinG => prediction.proteinFor(portion);
+  double? get fatG => prediction.fatFor(portion);
 }
 
 /// What the patient chose in the camera screen, put into the meal form.
@@ -90,12 +95,23 @@ class FoodPhotoResult {
   /// Rough carbs of the confirmed foods and portions. Null when there is none
   /// or one of them has no estimate: a part of the meal is never counted as
   /// 0 g, the patient types the carbs instead.
-  double? get carbsEstimate {
-    if (confirmedFoods.isEmpty ||
-        confirmedFoods.any((f) => f.carbsG == null)) {
+  double? get carbsEstimate => _sum((f) => f.carbsG);
+
+  /// Rough kcal, protein and fat of the confirmed foods and portions, saved
+  /// with the meal next to the carbs. Null under the same rule as
+  /// [carbsEstimate].
+  double? get kcalEstimate => _sum((f) => f.kcal);
+  double? get proteinEstimate => _sum((f) => f.proteinG);
+  double? get fatEstimate => _sum((f) => f.fatG);
+
+  /// Sum of [value] over the confirmed foods, 1 decimal (what the meal log
+  /// accepts); null when there is none or one of them is unknown.
+  double? _sum(double? Function(ConfirmedFood food) value) {
+    if (confirmedFoods.isEmpty || confirmedFoods.any((f) => value(f) == null)) {
       return null;
     }
-    final sum = confirmedFoods.fold<double>(0, (total, f) => total + f.carbsG!);
+    final sum =
+        confirmedFoods.fold<double>(0, (total, f) => total + value(f)!);
     return double.parse(sum.toStringAsFixed(1));
   }
 
