@@ -3,7 +3,7 @@
 # .env is never copied into the image (see .dockerignore).
 
 # ---- build: Maven + JDK, thrown away after the jar is built ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /build
 # Dependencies first: this layer is reused as long as pom.xml does not change, so a code change does not download
 # every library again.
