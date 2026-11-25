@@ -406,10 +406,6 @@ class _CaregiverDashboardScreenState
           const SizedBox(height: 12),
 
           _buildFamilyInsight(),
-
-          const SizedBox(height: 18),
-
-          _buildQuickActions(),
         ],
       ),
       ),
@@ -674,69 +670,6 @@ class _CaregiverDashboardScreenState
           ),
         ),
       ),
-    );
-  }
-
-  // ============================================================
-  // QUICK ACTIONS
-  // ============================================================
-
-  Widget _buildQuickActions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        Row(
-          children: [
-            // --------------------------------------------------
-            // REMINDERS
-            // --------------------------------------------------
-
-            Expanded(
-              child: _CaregiverActionCard(
-                icon: Icons.notifications_active_outlined,
-                title: 'Reminders',
-                background: const Color(0xFFFFF3DF),
-                iconColor: const Color(0xFFF0A126),
-                onTap: () {
-                  setState(() {
-                    selectedIndex = 2;
-                  });
-                },
-              ),
-            ),
-
-            const SizedBox(width: 10),
-
-            // --------------------------------------------------
-            // REPORTS
-            // --------------------------------------------------
-
-            Expanded(
-              child: _CaregiverActionCard(
-                icon: Icons.analytics_outlined,
-                title: 'Reports',
-                background: const Color(0xFFF0ECFF),
-                iconColor: const Color(0xFF765BD4),
-                onTap: () {
-                  _showFeatureMessage(
-                    'Family reports will be available here.',
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -1141,72 +1074,6 @@ class _EmptyFamilyCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// QUICK ACTION CARD
-// ============================================================================
-
-class _CaregiverActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Color background;
-  final Color iconColor;
-  final VoidCallback onTap;
-
-  const _CaregiverActionCard({
-    required this.icon,
-    required this.title,
-    required this.background,
-    required this.iconColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(19),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(19),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: 7,
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: background,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 21,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
