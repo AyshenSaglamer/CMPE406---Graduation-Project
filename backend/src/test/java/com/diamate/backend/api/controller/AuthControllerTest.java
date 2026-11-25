@@ -1,6 +1,8 @@
 package com.diamate.backend.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -11,25 +13,37 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.diamate.backend.api.dto.request.RefreshRequest;
 import com.diamate.backend.api.dto.response.AuthResponse;
 import com.diamate.backend.api.dto.response.UserResponse;
+import com.diamate.backend.entity.Gender;
 import com.diamate.backend.entity.Role;
+import com.diamate.backend.entity.User;
 import com.diamate.backend.exception.AccountLockedException;
 import com.diamate.backend.exception.EmailAlreadyRegisteredException;
 import com.diamate.backend.exception.InvalidCredentialsException;
+import com.diamate.backend.exception.InvalidRefreshTokenException;
 import com.diamate.backend.exception.RegistrationNotAllowedException;
 import com.diamate.backend.repository.UserRepository;
 import com.diamate.backend.security.ActiveAccountValidator;
+import com.diamate.backend.security.JwtProperties;
+import com.diamate.backend.security.JwtService;
 import com.diamate.backend.security.ProblemDetailSecurityHandler;
 import com.diamate.backend.security.SecurityConfig;
 import com.diamate.backend.service.AuthService;
@@ -51,9 +65,75 @@ class AuthControllerTest {
     @MockitoBean
     private AuthService authService;
 
-    // Needed by the token check (ActiveAccountValidator); these tests send no tokens.
+    // Needed by the token check (ActiveAccountValidator); only the logout tests send a token.
     @MockitoBean
     private UserRepository userRepository;
+
+    @Autowired
+    private JwtEncoder jwtEncoder;
+
+    @Autowired
+    private JwtProperties jwtProperties;
+
+    // ---------- refresh and logout ----------
+
+    @Test
+    void refreshReturnsNewTokensAndIgnoresAnExpiredAccessToken() throws Exception {
+        when(authService.refresh(new RefreshRequest("refresh-1"))).thenReturn(new AuthResponse("access-2", "Bearer",
+                900, "refresh-2", 2592000, new UserResponse(5L, "Demo", "Patient", Role.PATIENT, "p@example.com")));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header("Authorization", "Bearer expired.or.broken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"refresh-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("access-2"))
+                .andExpect(jsonPath("$.refreshToken").value("refresh-2"))
+                .andExpect(jsonPath("$.expiresIn").value(900))
+                .andExpect(jsonPath("$.refreshExpiresIn").value(2592000));
+    }
+
+    @Test
+    void refreshWithAnInvalidTokenReturns401ProblemDetail() throws Exception {
+        when(authService.refresh(any())).thenThrow(new InvalidRefreshTokenException());
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"used-or-unknown\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("The refresh token is invalid or has expired; log in again"));
+    }
+
+    @Test
+    void refreshWithoutATokenReturns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + "x".repeat(101) + "\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void logoutWithoutATokenReturns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void logoutEndsTheSessionOfTheToken() throws Exception {
+        UUID session = UUID.fromString("7d5e2a1c-0b9f-4c6e-8a3d-2f1b0c9e8d7a");
+        when(userRepository.findRoleForOpenSession(eq(5L), eq(session), any())).thenReturn(Optional.of(Role.PATIENT));
+        User user = new User("Demo", "Patient", LocalDate.of(1990, 1, 1), Gender.OTHER, Role.PATIENT, "p@example.com",
+                "hash");
+        ReflectionTestUtils.setField(user, "id", 5L);
+        String token = new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, session);
+
+        mockMvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        verify(authService).logout(5L, session);
+    }
 
     @Test
     void registerReturns201WithUserAndNoPasswordFields() throws Exception {
@@ -167,7 +247,7 @@ class AuthControllerTest {
 
     @Test
     void loginReturns200WithBearerToken() throws Exception {
-        when(authService.login(any())).thenReturn(new AuthResponse("test-token", "Bearer", 3600,
+        when(authService.login(any())).thenReturn(new AuthResponse("test-token", "Bearer", 3600, "refresh-1", 2592000,
                 new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, "patient01@diamate.example")));
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -267,7 +347,7 @@ class AuthControllerTest {
     @Test
     void anOldTokenSentToLoginOrRegisterIsIgnored() throws Exception {
         // A mobile app may still send its expired token on the login screen; that must not turn the login into a 401.
-        when(authService.login(any())).thenReturn(new AuthResponse("new-token", "Bearer", 3600,
+        when(authService.login(any())).thenReturn(new AuthResponse("new-token", "Bearer", 3600, "refresh-1", 2592000,
                 new UserResponse(5L, "Demo Patient", "01", Role.PATIENT, "patient01@diamate.example")));
         when(authService.register(any())).thenReturn(
                 new UserResponse(44L, "Melih", "Test", Role.PATIENT, "new@example.com"));

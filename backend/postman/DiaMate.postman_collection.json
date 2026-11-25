@@ -572,6 +572,30 @@
     {
       "key": "foodEatenAt",
       "value": ""
+    },
+    {
+      "key": "sessionEmail",
+      "value": ""
+    },
+    {
+      "key": "sessionAccess1",
+      "value": ""
+    },
+    {
+      "key": "sessionRefresh1",
+      "value": ""
+    },
+    {
+      "key": "sessionAccess2",
+      "value": ""
+    },
+    {
+      "key": "sessionRefresh2",
+      "value": ""
+    },
+    {
+      "key": "sessionTabletAccess",
+      "value": ""
     }
   ],
   "item": [
@@ -865,7 +889,7 @@
                   "pm.test('Returns a Bearer token', () => {",
                   "  pm.expect(body.tokenType).to.eql('Bearer');",
                   "  pm.expect(body.accessToken.split('.').length).to.eql(3);",
-                  "  pm.expect(body.expiresIn).to.eql(3600);",
+                  "  pm.expect(body.expiresIn).to.be.within(60, 3600); // JWT_EXPIRATION, default 15 min (900)",
                   "});",
                   "pm.test('Returns the patient', () => pm.expect(body.user.role).to.eql('PATIENT'));",
                   "pm.collectionVariables.set('accessToken', body.accessToken);",
@@ -13816,7 +13840,7 @@
                   "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
                   "const part = (i) => JSON.parse(Buffer.from(pm.response.json().accessToken.split('.')[i].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());",
                   "pm.test('HS256', () => pm.expect(part(0).alg).to.eql('HS256'));",
-                  "pm.test('only iss, sub, role, iat, exp', () => pm.expect(Object.keys(part(1)).sort()).to.eql(['exp', 'iat', 'iss', 'role', 'sub']));",
+                  "pm.test('only iss, sub, role, sid (session id), iat, exp', () => pm.expect(Object.keys(part(1)).sort()).to.eql(['exp', 'iat', 'iss', 'role', 'sid', 'sub']));",
                   "pm.test('expires within an hour', () => pm.expect(part(1).exp - part(1).iat).to.be.at.most(3600));"
                 ]
               }
@@ -16725,6 +16749,10 @@
                   "type": "string"
                 }
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": ""
             }
           },
           "event": [
@@ -16843,6 +16871,438 @@
                 "exec": [
                   "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
                   "pm.test('errors.aiConfidence', () => pm.expect(pm.response.json().errors.aiConfidence).to.eql('AI confidence can only be sent with source AI_PHOTO'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sessions: refresh and logout (Week 4)",
+      "item": [
+        {
+          "name": "Register new PATIENT for this folder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"firstName\":\"Selin\",\"lastName\":\"Oturum\",\"email\":\"{{sessionEmail}}\",\"password\":\"{{testPassword}}\",\"role\":\"PATIENT\",\"dateOfBirth\":\"1992-03-03\",\"gender\":\"FEMALE\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('sessionEmail', 'session.' + Date.now() + '@diamate.test');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (phone): access + refresh token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{sessionEmail}}\",\"password\":\"{{testPassword}}\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Refresh token and its lifetime are returned', () => { pm.expect(body.refreshToken).to.be.a('string').with.lengthOf(43); pm.expect(body.refreshExpiresIn).to.be.above(body.expiresIn); });",
+                  "pm.test('The access token carries the session id (sid)', () => { const payload = JSON.parse(atob(body.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); pm.expect(payload.sid).to.match(/^[0-9a-f-]{36}$/); });",
+                  "pm.collectionVariables.set('sessionAccess1', body.accessToken);",
+                  "pm.collectionVariables.set('sessionRefresh1', body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (tablet): a second session",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"{{sessionEmail}}\",\"password\":\"{{testPassword}}\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('sessionTabletAccess', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh: new access AND new refresh token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refreshToken\":\"{{sessionRefresh1}}\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('The refresh token was rotated', () => pm.expect(body.refreshToken).to.not.eql(pm.collectionVariables.get('sessionRefresh1')));",
+                  "pm.test('The user is returned', () => pm.expect(body.user.email).to.eql(pm.collectionVariables.get('sessionEmail')));",
+                  "pm.collectionVariables.set('sessionAccess2', body.accessToken);",
+                  "pm.collectionVariables.set('sessionRefresh2', body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "New access token works",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{sessionAccess2}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh with an unknown token -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refreshToken\":\"not-a-real-refresh-token\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('problem+json', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh without a token -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('errors.refreshToken', () => pm.expect(pm.response.json().errors).to.have.property('refreshToken'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reuse of the OLD refresh token -> 401 (copy detected)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refreshToken\":\"{{sessionRefresh1}}\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "...which closed the session: the current refresh token fails too",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refreshToken\":\"{{sessionRefresh2}}\"}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "...and its access token is refused before it expires",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{sessionAccess2}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The other device (tablet) is still logged in",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{sessionTabletAccess}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout without a token -> 401",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/logout",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout (tablet) -> 204",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/logout",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{sessionTabletAccess}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "After logout the access token is refused at once",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{sessionTabletAccess}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
                 ]
               }
             }

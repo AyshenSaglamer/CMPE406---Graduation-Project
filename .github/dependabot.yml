@@ -1,0 +1,63 @@
+# Dependabot (SECURITY.md S-J): weekly pull requests for outdated dependencies, and at once for ones with a known
+# vulnerability (needs "Dependabot security updates" turned on under Settings > Code security in GitHub).
+# Minor and patch updates of one ecosystem come as one grouped PR, so the team reviews a few PRs a week, not dozens.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /ai-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      ai-service-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /food-vision-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      food-vision-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pub
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      flutter-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Base images of the Dockerfiles (SECURITY.md S-K).
+  - package-ecosystem: docker
+    directories: [/backend, /ai-service, /food-vision-service]
+    schedule:
+      interval: weekly
+      day: monday
+
+  # Images in the compose files (nginx, postgres, flyway, certbot).
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

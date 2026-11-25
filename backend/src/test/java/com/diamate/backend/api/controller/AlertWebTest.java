@@ -1,5 +1,6 @@
 package com.diamate.backend.api.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -86,7 +87,7 @@ class AlertWebTest {
 
     @BeforeEach
     void everyAccountIsActive() {
-        when(userRepository.findActiveUserRole(anyLong())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
+        when(userRepository.findRoleForOpenSession(anyLong(), any(), any())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
     }
 
     @Test
@@ -182,7 +183,7 @@ class AlertWebTest {
     private String tokenFor(long userId, Role role) {
         User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, role, "u" + userId + "@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", userId);
-        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, java.util.UUID.randomUUID());
     }
 
     private static Role roleOf(long id) {

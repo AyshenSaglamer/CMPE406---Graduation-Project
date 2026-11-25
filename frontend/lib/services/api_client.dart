@@ -15,6 +15,11 @@ class ApiClient {
 
   static void Function()? onUnauthorized;
 
+  /// The refresh in progress, shared by every request that needs it: a
+  /// refresh token works only once, so two parallel refreshes would end the
+  /// session (the backend takes the second one for a stolen copy).
+  Future<bool>? _refreshing;
+
   Future<dynamic> get(
     String path, {
     bool auth = true,
@@ -86,15 +91,72 @@ class ApiClient {
     required String filename,
     bool auth = true,
   }) async {
-    final request = http.MultipartRequest('POST', _uri(path))
-      ..headers.addAll(await _headers(auth: auth))
-      ..files.add(http.MultipartFile.fromBytes(
-        field,
-        bytes,
-        filename: filename,
-      ));
+    return _execute(
+      () async => http.MultipartRequest('POST', _uri(path))
+        ..headers.addAll(await _headers(auth: auth))
+        ..files.add(http.MultipartFile.fromBytes(
+          field,
+          bytes,
+          filename: filename,
+        )),
+      auth: auth,
+    );
+  }
 
-    return _execute(request, auth: auth);
+  /// Gets a new access token with the saved refresh token
+  /// (POST /auth/refresh) and saves both new tokens. False when there is no
+  /// refresh token, the backend refused it (the session is cleared), or the
+  /// server cannot be reached (the session is kept, e.g. while offline).
+  Future<bool> refreshSession() {
+    return _refreshing ??=
+        _refresh().whenComplete(() => _refreshing = null);
+  }
+
+  Future<bool> _refresh() async {
+    final refreshToken = await TokenStorage.readRefreshToken();
+    final userJson = await TokenStorage.readUserJson();
+
+    if (refreshToken == null || userJson == null) {
+      return false;
+    }
+
+    final http.Response response;
+
+    try {
+      response = await _http
+          .post(
+            _uri('/auth/refresh'),
+            headers: {
+              'Accept': 'application/json, application/problem+json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(ApiConfig.timeout);
+    } on TimeoutException {
+      return false;
+    } on http.ClientException {
+      return false;
+    }
+
+    final decoded = _decode(response);
+
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      await TokenStorage.save(
+        token: decoded['accessToken'] as String,
+        expiresInSeconds: (decoded['expiresIn'] as num).toInt(),
+        refreshToken: decoded['refreshToken'] as String?,
+        userJson: userJson,
+      );
+      return true;
+    }
+
+    if (response.statusCode == 401 || response.statusCode == 400) {
+      // Logged out, expired or already used: only a new login helps.
+      await TokenStorage.clear();
+    }
+
+    return false;
   }
 
   Uri _uri(String path) =>
@@ -107,7 +169,11 @@ class ApiClient {
     };
 
     if (auth) {
-      final token = await TokenStorage.readValidToken();
+      var token = await TokenStorage.readValidToken();
+
+      if (token == null && await refreshSession()) {
+        token = await TokenStorage.readValidToken();
+      }
 
       if (token == null) {
         onUnauthorized?.call();
@@ -131,28 +197,39 @@ class ApiClient {
     Object? body,
     required bool auth,
   }) async {
-    final headers = await _headers(auth: auth);
+    return _execute(
+      () async {
+        final headers = await _headers(auth: auth);
 
-    if (body != null) {
-      headers['Content-Type'] = 'application/json';
-    }
+        if (body != null) {
+          headers['Content-Type'] = 'application/json';
+        }
 
-    final request = http.Request(
-      method,
-      _uri(path),
-    )..headers.addAll(headers);
+        final request = http.Request(
+          method,
+          _uri(path),
+        )..headers.addAll(headers);
 
-    if (body != null) {
-      request.body = jsonEncode(body);
-    }
+        if (body != null) {
+          request.body = jsonEncode(body);
+        }
 
-    return _execute(request, auth: auth);
+        return request;
+      },
+      auth: auth,
+    );
   }
 
+  /// Sends the request built by [build]. A 401 on an authenticated request
+  /// (the access token was revoked or ran out on the way) gets one refresh
+  /// and one retry with the new token; a request can be sent only once, so
+  /// [build] makes a fresh one.
   Future<dynamic> _execute(
-    http.BaseRequest request, {
+    Future<http.BaseRequest> Function() build, {
     required bool auth,
+    bool retried = false,
   }) async {
+    final request = await build();
     final http.Response response;
 
     try {
@@ -183,6 +260,9 @@ class ApiClient {
     }
 
     if (response.statusCode == 401 && auth) {
+      if (!retried && await refreshSession()) {
+        return _execute(build, auth: auth, retried: true);
+      }
       await TokenStorage.clear();
       onUnauthorized?.call();
     }

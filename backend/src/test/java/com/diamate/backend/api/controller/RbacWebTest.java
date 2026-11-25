@@ -2,6 +2,7 @@ package com.diamate.backend.api.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -112,7 +113,7 @@ class RbacWebTest {
     // Every test account exists, is active and still has the role written in its token.
     @BeforeEach
     void everyAccountIsActive() {
-        when(userRepository.findActiveUserRole(anyLong())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
+        when(userRepository.findRoleForOpenSession(anyLong(), any(), any())).thenAnswer(call -> Optional.of(roleOf(call.getArgument(0))));
     }
 
     // ---------- 401: no or bad token ----------
@@ -153,13 +154,13 @@ class RbacWebTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
         verifyNoInteractions(userService);
-        verify(userRepository, never()).findActiveUserRole(anyLong()); // the database is only asked for otherwise valid tokens
+        verify(userRepository, never()).findRoleForOpenSession(anyLong(), any(), any()); // the database is only asked for otherwise valid tokens
     }
 
     @Test
     void tokenOfADisabledAccountIs401() throws Exception {
         // The token itself is valid (signature, expiry), but the account was disabled after it was issued.
-        when(userRepository.findActiveUserRole(PATIENT_ID)).thenReturn(Optional.empty());
+        when(userRepository.findRoleForOpenSession(eq(PATIENT_ID), any(), any())).thenReturn(Optional.empty());
 
         as(get("/api/v1/users/me"), PATIENT_ID, Role.PATIENT)
                 .andExpect(status().isUnauthorized())
@@ -171,7 +172,7 @@ class RbacWebTest {
     @Test
     void tokenWithAnOutdatedRoleIs401() throws Exception {
         // The token says CLINICIAN, but the role was changed to CAREGIVER after the token was issued.
-        when(userRepository.findActiveUserRole(CLINICIAN_ID)).thenReturn(Optional.of(Role.CAREGIVER));
+        when(userRepository.findRoleForOpenSession(eq(CLINICIAN_ID), any(), any())).thenReturn(Optional.of(Role.CAREGIVER));
 
         as(get("/api/v1/care-team/patients"), CLINICIAN_ID, Role.CLINICIAN)
                 .andExpect(status().isUnauthorized())
@@ -190,7 +191,7 @@ class RbacWebTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
         verifyNoInteractions(userService);
-        verify(userRepository, never()).findActiveUserRole(anyLong());
+        verify(userRepository, never()).findRoleForOpenSession(anyLong(), any(), any());
     }
 
     @Test
@@ -199,7 +200,7 @@ class RbacWebTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("Invalid or expired access token"));
         verifyNoInteractions(userService);
-        verify(userRepository, never()).findActiveUserRole(anyLong());
+        verify(userRepository, never()).findRoleForOpenSession(anyLong(), any(), any());
     }
 
     @Test
@@ -405,7 +406,7 @@ class RbacWebTest {
     private String tokenFor(long userId, Role role) {
         User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, role, "u" + userId + "@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", userId);
-        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, java.util.UUID.randomUUID());
     }
 
     private ResultActions bearer(MockHttpServletRequestBuilder request, String token) throws Exception {

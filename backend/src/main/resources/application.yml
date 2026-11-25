@@ -70,7 +70,9 @@ diamate:
   jwt:
     # No default: without JWT_SECRET the application refuses to start.
     secret: ${JWT_SECRET}
-    expiration: ${JWT_EXPIRATION:1h}
+    expiration: ${JWT_EXPIRATION:15m}
+    # Refresh token (auth_sessions, V11): every POST /auth/refresh starts it again.
+    refresh-expiration: ${JWT_REFRESH_EXPIRATION:30d}
     issuer: diamate-backend
   # The team's FastAPI AI service (ai-service). The app never calls it directly; the backend does.
   ai:
@@ -83,6 +85,19 @@ diamate:
     base-url: ${FOOD_VISION_BASE_URL:http://localhost:8001}
     connect-timeout: 2s
     read-timeout: 30s
+
+# OpenAPI / Swagger UI (springdoc). Off by default: the full stack (Nginx) does not publish the API description unless
+# API_DOCS_ENABLED=true. For local development: API_DOCS_ENABLED=true, then http://localhost:8080/swagger-ui.html.
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
+    # Keep the token in the browser while the page is open, so "Authorize" is needed once.
+    persist-authorization: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+  default-produces-media-type: application/json
 
 management:
   endpoints:

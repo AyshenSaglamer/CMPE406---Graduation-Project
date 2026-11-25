@@ -1,6 +1,6 @@
 # DiaMate Güvenlik Dokümanı
 
-Sorumlu: **Melih (Backend & Security)**. Durum: 23 Kasım 2026, final checklist sonrası.
+Sorumlu: **Melih (Backend & Security)**. Durum: 24 Kasım 2026 (refresh token, logout, API dokümanı, bağımlılık taraması ve production kurulumu eklendi).
 
 Bu doküman sistemin **bugünkü** güvenlik durumunu tek yerde anlatır: neyin nasıl korunduğu, bunu hangi testin doğruladığı ve neyin açık kaldığı. Ne zaman ve neden değiştiği `BACKEND_REVIEW.md`'de gün gün yazılıdır: güvenlik bölüm 12, hata yönetimi bölüm 14, OWASP keşif turu ve Postman testleri bölüm 15, AI taşıması bölüm 16. İki doküman çelişirse bu doküman geçerlidir.
 
@@ -49,14 +49,16 @@ PostgreSQL                FastAPI AI servisi
 | Şifre saklama | BCrypt | `SecurityConfig.passwordEncoder` |
 | Şifre kuralı | NIST SP 800-63B: en az 8 karakter, yaygın şifre listesinde olamaz, e-postayla aynı olamaz; en fazla 72 bayt (BCrypt sınırı, sessizce kesilmesin diye 400) | `RegisterRequest`, `PasswordPolicy` |
 | Kaba kuvvet (hesap) | Art arda 5 yanlış şifre → hesap 15 dk kilitli, `429` + `Retry-After: 900` | `AuthService` |
-| Kaba kuvvet (IP) | `/api/v1/auth/` (giriş ve kayıt) için IP başına dakikada 10 istek, 5'lik burst; aşılırsa Nginx `429` + `Retry-After: 10` döner. Çok hesaba yayılan denemeleri ve toplu kayıt açmayı yavaşlatır | `nginx/default.conf.template` |
+| Kaba kuvvet (IP) | `POST /auth/login` ve `/auth/register` için IP başına dakikada 10 istek, 5'lik burst; aşılırsa Nginx `429` + `Retry-After: 10` döner. Çok hesaba yayılan denemeleri ve toplu kayıt açmayı yavaşlatır | `nginx/default.conf.template` |
 | Kullanıcı sayımı | Bilinmeyen e-posta ile yanlış şifre aynı `401` mesajını alır | `AuthService` |
-| Token | HS256, `iss = diamate-backend`, ömür `JWT_EXPIRATION` (varsayılan 1 saat) | `JwtService`, `SecurityConfig` |
+| Access token | HS256, `iss = diamate-backend`, `sub`, `role`, `sid` (oturum); ömür `JWT_EXPIRATION` (varsayılan **15 dk**, 24 Kasım'a kadar 1 saat) | `JwtService`, `SecurityConfig` |
+| Refresh token | 256 bit rastgele (JWT değil), veritabanında yalnız SHA-256'sı (`auth_sessions`, V11). Her kullanımda yenisiyle değişir; son kullanımdan `JWT_REFRESH_EXPIRATION` (30 gün) sonra geçersiz. Değiştirilmiş eski bir token tekrar gelirse oturum kapanır ve `REFRESH_TOKEN_REUSED` yazılır. Aynı token'la aynı anda iki yenileme satır kilidiyle sıraya girer | `AuthSessionService`, `AuthService.refresh` |
+| Çıkış | `POST /auth/logout` token'ın oturumunu sunucuda kapatır (`LOGOUT` denetim kaydı); access token süresi dolmadan **hemen** `401`, refresh token geçersiz. Diğer cihazlar etkilenmez | `AuthService.logout`, `RefreshTokenIntegrationTest` |
 | Anahtar | `JWT_SECRET` ortam değişkeninden gelir, varsayılan değeri **yoktur**. Yoksa ya da çözüldüğünde 32 bayttan kısaysa uygulama açılmaz | `application.yml`, `SecurityConfig` |
 | Token doğrulama | İmza, `exp` (Spring'in 60 sn saat toleransıyla), `iss` ve `role` claim'i kontrol edilir. `alg: none`, başka anahtar, URL'de token (`?access_token=`) ve `Basic` başlığı → `401` | `SecurityConfig`, `RbacWebTest` |
-| Pasif hesap | Admin hesabı durdurursa mevcut token'lar da o anda `401` alır, giriş `403` | `ActiveAccountValidator` |
-| Oturum | Sunucuda oturum yok (`STATELESS`). CSRF kapalı; bunun sebebi kimliğin çerezle değil `Authorization` başlığıyla taşınması | `SecurityConfig` |
-| Herkese açık adresler | Yalnız `POST /auth/register`, `POST /auth/login`, `/api/v1/health`, `/actuator/health` | `SecurityConfig.PUBLIC_PATHS` |
+| Pasif hesap, kapanmış oturum | Her istekte tek sorgu: hesap aktif mi, rol token'dakiyle aynı mı, `sid` oturumu açık mı. Admin hesabı durdurursa ya da oturum logout edilirse mevcut token'lar o anda `401` alır, giriş `403`, yenileme `401` | `ActiveAccountValidator`, `UserRepository.findRoleForOpenSession` |
+| HTTP oturumu | Sunucuda HTTP oturumu/çerez yok (`STATELESS`); oturum yalnız `auth_sessions` satırı ve token'daki `sid`. CSRF kapalı; bunun sebebi kimliğin çerezle değil `Authorization` başlığıyla taşınması | `SecurityConfig` |
+| Herkese açık adresler | Yalnız `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `/api/v1/health`, `/actuator/health`; Swagger (`/swagger-ui.html`, `/v3/api-docs`) yalnız `API_DOCS_ENABLED=true` iken var, production'da kapalı | `SecurityConfig.PUBLIC_PATHS`, `OpenApiConfig` |
 
 **Doktor hesapları (17 Kasım değişikliği):** Admin onayı kaldırıldı, çünkü uygulamada onay ekranı yok. Kendi kaydolan `CLINICIAN` hesabı aktif başlar. Bu hesabın hasta verisine erişebilmesi için hastanın onu davet etmesi gerekir (bölüm 4), bu yüzden onaysız bir doktor hesabı kendi başına hiçbir hasta verisi göremez. Kalan risk: herkes kendini "doktor" olarak tanıtabilir ve hasta bunu ayırt edemez (bkz. [11](#11-açık-kalanlar)).
 
@@ -196,13 +198,19 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 ## 8. Altyapı: Nginx, Docker, gizli bilgiler
 
 **Nginx** (`nginx/default.conf.template`)
-- `80` portu yalnız `308` ile HTTPS'e yönlendirir. 308 kullanıldığı için POST, POST olarak kalır ve JWT hiçbir zaman düz HTTP ile backend'e gitmez.
+- `80` portu yalnız `308` ile HTTPS'e yönlendirir. 308 kullanıldığı için POST, POST olarak kalır ve JWT hiçbir zaman düz HTTP ile backend'e gitmez. Tek istisna Let's Encrypt doğrulama dosyaları (`/.well-known/acme-challenge/`); geliştirmede bu klasör boştur.
 - TLS 1.2/1.3. HSTS (`max-age=31536000`) Nginx'in kendi hata cevaplarında da gönderilir. `server_tokens off`.
 - Gövde sınırı 11 MB; okuma zaman aşımı 90 sn (ses isteği için); backend'e bağlantı zaman aşımı 5 sn.
 - `X-Forwarded-For` istemcinin değerine eklenmez, üzerine yazılır (bölüm 6).
-- **Giriş/kayıt için hız sınırı:** `limit_req`, IP başına `AUTH_RATE_LIMIT` (varsayılan `10r/m`) ve `AUTH_RATE_BURST` (varsayılan `5`); ikisi de `.env`'den değiştirilebilir. Diğer endpoint'ler sınırlanmaz. Backend'in kendi `429`'u (hesap kilidi) Nginx'ten değişmeden geçer.
+- **Giriş/kayıt için hız sınırı:** yalnız `POST /auth/login` ve `/auth/register` (24 Kasım'dan beri `/auth/refresh` ve `/auth/logout` sınır dışı: uygulama yenilemeyi kendisi yapar ve aynı NAT'taki kullanıcılar birbirinin giriş kotasını tüketmemeli; refresh token 256 bit olduğu için tahmin edilemez). `limit_req`, IP başına `AUTH_RATE_LIMIT` (varsayılan `10r/m`) ve `AUTH_RATE_BURST` (varsayılan `5`); ikisi de `.env`'den değiştirilebilir. Diğer endpoint'ler sınırlanmaz. Backend'in kendi `429`'u (hesap kilidi) Nginx'ten değişmeden geçer.
   - Aynı IP'yi paylaşan kullanıcılar (ör. aynı NAT arkasındaki bir okul ağı) aynı kotayı paylaşır. Demo sırasında sorun olursa `AUTH_RATE_LIMIT` artırılabilir.
   - Docker Desktop (macOS) bütün istemcileri aynı IP (`192.168.65.1`) ile gösterdiği için yerelde herkes tek kotayı paylaşır.
+
+**Production** (`docker-compose.prod.yml`, `deploy/DEPLOYMENT.md`, 24 Kasım)
+- Gerçek alan adı ve **Let's Encrypt** sertifikası: ilk sertifikayı `deploy/init-letsencrypt.sh` alır, `certbot` servisi günde iki kez kontrol edip 30 günden az kaldığında yeniler, Nginx 6 saatte bir yeniden yüklenir. Sertifika ve sunucu adı `.env`'deki `DOMAIN`'den gelir (`SSL_CERTIFICATE`, `SERVER_NAME`).
+- Standart portlar (80/443), Swagger kapalı (`API_DOCS_ENABLED=false` zorlanır), `JWT_SECRET` yalnız sunucuda.
+- Gece yedeği: `deploy/backup-db.sh` (`pg_dump`, gzip, `600` izinli dosya, son 14 tane). Geri dönüş adımları rehberde.
+- **Durum:** Hazır ama henüz bir sunucuya kurulmadı (alan adı ve sunucu Ayşen'le seçilecek). Yerelde doğrulanan: compose birleştirmesi (`docker compose config`) ve Nginx şablonu (`nginx -t`, iki sertifika yoluyla).
 
 **Docker Compose** (`docker-compose.yml`)
 - Host'a yalnız Nginx açılır. Backend, AI servisi ve PostgreSQL yalnız Docker ağında çalışır.
@@ -237,7 +245,7 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 | A03 Injection | Parametreli sorgu; katı JSON; tip ve uzunluk sınırları | 7 |
 | A04 Insecure Design | Uygulama yalnız backend'le konuşur; AI ve veritabanı ağ içinde; hasta onayıyla paylaşım | 1, 4 |
 | A05 Security Misconfiguration | Gizli bilgiler `.env`'de ve zorunlu; backend veritabanına en az yetkili `diamate_app` ile bağlanır; actuator yalnız `health`, bileşen detayı yok; `server_tokens off`; kapalı portlar | 8 |
-| A06 Vulnerable Components | Spring Boot 4.1.1, Java 21; bağımlılık sürümleri sabit (`pom.xml`, `requirements.txt`) | 11 |
+| A06 Vulnerable Components | Spring Boot 4.1.3, Java 21; bağımlılık sürümleri sabit (`pom.xml`, `requirements.txt`); Dependabot ve haftalık OSV-Scanner/pip-audit taraması. İlk tarama (25 Kasım) Tomcat 11.0.24'te 4 kritik, Jackson 3.1.5'te 7 yüksek/orta açık ve `ai-service`'te `certifi 2026.7.22` buldu: Spring Boot 4.1.1 → 4.1.3 (Tomcat 11.0.27, Jackson 3.1.8) ve `certifi` 2026.11.20 ile kapatıldı | 11 |
 | A07 Identification & Authentication Failures | Hesap kilidi ve IP başına giriş hız sınırı; aynı hata mesajı; pasif hesabın token'ı anında geçersiz | 2, 8 |
 | A08 Software & Data Integrity | `audit_logs` trigger ile yalnız eklemeye açık; aynı JSON alanı iki kez → `400`; salt okunur jar, root olmayan kullanıcı; CI testleri çalıştırır | 6, 7, 8, 10 |
 | A09 Logging & Monitoring Failures | Kapsamlı denetim kaydı; reddedilen erişimler de yazılır; sahte IP engellenir | 6 |
@@ -247,7 +255,11 @@ Testler: `StrictJsonWebTest`, `InputHardeningWebTest`, `LogEndpointsWebTest`, `P
 
 | Kontrol | Sonuç (23 Kasım 2026) |
 |---|---|
-| Backend `mvn test` (birim, web, Testcontainers ile PostgreSQL) | **411/411** |
+| Backend `mvn test` (birim, web, Testcontainers ile PostgreSQL) | **506/506** (24 Kasım; 12 veritabanı testi dahil, hiçbiri atlanmadı) |
+| Flutter `flutter test` / `flutter analyze` | **167/167** (25 Kasım, `token_refresh_test.dart` dahil); analyze'da hata ve uyarı yok |
+| Tam regresyon, demo verisiyle (25 Kasım; Database paketi araştırma verisi ve 12 demo hesabıyla + Flyway V2–V11, backend Spring Boot 4.1.3 ve `diamate_app` ile, gerçek AI servisi) | Postman koleksiyonunun tamamı **491 istek, 752/752 doğrulama**; `Database/tools/access_rules_test.sql` **58 kontrol**; `11_verify.sql` yapı ve demo kontrolleri temiz; `tools/api_fuzz_scan.py` **6409 bozuk istek, 0 bulgu** (hiç 5xx yok). Food-vision uçtan uca denenmedi (model dosyası yok) |
+| Bağımlılık taraması (25 Kasım, `dependency-audit.yml`) | İlk çalıştırma: Tomcat 11.0.24 (4 kritik), Jackson 3.1.5 (7 yüksek/orta), `certifi` 2026.7.22. Spring Boot 4.1.3 ve `certifi` 2026.11.20 ile kapatıldı |
+| Refresh/logout uçtan uca (24 Kasım; boş PostgreSQL 17 + Flyway V11 `migrate` servisiyle, backend `diamate_app` ile, Nginx HTTPS arkasında) | Postman "Sessions: refresh and logout": **14 istek, 20/20** — rotation, eski token'la yenilemede oturumun kapanması ve access token'ın hemen 401 alması, diğer cihazın etkilenmemesi, logout sonrası anında 401. Swagger `API_DOCS_ENABLED=true` iken 200 (OpenAPI 3.1, Bearer şeması), `false` iken `/swagger-ui.html`, `/v3/api-docs` 404. Bütün koleksiyon eski ve yeni kodla aynı boş veritabanında karşılaştırıldı: tek fark, `sid` claim'i için güncellenen OWASP A02 token testi (demo hesabı isteyen istekler boş veritabanında iki sürümde de aynı şekilde başarısız) |
 | AI servisi `pytest` | **669/669** |
 | Tam stack uçtan uca (Nginx + backend + AI + PostgreSQL, takım reposunun `main` compose dosyasıyla) | HTTP→HTTPS `308`; HSTS var; TLS 1.1 reddediliyor; kayıt/giriş/kayıt yazma; beş AI analizi `200`; gerçek ses kaydı `200`; 12 MB `413`; AI kapalı `503`; backend kapalı `503`; sahte `X-Forwarded-For` denetime geçmiyor; yalnız Nginx portu açık |
 | Giriş hız sınırı (GP stack'i) | Kayıt + 4 yanlış giriş geçti; 5. yanlış giriş backend'in kilidi (`429`, `Retry-After: 900`); sonraki 7 istek Nginx `429` (`problem+json`, `Retry-After: 10`); 7 sn sonra kayıt ve giriş yeniden `200`; aynı anda 30 hızlı `/users/me` isteğinin hepsi `200` |
@@ -261,7 +273,7 @@ Elle güvenlik testi listesi: `BACKEND_REVIEW.md` §12.8 ve Postman'deki "Securi
 |---|---|---|---|---|
 | S-A | ~~Backend veritabanına sahibi olan kullanıcıyla bağlanıyor~~ **Tam stack'te kapatıldı (23 Kasım):** backend `diamate_app` ile bağlanıyor, migration'ları ayrı `migrate` servisi uyguluyor (bölüm 8). Kalan: ortak Neon veritabanında backend hâlâ tek kullanıcıyla bağlanıyor | Neon'daki kullanıcı ele geçirilirse şema değiştirilebilir | Neon'da da `diamate_app`'e giriş izni verilsin; backend `.env`'de onunla, migration'lar sahip hesabıyla ayrı çalıştırılsın | Melih |
 | ~~S-B~~ | ~~Giriş için IP başına hız sınırı yok~~ | — | **Kapatıldı (23 Kasım):** Nginx `limit_req`, bölüm 8 | Melih |
-| S-C | Refresh token ve sunucu tarafında logout yok (B-6) | Çalınan token ömrü (1 saat) boyunca geçerli kalır | Kısa ömürlü access token + iptal edilebilir refresh token | Sonra |
+| ~~S-C~~ | ~~Refresh token ve sunucu tarafında logout yok (B-6)~~ | — | **Kapatıldı (24 Kasım):** 15 dk'lık access token + dönen, tekrar kullanımı yakalanan refresh token (V11 `auth_sessions`); `POST /auth/logout` access token'ı da hemen geçersiz kılar (bölüm 2). Mobil uygulama yenilemeyi kendisi yapar (`api_client.dart`) | Melih |
 | S-D | Ortak geliştirme `JWT_SECRET`'i | Anahtarı bilen biri ortak veritabanındaki herhangi bir kullanıcı için token üretebilir | Üretimde anahtar yalnız sunucuda; sızıntı şüphesinde değiştirilir | Takım |
 | S-E | Doktor kimliği doğrulanmıyor (onay 17 Kasım'da kaldırıldı) | Biri kendini doktor gibi tanıtıp hastadan davet isteyebilir | Uygulamada "doğrulanmamış hesap" uyarısı, ileride lisans doğrulaması veya admin onayı | Takım |
 | S-F | AI servisinin ve `food-vision-service`'in kendi kimlik doğrulaması yok | Ağ dışına açılırsa herkes doğrudan çağırabilir | Ağ içinde kalsın (ikisi de compose'da yalnız `expose`); gerekirse backend ile servisler arasında paylaşılan bir anahtar | Ayşen + Ayşenur + Melih |
@@ -269,6 +281,6 @@ Elle güvenlik testi listesi: `BACKEND_REVIEW.md` §12.8 ve Postman'deki "Securi
 | S-G | AI servisi bozuk ses dosyasında `500` veriyor | Backend bunu `502` olarak iletiyor; kullanıcı neyin yanlış olduğunu öğrenemiyor | AI servisi geçersiz ses için `422` dönsün | Ayşen |
 | S-H | AI CI `main` push'unda çalışmıyor | `main`'e doğrudan gelen bir AI değişikliği testsiz kalabilir | `ai-service-ci.yml` → `branches: [ai, main]` | Ayşen |
 | S-I | Docker Desktop (macOS) istemcinin gerçek IP'sini göstermiyor | Yerel testte denetim kaydında `192.168.65.1` görünüyor | Linux sunucuda sorun yok; yalnız bilgi | — |
-| S-J | Bağımlılık taraması otomatik değil | Bilinen açıklı bir kütüphane fark edilmeyebilir | GitHub Dependabot veya `mvn dependency-check` / `pip-audit` | Takım |
-| S-K | Docker base image'ları etiketle sabit (`eclipse-temurin:21-jre`, `nginx:1.27-alpine`, `postgres:17`, `python:3.12-slim`) | Etiketin arkasındaki imaj değişebilir | Üretimde digest ile sabitlemek (`image@sha256:...`) | Takım |
+| ~~S-J~~ | ~~Bağımlılık taraması otomatik değil~~ **Kapatıldı (24–25 Kasım):** `.github/dependabot.yml` (Maven, pip ×2, pub, Docker, Compose, Actions; haftalık) ve `.github/workflows/dependency-audit.yml` (OSV-Scanner: `pom.xml` + `pubspec.lock`; pip-audit: iki Python servisi; PR'da ve her pazartesi) | İlk çalıştırmanın bulguları kapatıldı (bölüm 9, A06). Kalan tek adım bir ayar: Settings → Code security → Dependabot alerts + security updates | Yeni bulgular haftalık PR'larla gelir | Melih (ayar: repo sahibi) |
+| S-K | Docker base image'ları etiketle sabit (`eclipse-temurin:21-jre`, `nginx:1.27-alpine`, `postgres:17`, `python:3.12-slim`) | Etiketin arkasındaki imaj değişebilir | Dependabot artık bu etiketlerin yeni sürümleri için PR açıyor (24 Kasım). Kalan: üretimde digest ile sabitlemek (`image@sha256:...`) | Takım |
 | S-L | Güvenlik olayları için otomatik uyarı yok | `ACCOUNT_LOCKED` / `ACCESS_DENIED` artışı ancak denetim kayıtlarına bakılınca fark edilir | İzleme aracında eşik uyarısı | Sonra |

@@ -313,7 +313,7 @@ DiaMate handles health-related information, making security and privacy core des
 
 The project architecture includes or plans for:
 
-- JWT-based authentication
+- JWT-based authentication: 15-minute access tokens, rotating refresh tokens (`POST /api/v1/auth/refresh`, reuse ends the session) and server-side logout (`POST /api/v1/auth/logout`)
 - Role-Based Access Control
 - Password hashing
 - Input validation
@@ -328,6 +328,8 @@ The project architecture includes or plans for:
 - OWASP Secure Coding principles
 
 Secrets should never be committed directly to the repository.
+
+Current state, OWASP Top 10 mapping and open items: [`backend/docs/SECURITY.md`](backend/docs/SECURITY.md). API guide for the team (Swagger, tokens, errors, adding an endpoint): [`backend/docs/DEVELOPER_GUIDE.md`](backend/docs/DEVELOPER_GUIDE.md). Production install with a real domain and Let's Encrypt: [`deploy/DEPLOYMENT.md`](deploy/DEPLOYMENT.md).
 
 ---
 
@@ -361,8 +363,11 @@ DiaMate/
 │
 ├── README.md
 ├── docker-compose.yml      full stack: Nginx + backend + AI service + PostgreSQL
+├── docker-compose.prod.yml production add-on: real domain, Let's Encrypt, ports 80/443
+├── deploy/                 production guide, first-certificate and database backup scripts
 ├── .env.example            copy to .env (database password, JWT key); .env is never committed
-├── .github/workflows/      backend CI and AI service CI
+├── .github/workflows/      backend, AI service and frontend CI; weekly dependency audit (OSV-Scanner, pip-audit)
+├── .github/dependabot.yml  weekly dependency update PRs
 │
 ├── nginx/
 │   ├── default.conf.template   HTTPS reverse proxy in front of the backend

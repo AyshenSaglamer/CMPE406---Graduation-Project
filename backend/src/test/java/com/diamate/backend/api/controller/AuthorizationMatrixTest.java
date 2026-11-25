@@ -92,6 +92,8 @@ class AuthorizationMatrixTest {
         // Public (no token needed; a token is ignored) and "any logged-in user": every role passes the role check.
         RULES.put("POST /api/v1/auth/register", EVERYONE);
         RULES.put("POST /api/v1/auth/login", EVERYONE);
+        RULES.put("POST /api/v1/auth/refresh", EVERYONE);
+        RULES.put("POST /api/v1/auth/logout", EVERYONE);
         RULES.put("GET /api/v1/health", EVERYONE);
         RULES.put("GET /api/v1/users/me", EVERYONE);
         RULES.put("GET /api/v1/patients/{patientId}/overview", EVERYONE);
@@ -145,6 +147,8 @@ class AuthorizationMatrixTest {
                     {"firstName":"Ayse","lastName":"Kaya","email":"a@example.com","password":"Mavi-Deniz-77",
                      "role":"PATIENT","dateOfBirth":"1990-01-01","gender":"FEMALE"}"""),
             Map.entry("POST /api/v1/auth/login", "{\"email\":\"a@example.com\",\"password\":\"Mavi-Deniz-77\"}"),
+            Map.entry("POST /api/v1/auth/refresh", "{\"refreshToken\":\"abc\"}"),
+            Map.entry("POST /api/v1/auth/logout", "{}"),
             Map.entry("glucose-logs", "{\"glucoseValue\":120,\"measurementTime\":\"2026-10-05T08:30:00Z\"}"),
             Map.entry("insulin-logs", "{\"doseUnits\":4,\"administeredAt\":\"2026-10-05T08:30:00Z\"}"),
             Map.entry("meal-logs", "{\"mealType\":\"LUNCH\",\"eatenAt\":\"2026-10-05T08:30:00Z\",\"carbsG\":40}"),
@@ -197,7 +201,7 @@ class AuthorizationMatrixTest {
     @BeforeEach
     void setUp() {
         // Every account is active and still has the role of its token.
-        when(userRepository.findActiveUserRole(anyLong())).thenAnswer(call -> USER_IDS.entrySet().stream()
+        when(userRepository.findRoleForOpenSession(anyLong(), any(), any())).thenAnswer(call -> USER_IDS.entrySet().stream()
                 .filter(e -> e.getValue().equals(call.getArgument(0))).map(Map.Entry::getKey).findFirst());
         // The controllers that read the service's answer get one (the others return the mock's null as an empty body).
         when(glucoseLogService.create(anyLong(), anyLong(), any())).thenReturn(CreateResult.existing(null));
@@ -286,6 +290,6 @@ class AuthorizationMatrixTest {
     private String tokenFor(Role role) {
         User user = new User("First", "Last", LocalDate.of(2000, 1, 15), Gender.OTHER, role, "u@example.com", "hash");
         ReflectionTestUtils.setField(user, "id", USER_IDS.get(role));
-        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user);
+        return new JwtService(jwtEncoder, jwtProperties, Clock.systemUTC()).generateToken(user, java.util.UUID.randomUUID());
     }
 }
