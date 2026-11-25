@@ -26,7 +26,7 @@ services:
   # Renews the certificate when it has less than 30 days left (Let's Encrypt certificates last 90 days). Checks twice
   # a day; the challenge files are written to acme-webroot, which Nginx serves on port 80.
   certbot:
-    image: certbot/certbot:v3.1.0
+    image: certbot/certbot:v5.10.0
     volumes:
       - letsencrypt:/etc/letsencrypt
       - acme-webroot:/var/www/certbot
