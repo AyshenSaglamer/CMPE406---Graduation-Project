@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
 
 import '../data/activity_store.dart';
+import '../data/log_store.dart';
 import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../widgets/date_time_tile.dart';
+import '../widgets/entry_title.dart';
 
 class ActivityEntryScreen extends StatefulWidget {
-  const ActivityEntryScreen({super.key});
+  const ActivityEntryScreen({
+    super.key,
+    this.store,
+    this.patientId,
+    this.patientName,
+  });
+
+  /// Defaults to [activityStore].
+  final LogStore<ActivityRecord>? store;
+
+  /// A family member the logged-in caregiver manages; null = the logged-in
+  /// patient.
+  final int? patientId;
+
+  /// Shown under the title when logging for [patientId].
+  final String? patientName;
 
   @override
   State<ActivityEntryScreen> createState() => _ActivityEntryScreenState();
@@ -78,13 +95,13 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
     final bool savedOffline;
 
     try {
-      savedOffline = await activityStore.create({
+      savedOffline = await (widget.store ?? activityStore).create({
         'activityType': selectedActivity,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'durationMinutes': duration,
         'intensity': activityIntensityOptions[selectedIntensity],
         'clientUuid': clientUuid,
-      }) == null;
+      }, patientId: widget.patientId) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -125,7 +142,7 @@ class _ActivityEntryScreenState extends State<ActivityEntryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Activity'),
+        title: EntryTitle('Activity', forName: widget.patientName),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(

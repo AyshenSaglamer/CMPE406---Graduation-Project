@@ -5,6 +5,12 @@ import '../services/api_exception.dart';
 import '../services/auth_service.dart';
 import 'offline_queue.dart';
 
+/// Shown when a caregiver saves a family member's entry without a
+/// connection (those entries are not kept on the phone).
+const String familyEntryOfflineMessage =
+    'No internet connection. Entries for a family member can only be '
+    'saved online; please try again.';
+
 /// A saved health log (glucose, insulin, meal or activity).
 abstract class LogRecord {
   int get id;
@@ -97,7 +103,32 @@ class LogStore<T extends LogRecord> extends ValueNotifier<List<T>> {
   /// When the backend cannot be reached the log is kept on the phone
   /// ([offlineQueue]) and sent later; then null is returned. [body] must
   /// carry a clientUuid so a resend is not saved twice.
-  Future<T?> create(Map<String, dynamic> body) async {
+  ///
+  /// [patientId] saves the log for someone else: a family member without an
+  /// account whom the logged-in caregiver manages (the backend checks the
+  /// 'write' permission). Such a log is not added to [value] (that is the
+  /// logged-in user's own list) and is never queued offline, because the
+  /// queue only sends a patient's own logs; it needs a connection.
+  Future<T?> create(Map<String, dynamic> body, {int? patientId}) async {
+    final ownId = authService.currentUser?.id;
+
+    if (patientId != null && patientId != ownId) {
+      try {
+        final json =
+            await _api.post('/patients/$patientId/$resource', body: body);
+        return fromJson(json as Map<String, dynamic>);
+      } on ApiException catch (e) {
+        if (e.statusCode != 0) {
+          rethrow;
+        }
+        throw ApiException(
+          statusCode: 0,
+          message: familyEntryOfflineMessage,
+          fieldErrors: e.fieldErrors,
+        );
+      }
+    }
+
     final path = _path;
 
     try {

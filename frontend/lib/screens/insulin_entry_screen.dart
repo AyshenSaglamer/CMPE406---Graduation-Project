@@ -1,15 +1,32 @@
 import 'package:flutter/material.dart';
 
 import '../data/insulin_store.dart';
+import '../data/log_store.dart';
 import '../data/offline_queue.dart';
 import '../services/api_exception.dart';
 import '../utils/api_enums.dart';
 import '../utils/client_uuid.dart';
 import '../utils/form_helpers.dart';
 import '../widgets/date_time_tile.dart';
+import '../widgets/entry_title.dart';
 
 class InsulinEntryScreen extends StatefulWidget {
-  const InsulinEntryScreen({super.key});
+  const InsulinEntryScreen({
+    super.key,
+    this.store,
+    this.patientId,
+    this.patientName,
+  });
+
+  /// Defaults to [insulinStore].
+  final LogStore<InsulinRecord>? store;
+
+  /// A family member the logged-in caregiver manages; null = the logged-in
+  /// patient.
+  final int? patientId;
+
+  /// Shown under the title when logging for [patientId].
+  final String? patientName;
 
   @override
   State<InsulinEntryScreen> createState() => _InsulinEntryScreenState();
@@ -79,14 +96,14 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
     final bool savedOffline;
 
     try {
-      savedOffline = await insulinStore.create({
+      savedOffline = await (widget.store ?? insulinStore).create({
         'doseUnits': amount,
         'insulinType': insulinTypeOptions[selectedType],
         'deliveryMethod': insulinDeliveryOptions[selectedDelivery],
         'administeredAt': administeredAt.toUtc().toIso8601String(),
         'source': 'MANUAL',
         'clientUuid': clientUuid,
-      }) == null;
+      }, patientId: widget.patientId) == null;
     } on ApiException catch (e) {
       if (!mounted) {
         return;
@@ -127,7 +144,7 @@ class _InsulinEntryScreenState extends State<InsulinEntryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFD),
       appBar: AppBar(
-        title: const Text('Insulin'),
+        title: EntryTitle('Insulin', forName: widget.patientName),
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(

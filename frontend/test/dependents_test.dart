@@ -3,11 +3,18 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gradia/data/ai_insights_store.dart';
 import 'package:gradia/data/care_patients_store.dart';
 import 'package:gradia/data/dependent_store.dart';
+import 'package:gradia/data/glucose_store.dart';
+import 'package:gradia/data/log_store.dart';
+import 'package:gradia/data/offline_queue.dart';
 import 'package:gradia/screens/add_family_member_screen.dart';
+import 'package:gradia/screens/care_patient_detail_screen.dart';
 import 'package:gradia/screens/caregiver_dashboard_screen.dart';
+import 'package:gradia/screens/glucose_entry_screen.dart';
 import 'package:gradia/services/api_client.dart';
+import 'package:gradia/services/api_exception.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -25,6 +32,12 @@ class FakeBackend {
 
   /// Answer the next POST/PUT with this 400 field error instead.
   Map<String, String>? rejectWith;
+
+  /// patientId -> glucose logs (GlucoseLogResponse JSON), newest first.
+  final glucose = <int, List<Map<String, dynamic>>>{};
+
+  /// Patients whose logs the caller may not write (403 like the backend).
+  final noWrite = <int>{};
 
   var _nextId = 50;
 
@@ -78,6 +91,37 @@ class FakeBackend {
       members.add(managedMember(id, '${body['firstName']}',
           '${body['lastName']}'));
       return _json(isAdd ? 201 : 200, saved);
+    }
+
+    final logs =
+        RegExp(r'^/api/v1/patients/(\d+)/glucose-logs$').firstMatch(path);
+    if (logs != null) {
+      final id = int.parse(logs.group(1)!);
+      final list = glucose[id] ??= [];
+
+      if (request.method == 'POST') {
+        if (noWrite.contains(id)) {
+          return _json(403, {'detail': 'You cannot add logs for this patient'});
+        }
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final saved = {
+          'id': 900 + list.length,
+          'glucoseValue': body['glucoseValue'],
+          'measurementTime': body['measurementTime'],
+          'mealContext': body['mealContext'],
+          'notes': body['notes'],
+        };
+        list.insert(0, saved);
+        return _json(201, saved);
+      }
+
+      return _json(200, {
+        'items': list,
+        'page': 0,
+        'size': 200,
+        'totalItems': list.length,
+        'totalPages': 1,
+      });
     }
 
     // No overview in these tests: the list shows names only.
@@ -340,6 +384,130 @@ void main() {
         'diabetesType': 'TYPE_1',
       });
       expect(popped?.name, 'Deniz Su Kaya');
+    });
+  });
+
+  group('logging for a family member', () {
+    LogStore<GlucoseRecord> glucoseStoreWith(ApiClient api,
+            {OfflineQueue? queue}) =>
+        LogStore<GlucoseRecord>(
+          resource: 'glucose-logs',
+          fromJson: GlucoseRecord.fromJson,
+          api: api,
+          queue: queue,
+        );
+
+    Map<String, dynamic> body(int value) => GlucoseRecord.requestBody(
+          glucoseValue: value,
+          measuredAt: DateTime(2026, 11, 25, 8),
+          mealContextLabel: 'Fasting',
+          clientUuid: 'uuid-$value',
+          notes: '',
+        );
+
+    test('saves to the family member, not to the caregiver\'s own list',
+        () async {
+      final store = glucoseStoreWith(api);
+
+      final saved = await store.create(body(132), patientId: 50);
+
+      expect(saved?.value, 132);
+      expect(backend.requests.single.url.path,
+          '/api/v1/patients/50/glucose-logs');
+      expect(store.value, isEmpty);
+    });
+
+    test('without a connection it is not queued for later', () async {
+      final queue = OfflineQueue(api: api);
+      final offline = ApiClient(
+        httpClient: MockClient((_) => throw http.ClientException('offline')),
+      );
+      final store = glucoseStoreWith(offline, queue: queue);
+
+      await expectLater(
+        store.create(body(132), patientId: 50),
+        throwsA(isA<ApiException>()
+            .having((e) => e.message, 'message', familyEntryOfflineMessage)),
+      );
+      expect(queue.value, isEmpty);
+    });
+
+    CarePatient patient({required bool managed}) => CarePatient.fromJson(
+          managedMember(50, 'Deniz', 'Kaya', managed: managed)
+            ..['canViewGlucose'] = true,
+          {
+            'ageYears': 8,
+            'diabetesType': 'TYPE_1',
+            'targetMinMgdl': 70,
+            'targetMaxMgdl': 180,
+            'lastGlucoseMgdl': 250,
+            'lastGlucoseAt': '2026-11-20T08:00:00Z',
+          },
+        );
+
+    Future<void> pumpDetail(WidgetTester tester, CarePatient p) async {
+      bigScreen(tester);
+      await tester.pumpWidget(MaterialApp(
+        home: CarePatientDetailScreen(
+          patient: p,
+          glucose: glucoseStoreWith(api),
+          insightsStore: AiInsightsStore(api: api),
+        ),
+      ));
+      await settle(tester);
+    }
+
+    testWidgets('only a managed family member offers Add Entry',
+        (tester) async {
+      await pumpDetail(tester, patient(managed: false));
+      expect(find.text('Add Entry'), findsNothing);
+
+      await pumpDetail(tester, patient(managed: true));
+      expect(find.text('Add Entry'), findsOneWidget);
+      for (final label in ['Glucose', 'Insulin', 'Meal', 'Activity']) {
+        expect(find.text(label), findsOneWidget);
+      }
+    });
+
+    testWidgets('a reading the caregiver adds lands in the history',
+        (tester) async {
+      await pumpDetail(tester, patient(managed: true));
+      expect(find.text('No readings in the last 14 days.'), findsOneWidget);
+
+      await tester.tap(find.text('Glucose'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GlucoseEntryScreen), findsOneWidget);
+      expect(find.text('For Deniz Kaya'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, '132');
+      await tester.tap(find.text('Save Measurement'));
+      await settle(tester);
+
+      expect(find.byType(GlucoseEntryScreen), findsNothing);
+      final post =
+          backend.requests.firstWhere((r) => r.method == 'POST');
+      expect(post.url.path, '/api/v1/patients/50/glucose-logs');
+      expect(jsonDecode(post.body)['glucoseValue'], 132);
+
+      // The latest card follows the new reading, not the older overview.
+      expect(find.text('132 mg/dL'), findsOneWidget);
+      expect(find.text('132'), findsOneWidget);
+      expect(find.text('250'), findsNothing);
+    });
+
+    testWidgets('a refused entry shows the backend message and stays open',
+        (tester) async {
+      backend.noWrite.add(50);
+      await pumpDetail(tester, patient(managed: true));
+
+      await tester.tap(find.text('Glucose'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '132');
+      await tester.tap(find.text('Save Measurement'));
+      await settle(tester);
+
+      expect(find.byType(GlucoseEntryScreen), findsOneWidget);
+      expect(find.text('You cannot add logs for this patient'), findsOneWidget);
     });
   });
 
