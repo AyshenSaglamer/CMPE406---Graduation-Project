@@ -15,7 +15,7 @@
 
 services:
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     ports:
       # HTTP only redirects to HTTPS (see nginx/default.conf.template).
       - "${HTTP_PORT:-8081}:80"
