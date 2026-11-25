@@ -1,10 +1,13 @@
-# Versions the trained weights were checked with (25 Nov). The Dockerfile installs torch/torchvision from the
-# CPU-only index first; pip then sees them as already satisfied.
-torch==2.12.0
-torchvision==0.27.0
+# Pinned versions, checked with the trained weights. The Dockerfile installs torch/torchvision from the CPU-only index
+# first; pip then sees them as already satisfied. CI audits this file with pip-audit (dependency-audit.yml): raise a
+# version there when it reports a vulnerability.
+torch==2.13.0
+torchvision==0.28.0
 fastapi==0.143.0
 uvicorn==0.54.0
 python-multipart==0.0.32
-pillow==12.2.0
+pillow==13.0.0
+# Pulled in by torch; pinned here so the audited version is the installed one.
+setuptools==84.1.0
 # YOLO for several foods on one plate (food regions); weights downloaded in the Docker build.
 ultralytics==8.4.175

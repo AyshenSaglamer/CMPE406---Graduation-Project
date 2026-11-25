@@ -22,7 +22,7 @@ COPY requirements.txt .
 
 # CPU-only PyTorch first: the default wheels bring CUDA libraries (several GB) that a CPU server never uses.
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir torch==2.12.0 torchvision==0.27.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
 # YOLO weights for multi-food detection, downloaded while building so the container starts without internet access.
