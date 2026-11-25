@@ -26,5 +26,5 @@ scikit-learn==1.9.1
 xgboost==3.2.0
 python-multipart==0.0.32
 faster-whisper==1.2.1
-av==18.1.0
+av==19.0.2
 shap==0.51.0
