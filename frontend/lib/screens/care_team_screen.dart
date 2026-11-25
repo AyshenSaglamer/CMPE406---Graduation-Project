@@ -194,7 +194,7 @@ class _CareTeamScreenState extends State<CareTeamScreen> {
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, AiChatButton.scrollClearance),
           children: [
             _buildInviteCard(),
             const SizedBox(height: 22),

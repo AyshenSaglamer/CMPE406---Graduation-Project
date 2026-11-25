@@ -127,7 +127,7 @@ class _OfflineModeScreenState extends State<OfflineModeScreen> {
         backgroundColor: const Color(0xFFF7FAFD),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, AiChatButton.scrollClearance),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

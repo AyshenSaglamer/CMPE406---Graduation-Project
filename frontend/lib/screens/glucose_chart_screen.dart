@@ -8,6 +8,7 @@ import '../data/glucose_store.dart';
 import '../data/log_store.dart';
 import '../services/api_exception.dart';
 import '../utils/form_helpers.dart';
+import '../widgets/ai_chat_button.dart';
 import '../widgets/ai_insights_card.dart';
 import '../widgets/entry_title.dart';
 import 'glucose_entry_screen.dart';
@@ -226,7 +227,7 @@ class _GlucoseChartScreenState extends State<GlucoseChartScreen> {
         onRefresh: _load,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, AiChatButton.scrollClearance),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

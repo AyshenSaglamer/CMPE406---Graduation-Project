@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/reminder_store.dart';
 import '../services/api_exception.dart';
 import '../services/reminder_notifications.dart';
+import '../widgets/ai_chat_button.dart';
 import '../widgets/entry_title.dart';
 
 /// The patient's reminders (medication, glucose check, meal, appointment),
@@ -280,7 +281,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
         onRefresh: _load,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, AiChatButton.scrollClearance),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

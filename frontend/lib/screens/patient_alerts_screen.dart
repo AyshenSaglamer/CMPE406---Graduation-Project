@@ -144,7 +144,7 @@ class _PatientAlertsScreenState extends State<PatientAlertsScreen> {
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, AiChatButton.scrollClearance),
           children: [
             const Text(
               'Low and high readings from your logs, checked against your '
