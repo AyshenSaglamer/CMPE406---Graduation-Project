@@ -7,3 +7,5 @@ reports/
 tests/
 requirements-dev.txt
 *.pt
+training/
+tools/

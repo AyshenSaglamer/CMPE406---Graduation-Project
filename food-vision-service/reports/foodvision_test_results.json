@@ -1,11 +1,38 @@
 {
     "model": "ResNet50",
+    "version": 2,
+    "training": "ImageNet ResNet50, fine-tuned on Food-101 + TurkishFoods-25 (v1: frozen backbone, then layer4); v2: v1 weights, every layer fine-tuned for 3 epochs (RandomResizedCrop, TrivialAugment, RandomErasing, label smoothing 0.1, class weights). Notebook: training/food_vision_finetune.ipynb",
+    "weights_sha256": "3bc8900da2671fe9f524d395ae8d1cac173e2fce05705b5e0d2d6abc3d447e7e",
     "num_classes": 125,
-    "validation_accuracy": 72.51,
-    "overall_test_accuracy": 77.09,
-    "food101_test_accuracy": 76.73,
-    "turkishfoods25_test_accuracy": 85.09,
+    "validation_accuracy": 83.59,
+    "overall_test_accuracy": 83.24,
+    "overall_test_top3_accuracy": 93.74,
+    "overall_test_macro_f1": 83.82,
+    "food101_test_accuracy": 83.04,
+    "food101_test_top3_accuracy": 93.65,
+    "turkishfoods25_test_accuracy": 87.65,
+    "turkishfoods25_test_top3_accuracy": 95.85,
+    "turkishfoods25_test_macro_f1": 88.0,
     "total_test_images": 26397,
-    "food101_test_images": 25250,
-    "turkishfoods25_test_images": 1147
+    "food101_test_images": 25288,
+    "turkishfoods25_test_images": 1109,
+    "counting_note": "v2 counts the 38 TurkishFoods-25 baklava test photos with Food-101 (baklava is one Food-101 class); v1 counted them with TurkishFoods-25 (25250 / 1147).",
+    "hardest_classes_top1": {
+        "steak": 43.6,
+        "pork_chop": 45.2,
+        "ravioli": 60.8,
+        "foie_gras": 62.0,
+        "apple_pie": 63.2
+    },
+    "real_photos_top1": "9 / 10 (v1: 6 / 10): baklava x3, hamburger, lahmacun x2, spaghetti, manti, pizza, yaprak sarma; tools/compare_on_photos.py",
+    "previous_version": {
+        "version": 1,
+        "weights_sha256": "6d3f58bc45dc9208b413522ecf84ae39e23e49b7016b6d056ac2cecfb8df6f92",
+        "validation_accuracy": 72.51,
+        "overall_test_accuracy": 77.09,
+        "food101_test_accuracy": 76.73,
+        "turkishfoods25_test_accuracy": 85.09,
+        "food101_test_images": 25250,
+        "turkishfoods25_test_images": 1147
+    }
 }
