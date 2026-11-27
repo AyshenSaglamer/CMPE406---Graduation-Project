@@ -320,7 +320,7 @@ Backend bu sonucu **kaydetmez**. Servis çalışmıyorsa cevap **503**, servis h
 
 ### Yemek fotoğrafı (Food Vision)
 
-`POST /api/v1/ai/food` fotoğraftaki yemeği, tabakta birden fazla yemek varsa her birini tahmin eder (Ayşenur'un ResNet50 modeli: Food-101'in 101 sınıfı + 24 Türk yemeği, test kümesinde doğruluk %77; yemek bölgeleri için YOLO). Akış Flutter → backend → `food-vision-service` (`POST /predict-food`) şeklindedir; uygulama servise doğrudan bağlanmaz.
+`POST /api/v1/ai/food` fotoğraftaki yemeği, tabakta birden fazla yemek varsa her birini tahmin eder (Ayşenur'un ResNet50 modeli: Food-101'in 101 sınıfı + 24 Türk yemeği, test kümesinde doğruluk %83 (sürüm 2, top-3 %94); yemek bölgeleri için YOLO). Akış Flutter → backend → `food-vision-service` (`POST /predict-food`) şeklindedir; uygulama servise doğrudan bağlanmaz.
 
 1. **Fotoğraf kontrolü (backend):** Türüne dosyanın ilk baytları karar verir (JPG, PNG, WEBP), adı ya da bildirilen türü değil. Boş dosya, 5 MB'tan büyük dosya ve başlığında 50 megapikselden büyük resim bildiren JPG/PNG gönderilmeden reddedilir. Bu sonuncusu, küçük bir dosyanın açılınca gigabaytlarca bellek istemesini ("decompression bomb") önler. Servise istemcinin dosya adı değil `meal.jpg` / `meal.png` / `meal.webp` gider.
 2. **Tahmin:** Modelin tahminleri güvene göre sıralanır, en fazla 3 tanesi döner. En iyi tahmin %50'nin altındaysa `lowConfidence: true` olur; uygulama o zaman ilk tahmini önermek yerine hastaya seçtirmeli.
