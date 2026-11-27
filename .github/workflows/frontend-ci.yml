@@ -1,17 +1,25 @@
-# DiaMate Flutter CI: analyzes and tests the app in frontend/ on each push to main and each pull request that
-# touches it.
+
+# DiaMate Frontend CI
 #
-#   The analyzer fails on errors and warnings, not on infos (Flutter 3.50 reports deprecations as infos). The widget
-#   tests use fake API clients, so no backend is needed. The frontend branch keeps the app at its root and is merged
-#   into main as frontend/ (subtree merge), so this workflow runs on main and on pull requests into it.
+# Analyzes and tests the Flutter application on relevant pushes
+# and all pull requests targeting the main branch.
+#
+# The analyzer fails on errors and warnings, but not on infos.
+# Widget tests use fake API clients, so no backend is required.
+#
+# Required checks also run for Dependabot security updates.
+
 name: Frontend CI
 
 on:
   push:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
   pull_request:
-    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
+    branches: [main]
 
 permissions:
   contents: read
@@ -25,19 +33,27 @@ jobs:
     name: Flutter (analyze, test)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     defaults:
       run:
         working-directory: frontend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.50.0" # the version the app is developed with
+          flutter-version: "3.50.0"
           cache: true
+
       - name: Dependencies
         run: flutter pub get
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
+
       - name: Tests
         run: flutter test
