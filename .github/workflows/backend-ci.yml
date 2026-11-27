@@ -1,19 +1,30 @@
-# DiaMate backend CI: runs the backend tests on each push and pull request that touches the backend.
+
+# DiaMate Backend CI
 #
-#   Unit and web tests, plus the database tests against PostgreSQL 17 in Docker (Testcontainers; the schema is built
-#   from Database/sql + Flyway, like a real install). The AI service has its own workflow (ai-service-ci.yml on the
-#   ai branch); the Flutter app in frontend/ has frontend-ci.yml.
+# Runs backend tests on relevant pushes and all pull requests
+# targeting the main branch.
 #
-# The Postman collection is not run here: it needs the demo accounts, and the demo seed needs the research dataset
-# files, which are not in the repository (see backend/README.md).
+# Includes unit, web, and database tests against PostgreSQL 17
+# using Docker and Testcontainers.
+#
+# The database schema is built from Database/sql and Flyway.
+# AI and Flutter services have their own CI workflows.
+#
+# The Postman collection is not executed because it requires
+# demo accounts and research dataset files.
+
 name: Backend CI
 
 on:
   push:
     branches: [main, backend]
-    paths: ["backend/**", "Database/**", ".github/workflows/backend-ci.yml"]
+    paths:
+      - "backend/**"
+      - "Database/**"
+      - ".github/workflows/backend-ci.yml"
+
   pull_request:
-    paths: ["backend/**", "Database/**", ".github/workflows/backend-ci.yml"]
+    branches: [main]
 
 permissions:
   contents: read
@@ -27,18 +38,25 @@ jobs:
     name: Backend (Java 21)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     defaults:
       run:
         working-directory: backend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
+
       - name: Unit, web and database tests
         run: mvn -B -ntp test
+
       - name: Test reports
         if: failure()
         uses: actions/upload-artifact@v4
