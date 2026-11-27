@@ -57,6 +57,9 @@ class FakeBackend {
   int status = 200;
   Map<String, dynamic> body = sampleSummary();
 
+  /// The AI service's reason for a 422 (passed through by Spring).
+  String detail422 = 'At least 3 historical glucose readings are required.';
+
   late final client = MockClient((request) async {
     requests.add(request);
 
@@ -74,6 +77,9 @@ class FakeBackend {
             'from': 'At least 2 glucose readings are needed in this time range',
           },
         });
+      }
+      if (status == 422) {
+        return _json(422, {'detail': detail422});
       }
       if (status != 200) {
         return _json(status, {'detail': 'AI said no ($status)'});
@@ -228,6 +234,21 @@ void main() {
 
       expect(find.text('Next glucose: Trending higher'), findsOneWidget);
       expect(backend.requests, hasLength(2));
+    });
+
+    testWidgets('data the AI cannot use is not called "not enough data"',
+        (tester) async {
+      backend.status = 422;
+      backend.detail422 = 'All timestamps must be valid.';
+      await pump(tester);
+
+      expect(find.textContaining('Not enough data'), findsNothing);
+      expect(
+        find.text('AI insights could not be made for this period: '
+            'All timestamps must be valid.'),
+        findsOneWidget,
+      );
+      expect(find.text('Try again'), findsOneWidget);
     });
 
     testWidgets('a rejected range shows the backend reason, not a generic one',

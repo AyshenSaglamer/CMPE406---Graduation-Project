@@ -12,7 +12,14 @@ import '../screens/ai_assistant_screen.dart';
 ///
 /// Not used on the entry forms (their Save button is at the bottom) or on
 /// the assistant screen itself.
+///
+/// A screen that shows it ends its scrolling content with
+/// [scrollClearance] of bottom padding, so the last item can be scrolled
+/// out from under the button.
 class AiChatButton extends StatelessWidget {
+  /// The 62 dp button, its 16 dp margin and a little air.
+  static const double scrollClearance = 96;
+
   const AiChatButton({super.key});
 
   static const assistantPurple = Color(0xFF8B62D6);

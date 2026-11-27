@@ -11,6 +11,7 @@ import 'package:gradia/screens/care_invitations_screen.dart';
 import 'package:gradia/screens/care_patient_detail_screen.dart';
 import 'package:gradia/screens/caregiver_dashboard_screen.dart';
 import 'package:gradia/screens/doctor_dashboard_screen.dart';
+import 'package:gradia/screens/pdf_report_screen.dart';
 import 'package:gradia/services/api_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -235,6 +236,44 @@ void main() {
 
       expect(find.byType(CarePatientDetailScreen), findsOneWidget);
       expect(find.text('2 open alerts'), findsOneWidget);
+    });
+
+    testWidgets('the Reports tab opens the patient\'s PDF / CSV report',
+        (tester) async {
+      backend.members = [
+        member(7, 'Nil', 'Su'),
+        // Shares nothing but alerts: no report to make.
+        {
+          ...member(8, 'Ali', 'Veli', glucose: false),
+          'canViewMeals': false,
+          'canViewMedications': false,
+          'canViewActivity': false,
+        },
+      ];
+      backend.overviews = {7: overviewOf(7, glucose: 245)};
+
+      await pump(tester);
+      await tester.tap(find.text('Reports'));
+      await settle(tester);
+
+      expect(find.text('Patient Reports'), findsOneWidget);
+      expect(find.textContaining('Health report as PDF or CSV'),
+          findsOneWidget);
+      expect(find.text('Ali Veli'), findsNothing);
+
+      await tester.tap(find.text('Nil Su'));
+      await settle(tester);
+
+      expect(find.byType(PdfReportScreen), findsOneWidget);
+      expect(find.byType(CarePatientDetailScreen), findsNothing);
+    });
+
+    testWidgets('Reports explains when nobody shares logs', (tester) async {
+      await pump(tester);
+      await tester.tap(find.text('Reports'));
+      await settle(tester);
+
+      expect(find.textContaining('No patients yet'), findsWidgets);
     });
   });
 

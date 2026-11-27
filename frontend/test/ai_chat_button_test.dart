@@ -59,8 +59,34 @@ void main() {
         reason: name,
       );
     }
+    // AiChatButton.scrollClearance alone is fine: the reminders tab sits
+    // inside the dashboard, which shows the button.
     for (final name in withoutButton) {
-      expect(source(name), isNot(contains('AiChatButton')), reason: name);
+      expect(source(name), isNot(contains('AiChatButton(')), reason: name);
+    }
+  });
+
+  // The last item of a list must be able to scroll out from under the button
+  // (62 dp + the 16 dp floating button margin).
+  test('screens under the button leave room at the bottom', () {
+    expect(AiChatButton.scrollClearance, greaterThanOrEqualTo(62 + 16 + 8));
+
+    const scrollingUnderButton = [
+      'dashboard_screen.dart',
+      'glucose_chart_screen.dart', // the Chart tab
+      'reminder_screen.dart', // the Reminders tab
+      'patient_alerts_screen.dart',
+      'offline_mode_screen.dart',
+      'care_team_screen.dart',
+      'pdf_report_screen.dart',
+      'csv_import_screen.dart',
+    ];
+    for (final name in scrollingUnderButton) {
+      expect(
+        File('lib/screens/$name').readAsStringSync(),
+        contains('AiChatButton.scrollClearance'),
+        reason: name,
+      );
     }
   });
 }

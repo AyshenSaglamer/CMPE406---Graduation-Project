@@ -55,6 +55,13 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
   /// The carbs field holds the photo's rough estimate (not typed).
   bool carbsEstimated = false;
 
+  /// The photo's rough kcal, protein and fat for the same foods and portions
+  /// as the carbs estimate. Saved only while [carbsEstimated]: once the
+  /// patient corrects the carbs, the amount differs and these would be wrong.
+  double? kcalEstimate;
+  double? proteinEstimate;
+  double? fatEstimate;
+
   Future<void> _addFromPhoto() async {
     final result = await Navigator.push<FoodPhotoResult>(
       context,
@@ -91,6 +98,15 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
             ? estimate.toStringAsFixed(0)
             : estimate.toStringAsFixed(1);
         carbsEstimated = true;
+        kcalEstimate = result.kcalEstimate;
+        proteinEstimate = result.proteinEstimate;
+        fatEstimate = result.fatEstimate;
+      } else {
+        // The carbs were typed or came from an earlier photo: these values
+        // would no longer match the whole meal.
+        kcalEstimate = null;
+        proteinEstimate = null;
+        fatEstimate = null;
       }
     });
 
@@ -113,6 +129,27 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
   // Same id while retrying after a network error, so the record is not
   // stored twice. A new one after any change.
   String clientUuid = newClientUuid();
+
+  void _dropEstimates() {
+    carbsEstimated = false;
+    kcalEstimate = null;
+    proteinEstimate = null;
+    fatEstimate = null;
+  }
+
+  /// "about 345 kcal · 15 g protein · 11.7 g fat", null when none is known.
+  String? get _otherEstimatesText {
+    String amount(double value) => value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+
+    final parts = [
+      if (kcalEstimate != null) '${amount(kcalEstimate!)} kcal',
+      if (proteinEstimate != null) '${amount(proteinEstimate!)} g protein',
+      if (fatEstimate != null) '${amount(fatEstimate!)} g fat',
+    ];
+    return parts.isEmpty ? null : 'Also about ${parts.join(' · ')}';
+  }
 
   void _changed(VoidCallback update) {
     setState(() {
@@ -169,6 +206,11 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
         'eatenAt': eatenAt.toUtc().toIso8601String(),
         'description': description,
         'carbsG': ?carbs,
+        if (carbsEstimated) ...{
+          'caloriesKcal': ?kcalEstimate,
+          'proteinG': ?proteinEstimate,
+          'fatG': ?fatEstimate,
+        },
         'source': fromPhoto ? 'AI_PHOTO' : 'MANUAL',
         if (fromPhoto) 'aiConfidence': ?aiConfidence,
         'clientUuid': clientUuid,
@@ -552,6 +594,13 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
                         : Colors.grey.shade500,
                   ),
                 ),
+                if (carbsEstimated && _otherEstimatesText != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _otherEstimatesText!,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
               ],
             ),
           ),
@@ -562,7 +611,7 @@ class _MealEntryScreenState extends State<MealEntryScreen> {
               controller: carbsController,
               onChanged: (_) => setState(() {
                 clientUuid = newClientUuid();
-                carbsEstimated = false;
+                _dropEstimates();
               }),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,

@@ -11,6 +11,7 @@ import '../utils/greeting.dart';
 import 'alerts_screen.dart';
 import 'care_invitations_screen.dart';
 import 'care_patient_detail_screen.dart';
+import 'pdf_report_screen.dart';
 
 class DoctorDashboardScreen extends StatefulWidget {
   const DoctorDashboardScreen({super.key, this.patientsStore});
@@ -717,7 +718,17 @@ class _DoctorDashboardScreenState
 
   // REPORTS PAGE
 
+  /// The health report (PDF / CSV) of a patient, with only the kinds of logs
+  /// they share with this doctor (the same screen caregivers use).
   Widget _buildReportsPage() {
+    final withData = patients
+        .where((p) =>
+            p.canViewGlucose ||
+            p.canViewMedications ||
+            p.canViewMeals ||
+            p.canViewActivity)
+        .toList();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
       children: [
@@ -730,7 +741,7 @@ class _DoctorDashboardScreenState
         ),
         const SizedBox(height: 6),
         const Text(
-          'Review glucose history and patient records.',
+          'A summary of a patient\'s logs for any period, as a PDF or CSV.',
           style: TextStyle(
             fontSize: 13,
             color: Color(0xFF718096),
@@ -738,7 +749,30 @@ class _DoctorDashboardScreenState
         ),
         const SizedBox(height: 20),
 
-        ...patients.map(
+        if (patientsLoading && patients.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (withData.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                patients.isEmpty
+                    ? 'No patients yet. When a patient invites you, accept it '
+                        'under More → Invitations.'
+                    : 'Your patients do not share any logs with you yet.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF718096),
+                ),
+              ),
+            ),
+          ),
+
+        ...withData.map(
           (patient) => Card(
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
@@ -763,13 +797,18 @@ class _DoctorDashboardScreenState
               ),
               subtitle: Text(
                 '${patient.diabetesLabel}\n'
-                '${patient.lastGlucose == null ? 'No readings yet' : 'Latest: ${patient.lastGlucose} mg/dL'}',
+                'Health report as PDF or CSV',
               ),
               isThreeLine: true,
               trailing: const Icon(
                 Icons.chevron_right_rounded,
               ),
-              onTap: () => _openPatient(patient),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PdfReportScreen(patient: patient),
+                ),
+              ),
             ),
           ),
         ),

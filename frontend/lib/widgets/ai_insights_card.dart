@@ -101,8 +101,15 @@ class _AiInsightsCardState extends State<AiInsightsCard> {
   static String _messageFor(ApiException e) {
     switch (e.statusCode) {
       case 422:
-        return 'Not enough data for AI insights yet. '
-            'Log at least three glucose readings in this period.';
+        // The AI service answers 422 both for too few readings ("At least
+        // ... readings are required") and for data it cannot use (e.g. "All
+        // timestamps must be valid."): only the first is "not enough data".
+        final detail = e.message.trim();
+        if (detail.isEmpty || detail.toLowerCase().contains('at least')) {
+          return 'Not enough data for AI insights yet. '
+              'Log at least three glucose readings in this period.';
+        }
+        return 'AI insights could not be made for this period: $detail';
       case 502:
       case 503:
         return 'The AI assistant is not available right now. '

@@ -368,7 +368,7 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, AiChatButton.scrollClearance),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -451,6 +451,87 @@ void main() {
       expect(field(tester, 1).text, '74.3');
     });
 
+    void pizzaPortionsWithMacros() {
+      backend.predictions.first['portionOptions'] = [
+        {
+          'size': 'SMALL',
+          'grams': 75,
+          'carbsG': 24.8,
+          'kcal': 199.5,
+          'proteinG': 8.3,
+          'fatG': 7.4,
+        },
+        {
+          'size': 'MEDIUM',
+          'grams': 150,
+          'carbsG': 49.5,
+          'kcal': 399,
+          'proteinG': 16.5,
+          'fatG': 14.9,
+        },
+        {
+          'size': 'LARGE',
+          'grams': 225,
+          'carbsG': 74.3,
+          'kcal': 598.5,
+          'proteinG': 24.8,
+          'fatG': 22.4,
+        },
+      ];
+    }
+
+    testWidgets('the kcal, protein and fat of the portion are saved with the '
+        'carbs', (tester) async {
+      pizzaPortionsWithMacros();
+      await openPhoto(tester);
+      await tester.tap(find.text('Take a photo'));
+      await settle(tester);
+
+      await tester.tap(find.textContaining('Large · 225 g'));
+      await tester.pump();
+      await tester.tap(find.text('Use 1 food'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Also about 598.5 kcal · 24.8 g protein · 22.4 g fat'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Save Meal Record'));
+      await settle(tester);
+
+      final saved = backend.savedMeals.single;
+      expect(saved['carbsG'], 74.3);
+      expect(saved['caloriesKcal'], 598.5);
+      expect(saved['proteinG'], 24.8);
+      expect(saved['fatG'], 22.4);
+    });
+
+    testWidgets('corrected carbs drop the photo\'s kcal, protein and fat',
+        (tester) async {
+      pizzaPortionsWithMacros();
+      await openPhoto(tester);
+      await tester.tap(find.text('Take a photo'));
+      await settle(tester);
+      await tester.tap(find.text('Use 1 food'));
+      await tester.pumpAndSettle();
+
+      // Ate only part of it: the other estimates no longer fit.
+      await tester.enterText(find.byType(TextField).at(1), '30');
+      await tester.pump();
+      expect(find.textContaining('Also about'), findsNothing);
+
+      await tester.tap(find.text('Save Meal Record'));
+      await settle(tester);
+
+      final saved = backend.savedMeals.single;
+      expect(saved['carbsG'], 30);
+      expect(saved['source'], 'AI_PHOTO');
+      expect(saved.containsKey('caloriesKcal'), isFalse);
+      expect(saved.containsKey('proteinG'), isFalse);
+      expect(saved.containsKey('fatG'), isFalse);
+    });
+
     testWidgets('several foods on a plate: tick, fix a name, add up carbs',
         (tester) async {
       Map<String, dynamic> guess(String food, String name, double confidence,
@@ -540,6 +621,40 @@ void main() {
       expect(result.carbsEstimate, isNull);
       expect(result.aiConfidence, 0.8);
       expect(result.fromRecognition, isTrue);
+    });
+
+    test('kcal, protein and fat add up over the foods and portions', () {
+      FoodPrediction withMacros(String name, double kcal, double protein,
+              double? fat) =>
+          FoodPrediction(
+            food: name,
+            displayName: name,
+            confidence: 0.9,
+            carbsGPerServing: 10,
+            kcalPerServing: kcal,
+            proteinGPerServing: protein,
+            fatGPerServing: fat,
+            portionOptions: [
+              PortionOption(
+                size: 'LARGE',
+                grams: 150,
+                carbsG: 15,
+                kcal: kcal * 1.5,
+                proteinG: protein * 1.5,
+                fatG: fat == null ? null : fat * 1.5,
+              ),
+            ],
+          );
+
+      final result = FoodPhotoResult(foods: const ['A', 'B'], confirmedFoods: [
+        ConfirmedFood(withMacros('A', 200, 10.2, 5)),
+        ConfirmedFood(withMacros('B', 100.4, 4, null), portion: 'LARGE'),
+      ]);
+
+      expect(result.kcalEstimate, 350.6); // 200 + 150.6
+      expect(result.proteinEstimate, 16.2); // 10.2 + 6
+      // One food has no fat value: unknown, not counted as 0 g.
+      expect(result.fatEstimate, isNull);
     });
 
     test('typed foods only: MANUAL, no estimate', () {
